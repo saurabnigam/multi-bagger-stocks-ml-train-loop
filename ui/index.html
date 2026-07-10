@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multibagger Screener v2</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Chart.js for rendering cash flow charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        
+        <!-- Sidebar: Master View -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>Antigravity Quant</h2>
+                <p>V16 Self-Learning Engine</p>
+                <div id="ai-weights-container" style="font-size: 11px; margin-top: 8px; color: #666; background: #f0f0f5; padding: 6px; border-radius: 4px; border: 1px solid #d1d1d6;">
+                    <!-- Weights injected by JS -->
+                </div>
+                <div class="sidebar-tabs" style="display: flex; margin-top: 12px; gap: 8px;">
+                    <button id="tab-accepted" class="tab-btn active" style="flex: 1; padding: 6px; font-weight: 600; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer;">Accepted</button>
+                    <button id="tab-rejected" class="tab-btn" style="flex: 1; padding: 6px; font-weight: 600; background: #e5e5ea; color: #333; border: none; border-radius: 4px; cursor: pointer;">Rejected</button>
+                    <button id="tab-turnaround" class="tab-btn" style="flex: 1; padding: 6px; font-size: 11px; font-weight: 600; background: #ff9500; color: white; border: none; border-radius: 4px; cursor: pointer;">Turnaround</button>
+                </div>
+            </div>
+            <ul id="stock-list" class="stock-list">
+                <!-- Dynamically populated via JS -->
+            </ul>
+        </aside>
+
+        <!-- Main Content: Detail View -->
+        <main class="main-content">
+            <div id="detail-view" class="detail-view empty-state">
+                <div class="empty-icon">📈</div>
+                <h3>Select a stock to view detailed analysis</h3>
+                <p>All quantitative metrics and red-team audits are loaded.</p>
+            </div>
+        </main>
+
+    </div>
+
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_OTHER",
+  "summary": "Optimizer script to dynamically adjust weights based on forward returns.",
+  "updatedAt": "2026-06-11T18:09:02.932820Z"
+}

@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_OTHER",
+  "summary": "Cron job script to run the optimizer, harness, and UI update sequentially.",
+  "updatedAt": "2026-06-11T18:09:10.425862Z"
+}

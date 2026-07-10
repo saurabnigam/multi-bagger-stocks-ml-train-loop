@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_OTHER",
+  "summary": "Write the V15 harness that extracts institutional holding %, adds cashflow arrays back into the payload, and uses V15 math.",
+  "updatedAt": "2026-06-11T17:49:39.855846Z"
+}

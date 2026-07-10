@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_OTHER",
+  "summary": "Write update_ui_v16.py to fetch from SQLite instead of CSV",
+  "updatedAt": "2026-06-11T18:08:45.420833Z"
+}

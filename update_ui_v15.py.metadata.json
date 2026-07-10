@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_OTHER",
+  "summary": "Update the UI data generator to pass cashflows array, Debt to Equity, FII, Growth, and News into JSON.",
+  "updatedAt": "2026-06-11T17:49:57.037708Z"
+}
