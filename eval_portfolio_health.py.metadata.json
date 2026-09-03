@@ -1,5 +1,6 @@
 {
-  "artifactType": "ARTIFACT_TYPE_OTHER",
-  "summary": "Eval script to assert portfolio constraints.",
-  "updatedAt": "2026-06-11T16:54:21.413052Z"
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Upgraded eval_portfolio_health.py to V18 quantitative verification suite including multi-period Rank IC checks, quintile monotonicity testing, factor non-degeneracy, and structural boundary tests.",
+  "updatedAt":  "2026-09-03T17:56:57.556870Z",
+  "userFacing":  true
 }

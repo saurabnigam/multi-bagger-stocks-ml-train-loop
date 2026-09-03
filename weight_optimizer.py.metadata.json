@@ -1,5 +1,6 @@
 {
-  "artifactType": "ARTIFACT_TYPE_OTHER",
-  "summary": "Optimizer script to dynamically adjust weights based on forward returns.",
-  "updatedAt": "2026-06-11T18:09:02.932820Z"
+  "artifactType":  "ARTIFACT_TYPE_OTHER",
+  "summary":  "Upgraded weight_optimizer.py to V18 institutional multi-period panel optimizer with continuous Rank-IC exponentiated gradient descent and zero-latency DB pricing.",
+  "updatedAt":  "2026-09-03T17:56:36.551266Z",
+  "userFacing":  true
 }
