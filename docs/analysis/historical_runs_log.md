@@ -19,7 +19,7 @@ This log chronicles every training run recorded in `quant_engine.db` (`active_we
 | **9** | 2026-07-10 | 14.8% | 28.1% | 7.0% | 20.0% | 10.0% | 9.0% | 5.1% | 6.0% | **First 30-day forward return evaluation:** Growth correlation $+0.672$ over 546 predictions. |
 | **10** | 2026-08-14 | 14.8% | 28.1% | 7.0% | 20.0% | 10.0% | 9.0% | 5.1% | 6.0% | **August Nifty 500 run:** Optimizer hit threshold stall (all corrs $< 0.10$). |
 | **11** | 2026-09-03 | 16.2% | 28.2% | 5.9% | 18.9% | 9.8% | 9.6% | 5.1% | 6.3% | **V18 Overhaul Launch:** Continuous Rank-IC exponentiated gradient on Period 1 & 2. |
-| **12** | 2026-09-03 | 15.2% | 30.0% | 5.5% | 18.5% | 9.0% | 9.9% | 5.0% | 6.9% | **Post-Snapshot Multi-Period Optimization:** Trained on all 3 periods (Jun-Jul, Jul-Aug, Aug-Sep). |
+| **12** | 2026-09-03 | 15.2% | 30.0% | 5.5% | 18.5% | 9.0% | 9.9% | 5.0% | 6.9% | **Post-Snapshot Multi-Period Optimization:** Trained on all 3 periods (Jun-Jul, Jul-Aug, Aug-Sep). *Note: runs 11 and 12 used the same data; the second step exists only because the optimizer was not idempotent. Growth hit the 30% ceiling here. `trained_through=2026-09-03` was backfilled on this row during the Sep 2026 red-team review so the fixed optimizer does not re-learn from these periods.* |
 
 ---
 
