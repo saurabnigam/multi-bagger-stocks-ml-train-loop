@@ -5,7 +5,9 @@
 ![Claude Code Ready](https://img.shields.io/badge/Claude%20Code-ready-blueviolet.svg)
 ![Vanilla JS](https://img.shields.io/badge/frontend-vanilla_js-yellow.svg)
 
-An institutional-grade Quantitative Machine Learning engine designed to evaluate, rank, and track Nifty 500 stocks. The system automatically pulls fundamental and technical data, predicts forward returns based on dynamic factor weights, and runs an out-of-sample gradient-descent optimizer loop across historical market regimes to self-correct its predictions.
+A quantitative factor engine that scores, ranks, and tracks Nifty 500 stocks. It pulls fundamental and technical data from Yahoo Finance, scores eight factors, applies value-trap and trend multipliers, and adjusts factor weights from realised forward returns using a bounded exponentiated-gradient step.
+
+> **Status (Sep 2026):** after three monthly holding periods the model's measured edge is dominated by its 50/200-day trend filter; the fundamental composite and the learning loop have not yet shown out-of-sample value beyond noise. See [docs/analysis/red_team_review.md](docs/analysis/red_team_review.md) before quoting any performance figure from this repository.
 
 The output is presented in a modern, glassmorphism-style web dashboard complete with an "AI Factor Breakdown" and raw quantitative metrics.
 
@@ -62,13 +64,13 @@ Houses proprietary scoring and valuation algorithms:
 - **Momentum** (Golden Cross vs Death Cross hard-kill protection)
 
 ### 3. The ML Optimizer (`weight_optimizer.py`)
-The self-learning brain of the system. It discovers all historical snapshot dates, evaluates distinct forward-holding regimes (e.g. 27-day, 34-day, 20-day horizons), calculates cross-sectional Spearman Rank ICs, and performs continuous Exponentiated Gradient Descent on factor weights within bounded constraints (`[5.0%, 30.0%]`).
+Discovers full-universe snapshot dates, evaluates each forward-holding period from prices already in SQLite (excluding suspected unadjusted splits), computes per-factor Spearman Rank ICs with t-statistics, and prints an attribution table separating the fundamental composite from the momentum filter. Each period is learned from exactly once (idempotent); weights stay within `[5.0%, 30.0%]` and sum to exactly 1.000. `--dry-run` shows the step without writing.
 
 ### 4. The Quantitative Verification Suite (`eval_portfolio_health.py`)
-Verifies mathematical bounds, momentum hard-kill rules, factor non-degeneracy, active weight constraints, and conducts multi-period walk-forward quintile performance audits.
+Verifies bounds, the momentum hard kill, input units (dividend/FCF yields), near-constant factors, `final == base × multipliers`, weight constraints and provenance, then runs the multi-period audit and a strict walk-forward test of the learning rule (weights learned only from earlier periods vs equal weights). Exit code 1 on errors.
 
 ### 5. The Presentation Layer (`ui/` & `update_ui_v16.py`)
-`update_ui_v16.py` extracts the latest predictions, active weights, and turnaround screen candidates into `ui/data.js`. The frontend (`index.html`, `app.js`, `style.css`) renders a browser-native, zero-dependency dashboard.
+`update_ui_v16.py` extracts the latest predictions, active weights, data-quality flags, and turnaround screen candidates into `ui/data.js`. The frontend (`index.html`, `app.js`, `style.css`) is vanilla HTML/JS/CSS with no build step (it does load Chart.js and a Google font from CDNs).
 
 ---
 
@@ -91,13 +93,15 @@ Verifies mathematical bounds, momentum hard-kill rules, factor non-degeneracy, a
    pip install -r requirements.txt
    ```
 
-3. Run the complete pipeline:
+3. Run the complete pipeline (or `./daily_cron.sh`):
    ```bash
+   python db_setup.py
    python harness_v16_learning.py
    python weight_optimizer.py
    python update_ui_v16.py
    python eval_portfolio_health.py
    ```
+   All paths are relative to the repository; set `QUANT_DB_PATH` to point at another database.
 
 4. View the Dashboard:
    Open `ui/index.html` in your web browser.
@@ -106,8 +110,8 @@ Verifies mathematical bounds, momentum hard-kill rules, factor non-degeneracy, a
 
 ## 🧪 Testing & Verification
 ```bash
-# Run unit tests for quantitative math
-pytest test_quant_math.py
+# Run unit tests (scoring math, optimizer pure functions, red-team regressions)
+pytest -q
 
 # Run portfolio health evaluation
 python eval_portfolio_health.py

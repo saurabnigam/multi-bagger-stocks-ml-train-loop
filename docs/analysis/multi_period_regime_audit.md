@@ -1,3 +1,5 @@
+> **Correction (2026-09-05).** This report is preserved as written on 2026-09-03. A subsequent red-team review found that (a) the Aug→Sep composite Rank IC of +0.117 is mostly the death-cross trend filter (momentum flag alone: +0.125; fundamentals alone: +0.050); (b) the "+2.21% downside alpha" compares the zeroed death-cross bucket with everyone else, and the Q5−Q1 spread among ranked survivors was +0.47%; (c) Period 1 numbers include an unadjusted 6:1 split (ZFCVINDIA, −84%); (d) the Information Ratios are computed from three observations and the Cap-Alloc factor was corrupted by a dividend-yield unit bug. See [red_team_review.md](red_team_review.md) for the corrected tables.
+
 # Multi-Period Market Regime Audit & Empirical Backtest (Summer 2026)
 
 ## 📌 Executive Summary

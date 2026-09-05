@@ -27,6 +27,10 @@ It combines:
 3. **Use Zero-Latency In-DB Returns for Optimization:** When running `weight_optimizer.py`, transition prices for historical snapshots must be queried directly from SQLite (`daily_predictions`), never re-fetched over the web.
 4. **Keep Frontend Zero-Dependency:** The `ui/` directory must remain browser-native Vanilla HTML/JS/CSS. Do not introduce npm, bundlers, or frameworks.
 5. **Keep Database Tracked in Git:** `quant_engine.db` contains months of irreplaceable historical predictions and must be committed and pushed to GitHub.
+6. **Never Hard-Code Paths:** All scripts resolve `quant_engine.db` and `ui/` relative to the repository via `config.py` (override with `QUANT_DB_PATH` / `QUANT_UI_DIR`). Do not reintroduce absolute paths.
+7. **Optimizer Must Stay Idempotent:** `weight_optimizer.py` learns from each holding period exactly once (tracked in `active_weights.trained_through`). Running it twice on the same data must not move the weights. Use `--dry-run` to inspect, `--force` only deliberately.
+8. **Store `base_score` Alongside `final_score`:** the pre-multiplier composite is what lets the audit separate fundamental alpha from the momentum filter. Any new scoring path must write both.
+9. **Do Not Overstate the Evidence:** three monthly periods are not a track record. Read `docs/analysis/red_team_review.md` before quoting any IC, IR or spread from this repository.
 
 ---
 
@@ -34,24 +38,28 @@ It combines:
 
 ```
 .
-├── AGENTS.md                   # This operating manual
-├── CLAUDE.md                   # Claude Code specific instructions
+├── AGENTS.md                   # This operating manual (CLAUDE.md, .cursorrules, .windsurfrules symlink here)
 ├── README.md                   # Public repository documentation
 ├── requirements.txt            # Python dependencies
+├── config.py                   # Repo-relative DB/UI paths and audit thresholds
 ├── quant_engine.db             # SQLite persistent database
 │
-├── harness_v16_learning.py     # Data extraction pipeline (Nifty 500)
-├── weight_optimizer.py         # V18 Multi-Period Panel ML Optimizer
+├── harness_v16_learning.py     # Data extraction + scoring pipeline (Nifty 500)
+├── weight_optimizer.py         # Idempotent multi-period Rank-IC optimizer + attribution
 ├── quant_math.py               # Core quantitative scoring formulas
-├── eval_portfolio_health.py    # Health & out-of-sample backtest suite
+├── eval_portfolio_health.py    # Health suite incl. walk-forward test of the learning rule
 ├── update_ui_v16.py            # SQLite to ui/data.js export generator
-├── concall_analyzer.py         # NLP sentiment parser for conference calls
-├── daily_cron.sh               # Shell script for automated scheduling
-├── test_quant_math.py          # 38 pytest unit tests
+├── concall_analyzer.py         # Headline keyword sentiment (diagnostic only; NOT concall NLP)
+├── db_setup.py                 # Schema creation + idempotent migrations (ensure_schema)
+├── daily_cron.sh               # Pipeline runner (harness → optimizer → UI → health)
+├── test_quant_math.py          # Scoring-math unit tests + red-team regressions
+├── test_optimizer.py           # Optimizer pure-function tests (no DB, no network)
+├── harness_v15_institutional.py, update_ui_v15.py, v15_nifty50_top.csv   # legacy, unused
 │
 ├── docs/
 │   └── analysis/
-│       ├── multi_period_regime_audit.md     # Empirical backtest report across 3 regimes
+│       ├── red_team_review.md               # READ FIRST: what the evidence does and does not show
+│       ├── multi_period_regime_audit.md     # Original backtest report (see correction note at top)
 │       ├── historical_runs_log.md           # Run-by-run log of weights & top stocks
 │       └── turnaround_edge_case_study.md    # Case study on Genus Power & hyper-capex
 │
@@ -78,13 +86,16 @@ Stores daily/periodic snapshot runs of the entire 500-stock universe:
 * `trap_score` (REAL, 0.0 - 100.0)
 * `momentum_multiplier` (REAL, 0.0, 0.8, or 1.0)
 * `final_score` (REAL, 0.0 - 100.0)
-* `raw_json` (TEXT JSON, full financial details including P/E, ROCE, SMA 50/200, FCF arrays)
+* `base_score` (REAL, weighted composite BEFORE trap/momentum multipliers; NULL for snapshots before Sep 2026)
+* `raw_json` (TEXT JSON, full financial details including P/E, ROCE, SMA 50/200, FCF arrays, and `Data_Flags`: a list naming every input that was imputed or proxied)
 
 ### 2. `active_weights`
 Tracks the historical evolution of the AI's internal brain weights:
 * `id` (INTEGER PRIMARY KEY)
 * `last_updated` (TEXT, `YYYY-MM-DD`)
 * `quality_weight`, `growth_weight`, `valuation_weight`, `risk_weight`, `moat_weight`, `bs_weight`, `cap_alloc_weight`, `smart_money_weight` (REAL)
+* `trained_through` (TEXT, end date of the last holding period this row learned from; drives optimizer idempotency)
+* `note` (TEXT, provenance)
 
 ### 3. `performance_tracking`
 Records forward-return verification pairs:
@@ -97,24 +108,41 @@ Records forward-return verification pairs:
 
 ## 🧠 Empirical Multi-Period Backtest Context
 
-When designing new factors or reviewing model performance, rely on the empirical results established across our multi-period panel:
+Read `docs/analysis/red_team_review.md` before using any of these numbers. Summary of what the three logged holding periods (Jun 14 → Jul 11 → Aug 14 → Sep 03, 2026) actually show after excluding one unadjusted 6:1 split:
 
-### 1. The 3 Historical Regimes
-* **Period 1 (June 14 $\to$ July 11, 2026, 27d, $+4.49\%$ Mkt Ret):**
-  * Speculative bull rally. **Growth ($+0.135$ Rank IC)** and **Smart Money ($+0.098$ Rank IC)** dominated. Quality and Balance Sheet lagged.
-* **Period 2 (July 11 $\to$ August 14, 2026, 34d, $+1.02\%$ Mkt Ret):**
-  * Flight to safety. **Balance Sheet ($+0.171$ Rank IC)** and **Quality ($+0.148$ Rank IC)** surged. Growth dropped to $-0.048$ Rank IC. Top quintile generated $+2.16\%$ vs $+0.27\%$ bottom quintile.
-* **Period 3 (August 14 $\to$ September 03, 2026, 20d, $-0.82\%$ Mkt Ret):**
-  * Market correction. **Composite Model achieved its highest Rank IC ($+0.117$)**. Top AI picks lost $-0.49\%$ vs bottom-ranked $-2.71\%$ (**$+2.21\%$ excess return**).
+### 1. Composite Rank IC and where it comes from
+```
+Rank IC vs next-period return                  Jun→Jul   Jul→Aug   Aug→Sep   mean
+final score as stored                          -0.063    +0.092    +0.117   +0.049
+momentum multiplier alone (0 / 0.8 / 1.0)      -0.033    +0.030    +0.125   +0.041
+fundamental composite, no multipliers          +0.045    +0.058    +0.050   +0.051
+equal-weight composite, no multipliers         -0.006    +0.115    +0.029   +0.046
+```
+The celebrated Aug→Sep +0.117 is mostly the death-cross trend filter. The "+2.21% downside alpha" that period was the death-cross bucket (-2.61%) vs everyone else (-0.35%); among ranked survivors the Q5-Q1 spread was +0.47% and not monotonic.
 
-### 2. Factor Information Ratio (IR) Hierarchy
-* **Smart Money (Institutional Net Flow):** $\text{IR} = \mathbf{+1.335}$ (Most consistent alpha driver).
-* **Growth Momentum:** $\text{IR} = \mathbf{+0.648}$ (Primary driver of multi-baggers).
-* **Risk Safety:** $\text{IR} = \mathbf{+0.330}$ (Defensive downside protection).
-* **Balance Sheet:** $\text{IR} = \mathbf{+0.200}$ (Counter-cyclical hedge during pullbacks).
-* **Valuation (Low P/E):** $\text{IR} = \mathbf{-0.472}$ (Traditional value traps penalized).
+### 2. Per-factor Rank IC (three observations each; an IR from n=3 is not an estimate)
+```
+Factor          mean IC    periods > 0    caveat
+Smart Money     +0.065     3/3            period-1 value was a 4-level holdings score, not flow
+Growth          +0.056     2/3            pinned at the 30% weight ceiling
+Balance Sheet   +0.026     2/3            84% of universe sits on one value
+Risk            +0.017     2/3            85% of universe sits on one value
+Quality         +0.003     1/3
+Moat            -0.011     1/3            96% of universe sits on one value; hand-picked list
+Cap Alloc       -0.014     1/3            corrupted by dividend-yield unit bug until Sep 2026
+Valuation       -0.024     1/3            63% of universe scores 0 (no intrinsic value computable)
+```
 
----
+### 3. Walk-forward test of the learning rule (weights learned only from earlier periods)
+```
+mean Rank IC, fundamentals only:   learned +0.031   equal weights +0.046   weights actually used +0.051
+```
+No demonstrated edge from learning yet. Re-run `python eval_portfolio_health.py` after each new monthly snapshot; the verdict line updates itself.
+
+### 4. Known data caveats baked into historical snapshots
+* Snapshots up to 2026-09-03 carry dividend yields multiplied by 100 (Cap-Alloc factor inflated) and treat missing ROE as ROE < 5% (trap score inflated). The health suite fails on the September snapshot for this reason until the harness is re-run.
+* Returns are price-only (no dividends) and computed from `info.currentPrice` at run time, not adjusted closes.
+* Headline sentiment (`concall_sentiment_score`) contributed up to +10 points to historical `final_score`; it contributes 0 from September 2026 (`quant_math.SENTIMENT_SCALE`).
 
 ## 🛠️ Agent Operational Playbooks
 
@@ -123,16 +151,19 @@ When designing new factors or reviewing model performance, rely on the empirical
 # 1. Activate environment
 source venv/bin/activate
 
-# 2. Acquire fresh market data (4 mins)
+# 2. Apply schema migrations (idempotent)
+python db_setup.py
+
+# 3. Acquire fresh market data with the CURRENT weights (~5 mins; ~7 HTTP calls per stock)
 python harness_v16_learning.py
 
-# 3. Optimize factor weights via Exponentiated Gradient (< 2 secs)
+# 4. Learn from any holding period not yet seen (no-op otherwise). Add --dry-run to inspect.
 python weight_optimizer.py
 
-# 4. Refresh frontend UI data
+# 5. Refresh frontend UI data
 python update_ui_v16.py
 
-# 5. Run health checks
+# 6. Run health checks (exit code 1 on unit/bound errors; read the warnings too)
 python eval_portfolio_health.py
 
 # 6. Commit and push to GitHub
@@ -144,11 +175,14 @@ git push origin main
 
 ### Playbook B: Running Health Checks & Unit Tests
 ```bash
-# Run pytest unit tests
-pytest test_quant_math.py
+# Run all unit tests (scoring math + optimizer pure functions)
+pytest -q
 
 # Run institutional portfolio health audit
 python eval_portfolio_health.py
+
+# Inspect what the optimizer would do without writing anything
+python weight_optimizer.py --dry-run
 ```
 
 ### Playbook C: Debugging Why a Stock Failed Screening
@@ -181,5 +215,9 @@ if row:
      gh auth switch --user saurabnigam
      git push origin main
      ```
-3. **Rounding Residue in Weights:**
+3. **yfinance Unit Drift:**
+   * `dividendYield` is returned in percent by yfinance ≥ 1.x (3.48 == 3.48%) but was a fraction in older versions. The harness prefers `dividendRate / price` and falls back to `quant_math.normalize_yield`. `debtToEquity` is a percent (357 == 3.57x). `returnOnEquity` is frequently `None` for Indian names; never coerce `None` to 0 in a threshold test.
+4. **Unadjusted Corporate Actions in Forward Returns:**
+   * Prices are stored as quoted on the run date. A split between snapshots shows up as a huge negative return (ZFCVINDIA, 6:1, June 2026). `weight_optimizer.forward_returns` excludes |return| > 60% and prints each exclusion; keep that guard.
+5. **Rounding Residue in Weights:**
    * When normalizing active weights to 3 decimal places, roundoff can produce a sum of `0.999` or `1.001`. Always add the remainder to the top-performing factor to guarantee `sum == 1.000`.

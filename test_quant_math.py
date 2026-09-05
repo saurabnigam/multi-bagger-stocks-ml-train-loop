@@ -307,3 +307,77 @@ def test_growth_scoring_exact_boundaries():
     """FIXED: Exact boundary values fall to the correct bracket."""
     assert score_growth(0.15) == 80    
     assert score_growth(0.151) == 80   
+
+# =============================================================================
+# RED-TEAM REGRESSIONS (Sep 2026) — see docs/analysis/red_team_review.md
+# =============================================================================
+def test_utilities_are_not_tech():
+    """'UTILITIES' contains the substring 'IT'; the old code treated every utility as disruptable tech."""
+    assert score_strategic_risk_v9('NTPC', 'Utilities') == score_strategic_risk_v9('NTPC', 'Utilities Regulated Electric')
+    plain = score_strategic_risk_v9('SOMEUTIL', 'Utilities')
+    tech = score_strategic_risk_v9('SOMEUTIL', 'Technology')
+    assert plain == 50      # all five risks at neutral 5
+    assert tech == 44       # dis 9 + esg 1 + cus 8
+
+
+def test_yahoo_sector_taxonomy_maps_to_wacc():
+    assert get_sector_wacc_and_terminal('Basic Materials Steel', 20000) == (0.14, 0.02)
+    assert get_sector_wacc_and_terminal('Industrials Aerospace & Defense', 20000) == (0.12, 0.03)
+    assert get_sector_wacc_and_terminal('Consumer Cyclical Auto Manufacturers', 20000) == (0.13, 0.03)
+    assert get_sector_wacc_and_terminal('Consumer Cyclical Restaurants', 20000) == (0.12, 0.03)
+    assert get_sector_wacc_and_terminal('Consumer Defensive Packaged Foods', 20000) == (0.10, 0.04)
+    assert get_sector_wacc_and_terminal('Utilities Regulated Electric', 20000) == (0.11, 0.03)
+    assert get_sector_wacc_and_terminal('Technology Information Technology Services', 20000) == (0.10, 0.04)
+
+
+def test_normalize_yield_handles_percent_and_fraction():
+    assert normalize_yield(3.48) == pytest.approx(0.0348)   # yfinance >= 1.x
+    assert normalize_yield(0.0348) == pytest.approx(0.0348) # legacy fraction
+    assert normalize_yield(0.5) == pytest.approx(0.005)     # 0.5% in percent encoding
+    assert normalize_yield(None) == 0.0
+    assert normalize_yield(float('nan')) == 0.0
+
+
+def test_capital_allocation_not_maxed_by_every_dividend_payer():
+    """With the unit bug, a 1% yield arrived as 1.0 (>0.05) and scored +40."""
+    assert score_capital_allocation(normalize_yield(1.5), 0.30) == 85   # 1.5% -> 50 + 15 + 20
+    assert score_capital_allocation(normalize_yield(100.0), 0.30) == 100 # absurd input still capped
+
+
+def test_trap_score_missing_roe_is_not_low_roe():
+    assert get_value_trap_score(100, 50, None, 0.5, 0.15) == 0
+    assert get_value_trap_score(100, 50, 3.0, 0.5, 0.15) == 20
+
+
+def test_trap_score_fires_on_declining_profit():
+    """Harness used to floor profit growth at +1% before calling this, so this branch was dead."""
+    assert get_value_trap_score(100, 50, 25, 0.5, -0.10) == 20
+
+
+def test_estimate_growth_flags():
+    assert estimate_growth([133.1, 110.0, 100.0]) == (pytest.approx(0.1537, abs=1e-3), 'ok')
+    assert estimate_growth([50.0, -10.0, -20.0]) == (0.15, 'loss_to_profit')
+    assert estimate_growth([-5.0, 40.0, 100.0]) == (-0.25, 'profit_to_loss')
+    assert estimate_growth([-5.0, -1.0, -3.0]) == (0.0, 'undefined')
+    assert estimate_growth([100.0, 90.0]) == (None, 'insufficient')
+    assert estimate_growth([100.0, None, None]) == (None, 'insufficient')
+
+
+def test_normalized_fcf_uses_three_year_average():
+    assert normalized_fcf([7214.0, 3441.0, 4135.0, 2009.0]) == pytest.approx((7214 + 3441 + 4135) / 3)
+    assert normalized_fcf([-100.0, 20.0, 30.0]) == 0.0
+    assert normalized_fcf([]) == 0.0
+
+
+def test_sentiment_no_longer_moves_final_score():
+    weights = dict(DEFAULT_WEIGHTS)
+    a = calc_final_v16_score(50, 50, 50, 50, 50, 50, 50, 50, 0, 1.0, weights, concall_sentiment=0)
+    b = calc_final_v16_score(50, 50, 50, 50, 50, 50, 50, 50, 0, 1.0, weights, concall_sentiment=20)
+    assert a == b == 50.0
+
+
+def test_final_equals_base_times_multipliers():
+    weights = dict(DEFAULT_WEIGHTS)
+    base = calc_base_score(80, 60, 50, 50, 90, 100, 100, 70, weights)
+    final = calc_final_v16_score(80, 60, 50, 50, 90, 100, 100, 70, 60, 0.8, weights)
+    assert final == pytest.approx(base * 0.5 * 0.8)

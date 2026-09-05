@@ -1,18 +1,28 @@
 #!/bin/bash
-
 # V16 AI Quant Engine Automated Pipeline
-echo "Starting V16 Pipeline: $(date)"
+#
+# Order matters:
+#   1. harness    - record today's snapshot with the CURRENT weights (this is what
+#                   makes the stored final_score genuinely out-of-sample)
+#   2. optimizer  - learn only from transitions it has not seen before (idempotent:
+#                   re-running on the same data is a no-op)
+#   3. ui export
+#   4. health checks (non-zero exit if the snapshot has unit/bound errors)
+set -euo pipefail
 
-cd /Users/saurabhnigam/.gemini/antigravity/brain/4ca10147-d4d2-4287-957e-cfadc0b4954e/scratch
-source venv/bin/activate
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$REPO_DIR"
 
-# 1. Run the Self-Learning Optimizer (Adjusts DB Weights based on Performance)
-python weight_optimizer.py
+echo "Starting V16 Pipeline: $(date)  (repo: $REPO_DIR)"
 
-# 2. Scrape Nifty 50 & Score using optimized weights (Saves to DB)
+if [ -f venv/bin/activate ]; then
+    source venv/bin/activate
+fi
+
+python db_setup.py
 python harness_v16_learning.py
-
-# 3. Update the UI Dashboard JSON from the DB
+python weight_optimizer.py
 python update_ui_v16.py
+python eval_portfolio_health.py
 
 echo "V16 Pipeline Complete: $(date)"

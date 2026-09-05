@@ -8,6 +8,9 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const [k, v] of Object.entries(aiWeights)) {
             weightStr += `<span style="display:inline-block; width:45%; margin-top:2px;">${k}: <b>${v}</b></span>`;
         }
+        if (typeof snapshotMeta !== 'undefined') {
+            weightStr += `<div style="margin-top:6px; color:#888;">Snapshot ${snapshotMeta.snapshot_date} · ${snapshotMeta.universe} stocks · Top ${snapshotMeta.top_n} accepted</div>`;
+        }
         weightsContainer.innerHTML = weightStr;
     }
 
@@ -178,6 +181,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                         </div>
                     </div>
+
+                    ${stock.plainEnglish.data_quality ? `<div class="card" style="margin-bottom: 24px; background: #fafafa; border: 1px dashed #c7c7cc;">
+                        <h3 style="font-size: 13px; color: #666;">Data Quality</h3>
+                        <div style="font-size: 12px; color: #555;">${stock.plainEnglish.data_quality}</div>
+                    </div>` : ''}
 
                     <div class="card">
                         <h3>4-Year Cash Flow Trajectory (Crores)</h3>

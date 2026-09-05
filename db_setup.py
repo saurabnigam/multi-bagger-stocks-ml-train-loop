@@ -1,13 +1,24 @@
 import sqlite3
-import os
+from config import DB_PATH
 
-DB_PATH = '/Users/saurabhnigam/.gemini/antigravity/brain/4ca10147-d4d2-4287-957e-cfadc0b4954e/scratch/quant_engine.db'
+# Columns added after the original schema. ensure_schema() applies them
+# idempotently so old databases keep working.
+MIGRATIONS = [
+    # (table, column, DDL)
+    ('daily_predictions', 'base_score', 'ALTER TABLE daily_predictions ADD COLUMN base_score REAL'),
+    ('active_weights', 'trained_through', 'ALTER TABLE active_weights ADD COLUMN trained_through TEXT'),
+    ('active_weights', 'note', 'ALTER TABLE active_weights ADD COLUMN note TEXT'),
+]
 
-def setup_db():
-    conn = sqlite3.connect(DB_PATH)
+
+def _columns(cursor, table):
+    return {row[1] for row in cursor.execute(f'PRAGMA table_info({table})')}
+
+
+def ensure_schema(conn):
+    """Create tables if missing and apply column migrations. Safe to call every run."""
     cursor = conn.cursor()
 
-    # Table 1: Daily Predictions (Snapshot)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS daily_predictions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,7 +45,6 @@ def setup_db():
         )
     ''')
 
-    # Table 2: Active Weights
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS active_weights (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,7 +60,6 @@ def setup_db():
         )
     ''')
 
-    # Table 3: Performance Tracking (Feedback Loop)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS performance_tracking (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,22 +70,54 @@ def setup_db():
             FOREIGN KEY(prediction_id) REFERENCES daily_predictions(id)
         )
     ''')
+    # INSERT OR REPLACE in the optimizer relies on this uniqueness; without it
+    # every optimizer run appended duplicate rows (6409 rows for 2043 ids).
+    cursor.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_perf_pred_fwd
+        ON performance_tracking(prediction_id, forward_date)
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS ix_pred_date ON daily_predictions(date)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS ix_pred_ticker_date ON daily_predictions(ticker, date)')
+
+    for table, column, ddl in MIGRATIONS:
+        if column not in _columns(cursor, table):
+            cursor.execute(ddl)
 
     # Seed Initial V15 Weights if empty
     cursor.execute("SELECT COUNT(*) FROM active_weights")
     if cursor.fetchone()[0] == 0:
         cursor.execute('''
             INSERT INTO active_weights (
-                last_updated, quality_weight, growth_weight, valuation_weight, 
-                risk_weight, moat_weight, bs_weight, cap_alloc_weight, smart_money_weight
+                last_updated, quality_weight, growth_weight, valuation_weight,
+                risk_weight, moat_weight, bs_weight, cap_alloc_weight, smart_money_weight, note
             ) VALUES (
-                date('now'), 0.20, 0.20, 0.15, 0.15, 0.10, 0.10, 0.05, 0.05
+                date('now'), 0.20, 0.20, 0.15, 0.15, 0.10, 0.10, 0.05, 0.05, 'initial seed'
             )
         ''')
-    
     conn.commit()
+
+
+def dedupe_performance_tracking(conn):
+    """Collapse historical duplicate (prediction_id, forward_date) rows, keeping the newest."""
+    cursor = conn.cursor()
+    cursor.execute('''
+        DELETE FROM performance_tracking
+        WHERE id NOT IN (
+            SELECT MAX(id) FROM performance_tracking GROUP BY prediction_id, forward_date
+        )
+    ''')
+    removed = cursor.rowcount
+    conn.commit()
+    return removed
+
+
+def setup_db(db_path=DB_PATH):
+    conn = sqlite3.connect(db_path)
+    removed = dedupe_performance_tracking(conn)
+    ensure_schema(conn)
     conn.close()
-    print("Database initialized successfully!")
+    print(f"Database initialized successfully at {db_path} (removed {removed} duplicate tracking rows)")
+
 
 if __name__ == '__main__':
     setup_db()
