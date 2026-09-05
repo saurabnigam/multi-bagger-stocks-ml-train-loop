@@ -3,3 +3,6 @@ __pycache__/
 
 .DS_Store
 *.log
+*.metadata.json
+.coverage
+.pytest_cache/
