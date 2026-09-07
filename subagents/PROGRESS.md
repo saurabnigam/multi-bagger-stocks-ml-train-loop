@@ -73,6 +73,19 @@ Deviations: none
 Deferred real checks: none
 Next: WS00.05
 
+## WS00.05 — Offline fixtures, CLI and check runner — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: f151eb996503c5ea65d21a24d2719a9dbd445c5c
+Files: pytest.ini, tests/conftest.py, tests/synthetic.py, tests/helpers.py, quant/cli.py, quant/__main__.py, scripts/check.sh, tests/unit/test_ws00_05.py
+Acceptance: `python -m pytest tests/unit/test_ws00_05.py -q` -> exit 0, 4 passed in 0.31 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 80 passed in 1.60s
+Contract cases: planted_rank, split_dividend
+Deviations: none
+Deferred real checks: none
+Next: WS01.01
+
+
 
 
 
