@@ -322,3 +322,16 @@ Contract cases: equal_weights, revision_tracks
 Deviations: none
 Deferred real checks: none
 Next: WS07.01
+
+## WS07.01 — Cohort labels and appended corrections — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: f4adc8d5fbb546bf7d8b5fcdd2d17c2a796eeb8d
+Files: quant/evaluation/__init__.py, quant/evaluation/labels.py, tests/unit/test_ws07_01.py
+Acceptance: `python -m pytest tests/unit/test_ws07_01.py -q` -> exit 0, 5 passed in 0.15 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 182 passed in 9.66s
+Contract cases: revision_tracks, evaluation_revisions, split_dividend
+Deviations: none
+Deferred real checks: none
+Next: WS07.02
+
