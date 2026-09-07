@@ -168,3 +168,15 @@ Contract cases: source_basis, split, dividend, split_dividend
 Deviations: none
 Deferred real checks: none
 Next: WS02.02
+
+## WS02.02 — Reconciliation, quarantine and decisions — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 17de7a1c0dcf2b92fae3f191ae32d3ca4a1c5d90
+Files: quant/data/actions.py, quant/data/prices.py, quant/commands/prices.py, tests/unit/test_ws02_02.py
+Acceptance: `python -m pytest tests/unit/test_ws02_02.py -q` -> exit 0, 4 passed in 0.63 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 117 passed in 3.40s
+Contract cases: evaluation_revisions, split
+Deviations: none
+Deferred real checks: none
+Next: WS02.03

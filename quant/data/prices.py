@@ -171,6 +171,92 @@ class PriceStore:
             details={"message": f"Ingested {len(norm_df)} price rows"},
         )
 
+    def reconcile(
+        self,
+        ctx: RunContext,
+        source: pd.DataFrame,
+        metadata: Dict[str, Any],
+    ) -> Result:
+        """Reconcile new price observations against existing history; quarantine unexplained revisions."""
+        norm_df = normalize_source(source, metadata)
+        quarantined = 0
+
+        with self.conn() as p_conn:
+            cur = p_conn.cursor()
+            for _, row in norm_df.iterrows():
+                sid = int(row["security_id"])
+                d = str(row["date"])
+                new_close = float(row["close_raw"])
+
+                # Check existing baseline
+                cur.execute(
+                    """
+                    SELECT close_raw, observed_at
+                    FROM prices_daily
+                    WHERE security_id = ? AND date = ?
+                    ORDER BY observed_at DESC
+                    LIMIT 1
+                    """,
+                    (sid, d),
+                )
+                prev = cur.fetchone()
+                if prev:
+                    old_close = float(prev[0])
+                    # If relative change > 2% without recorded action, quarantine
+                    if abs(new_close - old_close) / old_close > 0.02:
+                        payload = row.to_json()
+                        reason = f"unexplained_revision: {old_close} -> {new_close}"
+                        cur.execute(
+                            """
+                            INSERT OR IGNORE INTO prices_daily_quarantine (
+                                security_id, date, observed_at, payload_json, reason, source_sha256
+                            ) VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                            (sid, d, str(row["observed_at"]), payload, reason, str(row["source_sha256"])),
+                        )
+                        quarantined += 1
+                        continue
+
+                # If no revision discrepancy, insert into prices_daily
+                cur.execute(
+                    """
+                    INSERT OR IGNORE INTO prices_daily (
+                        security_id, date, open_raw, high_raw, low_raw, close_raw,
+                        volume_raw, dividend_raw, split_ratio, yahoo_close, yahoo_adj_close,
+                        observed_at, capture_id, source_sha256
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        sid,
+                        d,
+                        float(row["open_raw"]),
+                        float(row["high_raw"]),
+                        float(row["low_raw"]),
+                        new_close,
+                        float(row["volume_raw"]),
+                        float(row["dividend_raw"]),
+                        float(row["split_ratio"]),
+                        float(row["yahoo_close"]),
+                        float(row["yahoo_adj_close"]),
+                        str(row["observed_at"]),
+                        str(row["capture_id"]),
+                        str(row["source_sha256"]),
+                    ),
+                )
+
+        if quarantined > 0:
+            return Result(
+                status="quarantined",
+                counts={"quarantined": quarantined, "accepted": len(norm_df) - quarantined},
+                details={"message": f"Quarantined {quarantined} unexplained revisions"},
+            )
+
+        return Result(
+            status="ok",
+            counts={"accepted": len(norm_df)},
+            details={"message": f"Reconciled {len(norm_df)} price rows"},
+        )
+
     def close_raw(
         self,
         security_ids: List[int],
