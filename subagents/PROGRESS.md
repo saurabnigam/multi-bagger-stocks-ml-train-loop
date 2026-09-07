@@ -251,7 +251,18 @@ Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 148 passed 
 Contract cases: rank_ties, constant_rank, negative_direction
 Deviations: none
 Deferred real checks: none
-Next: WS05.03
+## WS05.03 — Price factors and diagnostics — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: be8adc7ae9a9ceb82860eeea90ff24c135770681
+Files: quant/factors/inputs.py, quant/factors/momentum.py, quant/factors/low_risk.py, quant/factors/controls.py, quant/factors/legacy.py, tests/unit/test_ws05_03.py
+Acceptance: `python -m pytest tests/unit/test_ws05_03.py -q` -> exit 0, 4 passed in 0.52 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 152 passed in 6.89s
+Contract cases: split, source_basis, planted_rank
+Deviations: none
+Deferred real checks: none
+Next: WS05.04
+
 
 
 

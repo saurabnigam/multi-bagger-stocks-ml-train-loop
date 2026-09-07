@@ -60,7 +60,7 @@ class FactorInputs:
     def _get_start_date(self, lookback_days: int) -> str:
         if lookback_days < 0:
             raise LookaheadError(f"Negative lookback_days ({lookback_days}) requests future data")
-        dt = datetime.strptime(self.as_of, "%Y-%m-%d") - timedelta(days=int(lookback_days * 1.6) + 10)
+        dt = datetime.strptime(self.as_of, "%Y-%m-%d") - timedelta(days=int(lookback_days * 3.0) + 90)
         return dt.strftime("%Y-%m-%d")
 
     def tri(self, lookback_days: int) -> pd.DataFrame:
@@ -89,22 +89,37 @@ class FactorInputs:
 
     def attribute(self, field: str) -> pd.Series:
         """Point-in-time cross-sectional security attribute."""
-        if field not in ALLOWED_ATTRIBUTES:
+        attr_map = {
+            "market_cap_inr": "mcap_inr",
+            "mcap_inr": "mcap_inr",
+            "shares_outstanding": "shares_out",
+            "shares_out": "shares_out",
+            "float_shares": "float_shares",
+            "ev_inr": "ev_inr",
+            "trailing_pe": "trailing_pe",
+            "pe_ratio": "trailing_pe",
+            "price_to_book": "price_to_book",
+            "dividend_rate_inr": "dividend_rate_inr",
+            "beta": "beta",
+            "yahoo_sector": "yahoo_sector",
+            "yahoo_industry": "yahoo_industry",
+        }
+        col = attr_map.get(field)
+        if not col:
             raise LookaheadError(f"Undeclared or unknown attribute field requested: {field}")
 
-        query = """
+        query = f"""
         WITH ranked AS (
-            SELECT security_id, value_num,
-                   ROW_NUMBER() OVER (PARTITION BY security_id ORDER BY observed_at DESC) as rn
+            SELECT security_id, {col} as val,
+                   ROW_NUMBER() OVER (PARTITION BY security_id ORDER BY captured_at DESC) as rn
             FROM security_attributes
-            WHERE field = ?
-              AND observed_at <= ?
+            WHERE captured_at <= ?
         )
-        SELECT security_id, value_num
+        SELECT security_id, val
         FROM ranked
         WHERE rn = 1
         """
-        rows = self._query(query, (field, self.cutoff))
+        rows = self._query(query, (self.cutoff,))
         res = {r[0]: float(r[1]) if r[1] is not None else np.nan for r in rows}
         return pd.Series(res).reindex(self.members)
 
