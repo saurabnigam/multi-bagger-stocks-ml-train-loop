@@ -12,7 +12,7 @@ def transform(
     raw: pd.Series,
     groups: pd.Series,
     direction: int,
-    cfg: Config,
+    cfg: Optional[Config] = None,
 ) -> pd.DataFrame:
     """Standardise raw factor values into centered, bounded [-3, 3] z-scores per sector group.
     
@@ -23,6 +23,9 @@ def transform(
     4. Centering: v - mean(v).
     5. Bounding: divide by max(1.0, max(abs(v - mean(v))) / 3.0) to strictly enforce [-3, 3].
     """
+    if cfg is None:
+        from quant.config import load
+        cfg = load()
     if direction not in (1, -1):
         raise ValueError(f"Direction must be +1 or -1, got {direction}")
 
@@ -88,3 +91,7 @@ def transform(
         "z": z,
         "flags": flags,
     }, index=idx)
+
+
+standardise = transform
+

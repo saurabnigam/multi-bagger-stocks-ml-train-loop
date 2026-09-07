@@ -145,6 +145,45 @@ def ingest(ctx: RunContext, bundles: Dict[int, RawBundle]) -> Result:
     )
 
 
+FIELD_ALIASES: Dict[str, List[str]] = {
+    "ebit": ["EBIT", "Operating Income", "ebit_inr", "ebit"],
+    "ebit_inr": ["EBIT", "Operating Income", "ebit_inr", "ebit"],
+    "net_income": ["Net Income", "Net Income Common Stockholders", "net_income_inr", "net_income"],
+    "net_income_inr": ["Net Income", "Net Income Common Stockholders", "net_income_inr", "net_income"],
+    "revenue": ["Total Revenue", "Operating Revenue", "revenue_inr", "revenue"],
+    "revenue_inr": ["Total Revenue", "Operating Revenue", "revenue_inr", "revenue"],
+    "total_revenue": ["Total Revenue", "Operating Revenue", "revenue_inr", "revenue"],
+    "ocf": ["Operating Cash Flow", "Cash Flow From Continuing Operating Activities", "ocf_inr", "ocf"],
+    "ocf_inr": ["Operating Cash Flow", "Cash Flow From Continuing Operating Activities", "ocf_inr", "ocf"],
+    "operating_cash_flow": ["Operating Cash Flow", "Cash Flow From Continuing Operating Activities", "ocf_inr", "ocf"],
+    "capex": ["Capital Expenditure", "Capital Expenditures", "capex_inr", "capex"],
+    "capex_inr": ["Capital Expenditure", "Capital Expenditures", "capex_inr", "capex"],
+    "capital_expenditure": ["Capital Expenditure", "Capital Expenditures", "capex_inr", "capex"],
+    "total_assets": ["Total Assets", "total_assets_inr", "total_assets", "assets"],
+    "total_assets_inr": ["Total Assets", "total_assets_inr", "total_assets", "assets"],
+    "current_liabilities": ["Current Liabilities", "Total Current Liabilities", "current_liab_inr", "current_liab"],
+    "current_liab_inr": ["Current Liabilities", "Total Current Liabilities", "current_liab_inr", "current_liab"],
+    "total_debt": ["Total Debt", "total_debt_inr", "total_debt"],
+    "total_debt_inr": ["Total Debt", "total_debt_inr", "total_debt"],
+    "stockholders_equity": ["Stockholders Equity", "Total Stockholders Equity", "Total Equity", "Common Stock Equity", "total_equity_inr", "total_equity", "equity"],
+    "total_equity_inr": ["Stockholders Equity", "Total Stockholders Equity", "Total Equity", "Common Stock Equity", "total_equity_inr", "total_equity", "equity"],
+    "cash": ["Cash And Cash Equivalents", "Cash Financial", "cash_inr", "cash"],
+    "cash_and_cash_equivalents": ["Cash And Cash Equivalents", "Cash Financial", "cash_inr", "cash"],
+    "ebitda": ["EBITDA", "Normalized EBITDA", "ebitda"],
+    "diluted_eps": ["Diluted EPS", "Basic EPS", "EPS", "eps"],
+    "eps": ["Diluted EPS", "Basic EPS", "EPS", "eps"],
+}
+
+
+def _expand_fields(field: str) -> List[str]:
+    norm_key = field.lower().replace(" ", "_")
+    aliases = FIELD_ALIASES.get(norm_key, [field])
+    res = list(aliases)
+    if field not in res:
+        res.insert(0, field)
+    return res
+
+
 def pit_frame(
     conn: sqlite3.Connection,
     cutoff: str,
@@ -163,30 +202,30 @@ def pit_frame(
 
     cur = conn.cursor()
     data = {sid: [np.nan] * n_periods for sid in security_ids}
+    fields = _expand_fields(field)
+    placeholders = ",".join("?" for _ in fields)
 
     for sid in security_ids:
         # Choose the latest fetched version for each period_end admissible at cutoff
-        cur.execute(
-            """
-            WITH ranked AS (
-                SELECT period_end, value, fetched_at,
-                       ROW_NUMBER() OVER (PARTITION BY period_end ORDER BY fetched_at DESC) as rn
-                FROM fundamentals
-                WHERE security_id = ?
-                  AND statement = ?
-                  AND field = ?
-                  AND freq = ?
-                  AND available_from <= ?
-                  AND fetched_at <= ?
-            )
-            SELECT period_end, value
-            FROM ranked
-            WHERE rn = 1
-            ORDER BY period_end DESC
-            LIMIT ?
-            """,
-            (sid, statement, field, freq, cutoff, cutoff, n_periods),
+        query = f"""
+        WITH ranked AS (
+            SELECT period_end, value, fetched_at,
+                   ROW_NUMBER() OVER (PARTITION BY period_end ORDER BY fetched_at DESC) as rn
+            FROM fundamentals
+            WHERE security_id = ?
+              AND statement = ?
+              AND field IN ({placeholders})
+              AND freq = ?
+              AND available_from <= ?
+              AND fetched_at <= ?
         )
+        SELECT period_end, value
+        FROM ranked
+        WHERE rn = 1
+        ORDER BY period_end DESC
+        LIMIT ?
+        """
+        cur.execute(query, (sid, statement, *fields, freq, cutoff, cutoff, n_periods))
         rows = cur.fetchall()
         for rank, r in enumerate(rows):
             data[sid][rank] = r[1]
@@ -214,47 +253,45 @@ def ttm(
     flags = {}
 
     req_periods = offset_quarters + 4
+    fields = _expand_fields(field)
+    placeholders = ",".join("?" for _ in fields)
 
     for sid in security_ids:
-        cur.execute(
-            """
-            WITH ranked AS (
-                SELECT period_end, value, fetched_at,
-                       ROW_NUMBER() OVER (PARTITION BY period_end ORDER BY fetched_at DESC) as rn
-                FROM fundamentals
-                WHERE security_id = ?
-                  AND field = ?
-                  AND freq = 'Q'
-                  AND available_from <= ?
-                  AND fetched_at <= ?
-            )
-            SELECT period_end, value
-            FROM ranked
-            WHERE rn = 1
-            ORDER BY period_end DESC
-            LIMIT ?
-            """,
-            (sid, field, cutoff, cutoff, req_periods),
+        query_q = f"""
+        WITH ranked AS (
+            SELECT period_end, value, fetched_at,
+                   ROW_NUMBER() OVER (PARTITION BY period_end ORDER BY fetched_at DESC) as rn
+            FROM fundamentals
+            WHERE security_id = ?
+              AND field IN ({placeholders})
+              AND freq = 'Q'
+              AND available_from <= ?
+              AND fetched_at <= ?
         )
+        SELECT period_end, value
+        FROM ranked
+        WHERE rn = 1
+        ORDER BY period_end DESC
+        LIMIT ?
+        """
+        cur.execute(query_q, (sid, *fields, cutoff, cutoff, req_periods))
         rows = cur.fetchall()
 
         if len(rows) < req_periods:
             # Not enough quarters
             if offset_quarters == 0:
                 # Fallback to latest annual
-                cur.execute(
-                    """
-                    SELECT value FROM fundamentals
-                    WHERE security_id = ?
-                      AND field = ?
-                      AND freq = 'A'
-                      AND available_from <= ?
-                      AND fetched_at <= ?
-                    ORDER BY period_end DESC, fetched_at DESC
-                    LIMIT 1
-                    """,
-                    (sid, field, cutoff, cutoff),
-                )
+                query_ann = f"""
+                SELECT value FROM fundamentals
+                WHERE security_id = ?
+                  AND field IN ({placeholders})
+                  AND freq = 'A'
+                  AND available_from <= ?
+                  AND fetched_at <= ?
+                ORDER BY period_end DESC, fetched_at DESC
+                LIMIT 1
+                """
+                cur.execute(query_ann, (sid, *fields, cutoff, cutoff))
                 ann_row = cur.fetchone()
                 if ann_row:
                     vals[sid] = ann_row[0]
@@ -282,19 +319,17 @@ def ttm(
         else:
             if offset_quarters == 0:
                 # Fallback to latest annual
-                cur.execute(
-                    """
-                    SELECT value FROM fundamentals
-                    WHERE security_id = ?
-                      AND field = ?
-                      AND freq = 'A'
-                      AND available_from <= ?
-                      AND fetched_at <= ?
-                    ORDER BY period_end DESC, fetched_at DESC
-                    LIMIT 1
-                    """,
-                    (sid, field, cutoff, cutoff),
-                )
+                query_ann = f"""
+                SELECT value FROM fundamentals
+                WHERE security_id = ?
+                  AND field IN ({placeholders})
+                  AND freq = 'A'
+                  AND available_from <= ?
+                  AND fetched_at <= ?
+                ORDER BY period_end DESC, fetched_at DESC
+                LIMIT 1
+                """
+                cur.execute(query_ann, (sid, *fields, cutoff, cutoff))
                 ann_row = cur.fetchone()
                 if ann_row:
                     vals[sid] = ann_row[0]

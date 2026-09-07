@@ -25,10 +25,13 @@ ALLOWED_ATTRIBUTES = {
 }
 
 ALLOWED_STATEMENTS = {
+    "balance",
     "balance_sheet",
     "financials",
+    "income",
     "income_statement",
     "cashflow",
+    "info",
 }
 
 
@@ -48,6 +51,9 @@ class FactorInputs:
         price_store: PriceStore,
         state_query_fn: Callable[[str, tuple], List[tuple]],
         provenance_dict: Dict[str, Any],
+        fund_fn: Optional[Callable[[str, str, str, int, List[int]], pd.DataFrame]] = None,
+        ttm_fn: Optional[Callable[[str, int, List[int]], Tuple[pd.Series, pd.Series]]] = None,
+        holdings_fn: Optional[Callable[[int, List[int]], pd.Series]] = None,
     ):
         self.as_of = str(as_of)
         self.cutoff = str(cutoff)
@@ -56,6 +62,9 @@ class FactorInputs:
         self._price_store = price_store
         self._query = state_query_fn
         self._provenance = provenance_dict
+        self._fund_fn = fund_fn
+        self._ttm_fn = ttm_fn
+        self._holdings_fn = holdings_fn
 
     def _get_start_date(self, lookback_days: int) -> str:
         if lookback_days < 0:
@@ -125,88 +134,97 @@ class FactorInputs:
 
     def fundamental(self, statement: str, field: str, freq: str, n_periods: int) -> pd.DataFrame:
         """Point-in-time fundamental statement series."""
-        if statement not in ALLOWED_STATEMENTS:
+        stmt_map = {
+            "income": "income",
+            "income_statement": "income",
+            "financials": "income",
+            "balance": "balance",
+            "balance_sheet": "balance",
+            "cashflow": "cashflow",
+            "info": "info",
+        }
+        if statement not in stmt_map and statement not in ALLOWED_STATEMENTS:
             raise LookaheadError(f"Undeclared statement requested: {statement}")
 
-        query = """
+        canon_stmt = stmt_map.get(statement, statement)
+        freq_norm = freq.upper()
+        if freq_norm in ("ANNUAL", "A"):
+            freq_norm = "A"
+        elif freq_norm in ("QUARTERLY", "Q"):
+            freq_norm = "Q"
+        elif freq_norm in ("POINT", "P"):
+            freq_norm = "P"
+
+        sids = [int(x) for x in self.members]
+        if self._fund_fn:
+            df = self._fund_fn(canon_stmt, field, freq_norm, n_periods, sids)
+            return df.reindex(index=self.members)
+
+        from quant.data.fundamentals import _expand_fields
+        fields = _expand_fields(field)
+        placeholders = ",".join("?" for _ in fields)
+        query = f"""
         WITH ranked AS (
-            SELECT security_id, period_end, value,
-                   ROW_NUMBER() OVER (PARTITION BY security_id, period_end ORDER BY observed_at DESC) as rn
-            FROM fundamentals_pit
+            SELECT security_id, period_end, value, fetched_at,
+                   ROW_NUMBER() OVER (PARTITION BY security_id, period_end ORDER BY fetched_at DESC) as rn
+            FROM fundamentals
             WHERE statement = ?
-              AND field = ?
+              AND field IN ({placeholders})
               AND freq = ?
-              AND period_end <= ?
-              AND observed_at <= ?
+              AND available_from <= ?
+              AND fetched_at <= ?
         )
         SELECT security_id, period_end, value
         FROM ranked
         WHERE rn = 1
         ORDER BY period_end DESC
         """
-        rows = self._query(query, (statement, field, freq, self.as_of, self.cutoff))
+        rows = self._query(query, (canon_stmt, *fields, freq_norm, self.cutoff, self.cutoff))
         if not rows:
-            return pd.DataFrame(index=self.members)
+            return pd.DataFrame(index=self.members, columns=list(range(n_periods)))
 
-        df = pd.DataFrame(rows, columns=["security_id", "period_end", "value"])
-        pivoted = df.pivot(index="security_id", columns="period_end", values="value")
-        return pivoted.reindex(index=self.members)
+        df_rows = pd.DataFrame(rows, columns=["security_id", "period_end", "value"])
+        data = {sid: [np.nan] * n_periods for sid in self.members}
+        for sid, grp in df_rows.groupby("security_id"):
+            sorted_v = grp.sort_values("period_end", ascending=False)["value"].tolist()
+            for r, v in enumerate(sorted_v[:n_periods]):
+                data[sid][r] = v
+        return pd.DataFrame.from_dict(data, orient="index", columns=list(range(n_periods)))
 
     def ttm(self, field: str, offset_quarters: int = 0) -> pd.Series:
         """Point-in-time trailing twelve month sum from quarterly statements."""
         if offset_quarters < 0:
             raise LookaheadError(f"Negative offset_quarters ({offset_quarters}) requests future data")
 
-        # Query up to 8 quarters to handle offset
-        query = """
-        WITH ranked AS (
-            SELECT security_id, period_end, value,
-                   ROW_NUMBER() OVER (PARTITION BY security_id, period_end ORDER BY observed_at DESC) as rn
-            FROM fundamentals_pit
-            WHERE field = ?
-              AND freq = 'quarterly'
-              AND period_end <= ?
-              AND observed_at <= ?
-        )
-        SELECT security_id, period_end, value
-        FROM ranked
-        WHERE rn = 1
-        ORDER BY period_end DESC
-        """
-        rows = self._query(query, (field, self.as_of, self.cutoff))
-        if not rows:
-            return pd.Series(np.nan, index=self.members)
+        sids = [int(x) for x in self.members]
+        if self._ttm_fn:
+            vals, _ = self._ttm_fn(field, offset_quarters, sids)
+            return vals.reindex(self.members)
 
-        df = pd.DataFrame(rows, columns=["security_id", "period_end", "value"])
-        out = {}
-        for sid, group in df.groupby("security_id"):
-            g = group.sort_values("period_end", ascending=False)
-            # Apply offset
-            sub = g.iloc[offset_quarters:offset_quarters + 4]
-            if len(sub) == 4:
-                out[sid] = float(sub["value"].sum())
-            else:
-                out[sid] = np.nan
-
-        return pd.Series(out).reindex(self.members)
+        return pd.Series(np.nan, index=self.members)
 
     def holdings(self, lag_runs: int = 0) -> pd.Series:
         """Point-in-time institutional holdings share."""
         if lag_runs < 0:
             raise LookaheadError(f"Negative lag_runs ({lag_runs}) requests future holdings")
 
+        sids = [int(x) for x in self.members]
+        if self._holdings_fn:
+            ser = self._holdings_fn(lag_runs, sids)
+            return ser.reindex(self.members)
+
         query = """
         WITH ranked AS (
             SELECT security_id, inst_pct,
-                   ROW_NUMBER() OVER (PARTITION BY security_id ORDER BY observed_at DESC) as rn
-            FROM holdings_history
-            WHERE observed_at <= ?
+                   ROW_NUMBER() OVER (PARTITION BY security_id ORDER BY captured_at DESC) as rn
+            FROM holdings
+            WHERE captured_at <= ?
         )
         SELECT security_id, inst_pct
         FROM ranked
-        WHERE rn = 1
+        WHERE rn = ?
         """
-        rows = self._query(query, (self.cutoff,))
+        rows = self._query(query, (self.cutoff, lag_runs + 1))
         res = {r[0]: float(r[1]) if r[1] is not None else np.nan for r in rows}
         return pd.Series(res).reindex(self.members)
 
@@ -263,6 +281,18 @@ def build(ctx: RunContext, draft: Draft) -> FactorInputs:
         cur.execute(query, params)
         return cur.fetchall()
 
+    def _fund_fn(statement: str, field: str, freq: str, n_periods: int, sids: List[int]) -> pd.DataFrame:
+        from quant.data.fundamentals import pit_frame
+        return pit_frame(ctx.conn, draft.knowledge_cutoff, statement, field, freq, n_periods, sids)
+
+    def _ttm_fn(field: str, offset_quarters: int, sids: List[int]) -> Tuple[pd.Series, pd.Series]:
+        from quant.data.fundamentals import ttm
+        return ttm(ctx.conn, draft.knowledge_cutoff, field, sids, offset_quarters=offset_quarters)
+
+    def _holdings_fn(lag_runs: int, sids: List[int]) -> pd.Series:
+        from quant.data.holdings import series
+        return series(ctx.conn, draft.knowledge_cutoff, lag_runs, sids)
+
     prov = {
         "cohort_id": draft.cohort_id,
         "track": draft.track,
@@ -278,4 +308,7 @@ def build(ctx: RunContext, draft: Draft) -> FactorInputs:
         price_store=store,
         state_query_fn=_state_query,
         provenance_dict=prov,
+        fund_fn=_fund_fn,
+        ttm_fn=_ttm_fn,
+        holdings_fn=_holdings_fn,
     )

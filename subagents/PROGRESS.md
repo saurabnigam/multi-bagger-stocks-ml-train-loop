@@ -263,6 +263,19 @@ Deviations: none
 Deferred real checks: none
 Next: WS05.04
 
+## WS05.04 — Fundamental and flow factors — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: ebfb7a7f45cbb6b0769aa94142f314c1fa0bfa90
+Files: quant/data/fundamentals.py, quant/factors/inputs.py, quant/factors/standardise.py, quant/factors/quality.py, quant/factors/value.py, quant/factors/growth.py, quant/factors/flows.py, tests/unit/test_ws05_04.py
+Acceptance: `python -m pytest tests/unit/test_ws05_04.py -q` -> exit 0, 4 passed in 1.18 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 156 passed in 3.78s
+Contract cases: annual_quarterly, holdings, negative_direction
+Deviations: none
+Deferred real checks: none
+Next: WS05.05
+
+
 
 
 
