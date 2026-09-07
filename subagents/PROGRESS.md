@@ -286,3 +286,15 @@ Contract cases: pit_cutoff, constant_rank
 Deviations: none
 Deferred real checks: none
 Next: WS06.01
+
+## WS06.01 — Exact integer family weights — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: f2e769dc24c4dac4e44e66ce6fe06fcc322e4ac5
+Files: quant/model/__init__.py, quant/model/learn.py, tests/unit/test_ws06_01.py
+Acceptance: `python -m pytest tests/unit/test_ws06_01.py -q` -> exit 0, 7 passed in 0.11 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 168 passed in 5.13s
+Contract cases: weight_fit, equal_weights
+Deviations: none
+Deferred real checks: none
+Next: WS06.02
