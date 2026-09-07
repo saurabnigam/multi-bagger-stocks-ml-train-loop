@@ -310,3 +310,15 @@ Contract cases: negative_direction, rank_ties
 Deviations: none
 Deferred real checks: none
 Next: WS06.03
+
+## WS06.03 — Versioned model staging and invariants — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: d5ac579bfb612ce075cf21d09d91c669ca8872d1
+Files: quant/cli.py, quant/commands/model.py, quant/model/models.py, tests/unit/test_ws06_03.py
+Acceptance: `python -m pytest tests/unit/test_ws06_03.py -q` -> exit 0, 4 passed in 0.78 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 177 passed in 5.00s
+Contract cases: equal_weights, revision_tracks
+Deviations: none
+Deferred real checks: none
+Next: WS07.01
