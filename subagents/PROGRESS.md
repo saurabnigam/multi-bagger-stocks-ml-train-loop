@@ -85,6 +85,19 @@ Deviations: none
 Deferred real checks: none
 Next: WS01.01
 
+## WS01.01 — Constituent parsing and capture archive — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 291b032d8858e3ce685121b14a2c91823ae3b951
+Files: quant/data/universe.py, quant/commands/__init__.py, quant/commands/universe.py, tests/unit/test_ws01_01.py
+Acceptance: `python -m pytest tests/unit/test_ws01_01.py -q` -> exit 0, 4 passed in 0.26 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 84 passed in 1.78s
+Contract cases: pit_cutoff
+Deviations: none
+Deferred real checks: none
+Next: WS01.02
+
+
 
 
 
