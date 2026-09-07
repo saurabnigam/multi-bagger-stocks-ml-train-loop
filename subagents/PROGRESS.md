@@ -24,3 +24,16 @@ Review: see `docs/spec/REVISION_2_REVIEW.md` for gap-to-contract/test mapping an
 Deferred: production APIs, all task acceptance suites, recorded/live adapters, operational runs, longitudinal replay and any actual Gemini Flash execution. No V2 engineering completion or predictive-performance claim is made. Legacy source/database files remain unchanged.
 
 Next: hand the revision-2 HANDOFF section 1 prompt to the implementing assistant. Begin at WS00.01 after checking this spec fingerprint and the unchanged legacy baseline. No implementation task should be marked complete based on this documentation entry.
+
+## WS00.01 — Configuration and common types — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: fa5e5c471fedc7ebe467f001fb3cba32158a1bef
+Files: config/quant.toml, quant/__init__.py, quant/config.py, quant/types.py, quant/errors.py, tests/unit/test_ws00_01.py
+Acceptance: `python -m pytest tests/unit/test_ws00_01.py -q` -> exit 0, 7 passed in 0.05 seconds
+Regression: `python3 docs/spec/check_spec.py && python -m pytest -q` -> exit 0, 10 spec check groups PASS, 65 passed in 1.95s
+Contract cases: pit_cutoff
+Deviations: none
+Deferred real checks: none
+Next: WS00.02
+
