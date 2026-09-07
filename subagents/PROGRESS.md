@@ -241,6 +241,19 @@ Deviations: none
 Deferred real checks: none
 Next: WS05.02
 
+## WS05.02 — Centered bounded ranks — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: be40c2ee5d57b2fe5fc373bb2621cb47eb79ca4f
+Files: quant/factors/standardise.py, tests/unit/test_ws05_02.py
+Acceptance: `python -m pytest tests/unit/test_ws05_02.py -q` -> exit 0, 4 passed in 0.58 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 148 passed in 4.96s
+Contract cases: rank_ties, constant_rank, negative_direction
+Deviations: none
+Deferred real checks: none
+Next: WS05.03
+
+
 
 
 
