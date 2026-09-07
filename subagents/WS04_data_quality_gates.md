@@ -1,93 +1,93 @@
-# WS04 — Field contracts, drift, run gates, data-quality events
+# WS04 — Data-quality contracts and gates
 
-## 1. Mission
-Decide, before any factor is computed, whether this month's data is fit to score, and record why. The legacy health suite could not fail on a 349% dividend yield or a factor constant for 85% of the universe; the gates here would have blocked both on day one. A blocked month is a first-class, recorded outcome.
+Specification revision 2. This is an implementation plan for another LLM, including Gemini Flash; no platform-specific skill is required. Build only after prerequisites pass.
+
+## 1. Mission and scope
+
+Implement the tasks below in order. The complete behavior is MASTER_SPEC sections 4.6; exact signatures and shapes are in INTERFACES.md. This workstream produces code; it does not authorize changes to investment policy or historical records.
 
 ## 2. Read first
-1. MASTER_SPEC §4.6 (gates G1–G10, W1–W6), §10.6 (field contracts), §9.2 (`runs.dq_status`), §4.3 (events from reconciliation), §13 D15
-2. `eval_portfolio_health.py` (near-constant detection to port; the unit checks it added)
-3. `subagents/README.md` interfaces
 
-## 3. Scope
-In: `field_contracts` load/check, PSI drift, gate runner writing `dq_runs` + `data_quality_events`, the `Blocked` path, `record_event` used by every workstream, `gates run` command, G9 reproducibility hash check (uses WS05/WS06 when present; skipped with WARN before they exist), G10 shuffle smoke (uses WS07 `rank_ic` when present; else skipped with WARN).
-Out: fixing data; deciding overrides (WS09 decisions; WS11 wires `--override-gate`).
+1. `docs/spec/MASTER_SPEC.md` sections 0 and 4.6.
+2. `docs/spec/INTERFACES.md` contract blocks listed per task.
+3. `docs/spec/TEST_AND_VERIFICATION_PLAN.md` and the referenced golden cases.
+4. `subagents/PROGRESS.md` and `subagents/_workstreams.json`; verify Git rather than trusting a completion label.
 
-## 4. Dependencies
-WS01 (membership, sector coverage), WS02 (prices, revisions), WS03 (fundamentals, attributes). Verify all three have populated a DB (synthetic world suffices).
+## 3. Dependencies and boundaries
 
-## 5. Interfaces you consume
-`universe.members_at`, `sectors.taxonomy.sector_group_at`, `PriceStore.close_raw/adv_inr`, `fundamentals.latest`, `attributes.at`, `data_quality_events` rows written by WS02 reconciliation, `factors.registry.values_frame` + `models.score_one` (G9, optional), `evaluation.metrics.rank_ic` (G10, optional).
+Prerequisites: WS01, WS03, WS02. Default execution is sequential. Temporary dependency fixtures are test-only; production may not silently fall back to them. Readiness of a provider is established by its acceptance tests, not existence of a module.
 
-## 6. Interfaces you provide
-```python
-# quant/data/contracts.py
-def load(cfg) -> dict[str, dict]                                   # config/field_contracts_v1.yaml -> {field: {unit, min_value, max_value, max_null_rate, source, notes}} ; mirrors into field_contracts table
-def check_field(values: pd.Series, contract: dict) -> ContractResult    # n, n_null, null_rate, n_out_of_range, violators (index list), ok
-def psi(current: pd.Series, reference: pd.Series, bins: int = 10) -> float   # population stability index on decile edges of `reference`
-# quant/data/gates.py
-GATES = ['G1','G2','G3','G4','G5','G6','G7','G8','G9','G10']  ; WARNINGS = ['W1','W2','W3','W4','W5','W6']
-def run(conn, store, as_of: str, cfg, run_id: int, strict: bool = True) -> GateReport   # GateReport(passed: bool, dq_status: 'passed'|'passed_with_warnings'|'blocked', rows: DataFrame[gate, value, threshold, passed, blocking, detail]) ; writes dq_runs + events ; raises Blocked if any blocking gate failed and strict
-def record_event(conn, run_id: int, as_of: str, severity: str, code: str, security_id: int | None = None, field: str | None = None, detail: dict | None = None) -> int
-def events(conn, as_of: str | None = None, severity: str | None = None, code: str | None = None) -> pd.DataFrame
-def near_constant_share(values: pd.Series) -> tuple[float, float]  # (modal_share, modal_value)
-```
+## 4. Shared constraints
 
-## 7. Deliverables
-`quant/data/contracts.py`, `quant/data/gates.py`, `config/field_contracts_v1.yaml` (every field in MASTER_SPEC §10.6 plus the derived ones), `quant/commands/gates.py` (`gates run --as-of D`), `tests/unit/test_contracts.py`, `tests/unit/test_gates.py`, PROGRESS entry.
+Preserve legacy files/database byte-for-byte. No new runtime dependencies. Paths through Config. Capture time never backdated. Published facts append-only; differences need defined revisions. Every source read for a factor passes through FactorInputs. Keep real acquisition throttled; tests use fake transport/clock/sleep.
 
-## 8. Implementation plan
-1. YAML → dict; mirror into `field_contracts` on load (upsert keyed by field).
-2. `check_field`: coerce to float; nulls; out-of-range count and violator ids; `ok = null_rate <= max_null_rate and n_out_of_range <= cfg.gates.G6_max_violators`.
-3. `psi`: decile edges from `reference` (drop NaN), 1e-6 floor on shares, standard formula; return 0.0 when either series has < 50 values (with a note).
-4. Gate implementations, each a function `g1(ctx) -> GateRow` receiving a small context object (conn, store, as_of, cfg, members, groups). Thresholds only from `cfg.gates`. Specifics:
-   - G4: compare `close_raw` at `as_of` with the previous month-end's for the same securities; share equal < 5%.
-   - G6: iterate contracts with `unit in (frac, x, inr)` that have a live column (dividend yield derived from `dividend_rate_inr/close_raw`, D/E from statements, `trailing_pe`, `inst_held_frac`, `market_cap_inr`, `total_assets`); NULL the violators' values in a working copy (do not mutate stored rows), record events per violator, block when violators per field > `G6_max_violators`.
-   - G8: coverage per active factor from WS05's registry statuses and `factor_values` of THIS as_of if already computed; when called before factors (normal order) evaluate coverage of each active factor's `inputs` instead (documented approximation); excluded factors listed in the report; block if ≥ 3.
-   - G9: if a previous passed run exists: recompute last month's `scores.input_hash` for the champion from stored `factor_values` and compare; mismatch → BLOCK; skipped (INFO) if WS06 not present.
-   - G10: shuffle smoke if WS07 present and last month's 1M labels matured; else INFO skip.
-   - W3: `near_constant_share` on every active factor's raw values (last computed month); ≥ 0.80 → WARN with the value; 3 consecutive months → proposal hint (WS09 reads events).
-   - W6: PSI of each active-factor input field vs the pooled previous 3 months; > 0.25 → WARN; ≥ 3 fields → BLOCK.
-5. `run`: execute all; write `dq_runs` rows; events for failures; `dq_status`; update `runs.dq_status`; raise `Blocked` listing failing gates.
-6. Command prints the gate table verbatim with PASS/WARN/FAIL and exits 0/1/2.
-7. Tests; PROGRESS; commit `WS04: contracts and gates`.
+## 5. Task procedure
 
-## 9. Tests you must write
-```
-tests/unit/test_contracts.py::test_yaml_has_every_spec_field
-tests/unit/test_contracts.py::test_check_field_counts_nulls_and_ranges
-tests/unit/test_contracts.py::test_psi_zero_for_identical_large_for_shifted
-tests/unit/test_gates.py::test_g1_blocks_below_480_rows
-tests/unit/test_gates.py::test_g3_blocks_at_97_9_pct_price_coverage
-tests/unit/test_gates.py::test_g4_blocks_when_prices_duplicate_previous_cohort      (the 06-12/06-14 case)
-tests/unit/test_gates.py::test_g6_dividend_yield_349pct_blocks                       (the legacy bug: inject dividend_rate = 349*close/100 ... ensure > 0.25 caught)
-tests/unit/test_gates.py::test_g6_five_violators_warn_six_block
-tests/unit/test_gates.py::test_g7_unclassified_over_1pct_blocks
-tests/unit/test_gates.py::test_g8_excludes_low_coverage_factor_and_blocks_at_three
-tests/unit/test_gates.py::test_w3_near_constant_factor_warns                          (85% at one value)
-tests/unit/test_gates.py::test_w6_psi_drift_warn_then_block_at_three_fields
-tests/unit/test_gates.py::test_blocked_run_records_dq_runs_events_and_status
-tests/unit/test_gates.py::test_passed_with_warnings_status
-tests/unit/test_gates.py::test_blocked_run_cannot_replace_passed_run_without_force   (via RunContext + gates)
-```
+For each task, write the named acceptance tests using the fixed cases or declared isolated fixtures; run the command and observe the expected initial failure before implementation. Implement the listed public contracts and only needed internal helpers. Re-run, then run the regression command. Do not weaken a case or invent a successful real observation. Record actual evidence and commit only task-owned changes.
 
-## 10. Verification checklist
-- `python -m quant gates run --as-of <synthetic as_of> --db /tmp/w/quant.db` prints the full table; exit 0.
-- Inject a 349% yield into a copy of the synthetic DB (`update security_attributes set dividend_rate_inr = close*3.49 ...`) → exit 2, `data_quality_events` has `G6` BLOCK rows, `runs.dq_status='blocked'`.
-- `select gate, passed, blocking from dq_runs where run_id = <last>` lists all 16 gates.
-- `python -m pytest tests/unit/test_contracts.py tests/unit/test_gates.py -q` green.
+## 6. Interfaces
 
-## 11. Definition of done
-- [ ] All 16 gates implemented with thresholds from config only
-- [ ] Blocked path writes rows, status, raises `Blocked`, exit 2
-- [ ] Contracts YAML complete and mirrored
-- [ ] PROGRESS; commit
+The contract IDs below resolve to `docs/spec/INTERFACES.md`. They define exact parameters and result columns. Do not copy a competing signature into this file. Any unresolved contradiction blocks that task and is recorded with the smallest reproducer.
 
-## 12. Handoff notes
-- Every workstream records events through `record_event`; do not write `data_quality_events` directly.
-- WS11 passes `--override-gate Gx --decision-id D` which sets `strict=False` for that gate only after WS09 confirms the decision is Tier-2 approved.
-- G9 and G10 become active automatically once WS06/WS07 exist; leave the INFO-skip path in place.
+## 7. Tasks and acceptance
 
-## 13. Risks, gotchas
-- Do not mutate stored values when NULLing violators; gates read, they never write data tables.
-- PSI on fields with heavy ties (e.g. dividend rate 0) needs the epsilon floor; test it.
-- A gate that reads `factor_values` of the current month before factors run must not crash; return the approximation and say so in `detail`.
+### WS04.01 — Field bounds and drift
+
+**Owns:** `quant/data/contracts.py`, `config/field_contracts_v1.json`.
+**Test:** `tests/unit/test_ws04_01.py`. **Contract:** C04.
+**Fixed examples:** `pit_cutoff` in `docs/spec/contracts/golden_cases.json`; examples are test inputs, never market results.
+
+Required observations: Invalid yield3.49 is masked only in a copy; actual source stays3.49; fixed-bin PSI handles empty/zero bins with documented epsilon1e-6 and reports missing; first baseline is DEFERRED, not fabricated history.
+
+- [ ] Write tests for every required observation above, including refusal/missing-data branches; reuse the shared isolated fixtures specified in the verification plan.
+- [ ] Run `python -m pytest tests/unit/test_ws04_01.py -q`; record the initial failure caused by absent behavior.
+- [ ] Implement the contract in the owned files. Do not embed a fake oracle response in production.
+- [ ] Run `python -m pytest tests/unit/test_ws04_01.py -q`; every task test must pass.
+- [ ] Run `scripts/check.sh` (before WS00.05 exists, run `python -m pytest -q`); legacy tests remain collected and green.
+- [ ] Append task result, exact command/output, spec revision, file list, unresolved issues and next task to PROGRESS.md; commit with `WS04.01: <concrete behavior>`.
+
+### WS04.02 — Pre-computation gates
+
+**Owns:** `quant/data/gates.py`.
+**Test:** `tests/unit/test_ws04_02.py`. **Contract:** C04.
+**Fixed examples:** `pit_cutoff` in `docs/spec/contracts/golden_cases.json`; examples are test inputs, never market results.
+
+Required observations: G1-G7 use captured provenance and configured denominators; fresh unchanged membership passes G2; no pre-cutoff fundamentals blocks bootstrap; record all gates before raising Blocked.
+
+- [ ] Write tests for every required observation above, including refusal/missing-data branches; reuse the shared isolated fixtures specified in the verification plan.
+- [ ] Run `python -m pytest tests/unit/test_ws04_02.py -q`; record the initial failure caused by absent behavior.
+- [ ] Implement the contract in the owned files. Do not embed a fake oracle response in production.
+- [ ] Run `python -m pytest tests/unit/test_ws04_02.py -q`; every task test must pass.
+- [ ] Run `scripts/check.sh` (before WS00.05 exists, run `python -m pytest -q`); legacy tests remain collected and green.
+- [ ] Append task result, exact command/output, spec revision, file list, unresolved issues and next task to PROGRESS.md; commit with `WS04.02: <concrete behavior>`.
+
+### WS04.03 — Post-compute coverage and replay callbacks
+
+**Owns:** `quant/data/gates.py`.
+**Test:** `tests/unit/test_ws04_03.py`. **Contract:** C04.
+**Fixed examples:** `constant_rank`, `rank_ties` in `docs/spec/contracts/golden_cases.json`; examples are test inputs, never market results.
+
+Required observations: G8 uses actual calculated NaNs with financial applicability excluded from denominator; >=3 excluded actives blocks; callback absent is implementation failure; first-month historical replay is legitimately DEFERRED; failed staging writes no published scores.
+
+- [ ] Write tests for every required observation above, including refusal/missing-data branches; reuse the shared isolated fixtures specified in the verification plan.
+- [ ] Run `python -m pytest tests/unit/test_ws04_03.py -q`; record the initial failure caused by absent behavior.
+- [ ] Implement the contract in the owned files. Do not embed a fake oracle response in production.
+- [ ] Run `python -m pytest tests/unit/test_ws04_03.py -q`; every task test must pass.
+- [ ] Run `scripts/check.sh` (before WS00.05 exists, run `python -m pytest -q`); legacy tests remain collected and green.
+- [ ] Append task result, exact command/output, spec revision, file list, unresolved issues and next task to PROGRESS.md; commit with `WS04.03: <concrete behavior>`.
+
+## 8. Workstream verification
+
+Run every task command above plus `scripts/check.sh`. Compare provider signatures against INTERFACES.md and schema/config copies against their canonical files. Integration that depends on future work is not marked passed; the exact dependency is recorded and WS11 acceptance exercises it.
+
+## 9. Definition of done
+
+- [ ] All task behavior tests pass offline; observed runtime and count recorded.
+- [ ] No new dependency, legacy modification or unowned policy change.
+- [ ] Public signatures match the canonical contracts.
+- [ ] No production test doubles/placeholder approvals or fabricated historical observations.
+- [ ] Progress identifies every completed task and any deferred real-data check.
+
+## 10. Downstream handoff
+
+Provider tests and canonical contracts are the downstream guarantees. A green import with missing behavior is not completion. Preserve the isolated reproduction for any defect fixed during integration, and re-run the affected provider and consumer task suites.

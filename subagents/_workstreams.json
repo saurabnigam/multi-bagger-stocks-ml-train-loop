@@ -1,53 +1,1006 @@
 {
-  "build_order": ["WS00", "WS01", "WS02", "WS03", "WS04", "WS05", "WS06", "WS07", "WS10", "WS08", "WS09", "WS11"],
-  "workstreams": [
-    {"id": "WS00", "slug": "foundations", "name": "Foundations: package, config, schema, ledger, calendar, run context, test harness",
-     "depends_on": [], "spec_sections": ["10.1", "10.2", "10.3", "10.4", "4.2", "2.4"],
-     "owns": ["quant/__init__.py", "quant/__main__.py", "quant/cli.py", "quant/config.py", "quant/errors.py", "quant/run.py", "quant/db/", "quant/data/calendar.py", "config/quant.toml", "tests/conftest.py", "tests/synthetic.py", "subagents/PROGRESS.md", "scripts/check.sh"]},
-    {"id": "WS01", "slug": "universe_identity_sectors", "name": "Universe snapshots, ISIN identity, sector taxonomy and neutralisation groups",
-     "depends_on": ["WS00"], "spec_sections": ["3.1", "3.2", "3.3", "3.4"],
-     "owns": ["quant/data/universe.py", "quant/data/identity.py", "quant/sectors/", "config/sector_group_def_v1.csv", "config/yahoo_to_nse_crosswalk_v1.csv", "config/manual_ticker_overrides.csv", "data/universe/", "tests/unit/test_universe.py", "tests/unit/test_identity.py", "tests/unit/test_sectors.py"]},
-    {"id": "WS02", "slug": "prices_actions_benchmarks", "name": "Daily price store, corporate actions, total-return index, monthly panel, benchmarks",
-     "depends_on": ["WS00", "WS01"], "spec_sections": ["4.3", "4.5", "7.4", "8.2"],
-     "owns": ["quant/data/prices.py", "quant/data/actions.py", "quant/data/benchmarks.py", "data/MANIFEST.json", "tests/unit/test_prices.py", "tests/unit/test_actions.py", "tests/unit/test_benchmarks.py"]},
-    {"id": "WS03", "slug": "fundamentals_holdings_pit", "name": "Yahoo client, unit normalisation, bitemporal fundamentals, holdings, attributes, raw archive",
-     "depends_on": ["WS00", "WS01"], "spec_sections": ["4.4", "10.6"],
-     "owns": ["quant/data/yahoo.py", "quant/data/fundamentals.py", "quant/data/holdings.py", "quant/data/attributes.py", "quant/data/adapters/", "data/raw/", "tests/unit/test_yahoo_units.py", "tests/unit/test_fundamentals.py", "tests/fixtures/yahoo_info_samples.json"]},
-    {"id": "WS04", "slug": "data_quality_gates", "name": "Field contracts, drift, run gates, data-quality events",
-     "depends_on": ["WS01", "WS02", "WS03"], "spec_sections": ["4.6", "10.6"],
-     "owns": ["quant/data/contracts.py", "quant/data/gates.py", "config/field_contracts_v1.yaml", "tests/unit/test_gates.py", "tests/unit/test_contracts.py"]},
-    {"id": "WS05", "slug": "factor_library", "name": "Factor plugin contract, FactorInputs, standardisation, registry, all launch factors, sector features",
-     "depends_on": ["WS01", "WS02", "WS03"], "spec_sections": ["5", "3.5"],
-     "owns": ["quant/factors/", "knowledge/hypotheses/", "tests/unit/test_factor_contract.py", "tests/unit/test_standardise.py", "tests/unit/test_factors_*.py", "tests/unit/test_registry.py"]},
-    {"id": "WS06", "slug": "scoring_models_learning", "name": "Composite, screens, models table, champion/challengers, family-weight learning, invariants, model review",
-     "depends_on": ["WS05"], "spec_sections": ["6"],
-     "owns": ["quant/model/", "tests/unit/test_composite.py", "tests/unit/test_learn.py", "tests/unit/test_models.py", "tests/unit/test_screens.py"]},
-    {"id": "WS07", "slug": "labels_evaluation_stats", "name": "Labels, overlap-aware statistics, walk-forward, evaluations, leakage tests, evidence and learning curves, benchmarks evaluation",
-     "depends_on": ["WS02", "WS05", "WS06"], "spec_sections": ["2", "7"],
-     "owns": ["quant/evaluation/", "tests/unit/test_stats.py", "tests/unit/test_metrics.py", "tests/unit/test_labels.py", "tests/property/test_walkforward.py", "tests/leakage/"]},
-    {"id": "WS08", "slug": "portfolio_costs_scoreboard", "name": "Paper portfolios, liquidity buckets, cost model, alpha scoreboard, crowding monitors",
-     "depends_on": ["WS06", "WS07"], "spec_sections": ["8"],
-     "owns": ["quant/portfolio/", "config/costs_v1.toml", "tests/unit/test_portfolio.py", "tests/unit/test_costs.py", "tests/unit/test_scoreboard.py"]},
-    {"id": "WS09", "slug": "knowledge_governance", "name": "Hypotheses and budget, criteria engine, proposals, tiered approval, decisions and ADRs, monthly report, lessons, JSONL mirror",
-     "depends_on": ["WS06", "WS07", "WS08"], "spec_sections": ["9", "5.4", "5.5"],
-     "owns": ["quant/knowledge/", "knowledge/README.md", "knowledge/decisions/", "knowledge/proposals/", "knowledge/reports/", "knowledge/lessons.md", "knowledge/db/", "tests/unit/test_knowledge.py", "tests/unit/test_review.py", "tests/unit/test_report.py"]},
-    {"id": "WS10", "slug": "legacy_migration", "name": "Migration of quant_engine.db and the four 2026 snapshots into the V2 schema with defects flagged",
-     "depends_on": ["WS01", "WS02", "WS03", "WS05", "WS06", "WS07"], "spec_sections": ["10.7", "4.5"],
-     "owns": ["quant/migrate/", "tests/integration/test_migrate_legacy.py", "tests/fixtures/legacy_sample.db", "knowledge/decisions/D-2026-09-0*.md"]},
-    {"id": "WS11", "slug": "orchestration_ui_integration", "name": "run monthly orchestrator, backfill-track replay, UI export and dashboard, cron, docs, end-to-end acceptance and sign-off",
-     "depends_on": ["WS00", "WS01", "WS02", "WS03", "WS04", "WS05", "WS06", "WS07", "WS08", "WS09", "WS10"], "spec_sections": ["9.1", "10.3", "10.5", "10.8", "11"],
-     "owns": ["quant/run.py (monthly orchestrator half)", "quant/ui_export.py", "ui/", "monthly_cron.sh", "legacy/", "AGENTS.md", "README.md", "scripts/signoff.sh", "tests/integration/test_run_monthly.py", "tests/integration/test_e2e_synthetic.py"]}
+  "spec_revision": 2,
+  "build_order": [
+    "WS00",
+    "WS01",
+    "WS03",
+    "WS02",
+    "WS04",
+    "WS05",
+    "WS06",
+    "WS07",
+    "WS08",
+    "WS09",
+    "WS10",
+    "WS11"
   ],
-  "shared_conventions": [
-    "Python 3.11+ (tested on 3.14); pandas/numpy/scipy/yfinance/pytest only; stdlib tomllib, sqlite3, argparse, hashlib, json, gzip. No new third-party dependency without a Tier-2 decision.",
-    "All paths repo-relative via quant.config; env overrides QUANT_DB_PATH, QUANT_DATA_DIR, QUANT_LEGACY_DB_PATH.",
-    "Dates: ISO text YYYY-MM-DD; as_of is always an NSE trading day from quant.data.calendar. Money in rupees. Fractions as fractions. tz stripped once in quant/data/yahoo.py.",
-    "Point-in-time: anything a factor reads passes through FactorInputs; FactorInputs raises LookaheadError for dates > as_of. Fundamentals are read with available_from <= as_of.",
-    "Never impute a missing input; NaN + a flag. Never overwrite stored factor_values/scores/labels/evaluations; new version or new track.",
-    "Every table write goes through quant.db.core.upsert / replace_as_of inside a run context (quant.run.RunContext) that owns run_id.",
-    "Every CLI command: --as-of, --db, --config, --dry-run; prints one summary line ending with the row counts written; exit 0 ok / 1 error / 2 blocked / 3 refused.",
-    "Tests: pytest -q must pass offline in < 90 s; network tests are @pytest.mark.network and skipped by default; fixtures use recorded Yahoo values (2026-09-05) and the synthetic world from tests/synthetic.py.",
-    "Progress: after each workstream append a section to subagents/PROGRESS.md: what was built, test command + result, deviations from MASTER_SPEC with reason, open questions. Commit with message 'WSxx: <summary>'.",
-    "If a workstream doc and docs/spec/MASTER_SPEC.md disagree, MASTER_SPEC wins; log the disagreement in PROGRESS.md and in the doc's section 13."
+  "execution": "sequential",
+  "contract_file": "docs/spec/INTERFACES.md",
+  "workstreams": [
+    {
+      "id": "WS00",
+      "name": "Foundations",
+      "document": "subagents/WS00_foundations.md",
+      "depends_on": [],
+      "spec_sections": [
+        "0",
+        "2",
+        "4.1",
+        "4.2",
+        "10"
+      ],
+      "tasks": [
+        {
+          "id": "WS00.01",
+          "title": "Configuration and common types",
+          "files": [
+            "quant/config.py",
+            "quant/types.py",
+            "quant/errors.py",
+            "config/quant.toml"
+          ],
+          "test_file": "tests/unit/test_ws00_01.py",
+          "contracts": [
+            "C00"
+          ],
+          "golden_cases": [
+            "pit_cutoff"
+          ],
+          "acceptance": "Every canonical TOML key loads; relative paths resolve from repository root; test directory overrides do not alter policy hash; FrozenClock preserves UTC microseconds.",
+          "verify": "python -m pytest tests/unit/test_ws00_01.py -q"
+        },
+        {
+          "id": "WS00.02",
+          "title": "Canonical schemas and protected writes",
+          "files": [
+            "quant/db/schema.sql",
+            "quant/db/price_schema.sql",
+            "quant/db/core.py"
+          ],
+          "test_file": "tests/unit/test_ws00_02.py",
+          "contracts": [
+            "C00"
+          ],
+          "golden_cases": [
+            "annual_quarterly",
+            "evaluation_revisions",
+            "revision_tracks"
+          ],
+          "acceptance": "Annual and Q4 coexist; same-key same-value append is a no-op; same-key different-value raises ImmutableConflict; UPDATE and DELETE of protected rows fail; both databases enable foreign keys.",
+          "verify": "python -m pytest tests/unit/test_ws00_02.py -q"
+        },
+        {
+          "id": "WS00.03",
+          "title": "Trading calendar and execution clock",
+          "files": [
+            "quant/data/calendar.py"
+          ],
+          "test_file": "tests/unit/test_ws00_03.py",
+          "contracts": [
+            "C01"
+          ],
+          "golden_cases": [
+            "calendar_lags",
+            "execution",
+            "cohort_maturity"
+          ],
+          "acceptance": "Weekend resolution uses supplied sessions; next execution is strictly after generation date; missing session range is refused; no network or implicit clock in Calendar. Future publication dates are refused by the runner in WS11.",
+          "verify": "python -m pytest tests/unit/test_ws00_03.py -q"
+        },
+        {
+          "id": "WS00.04",
+          "title": "Run lifecycle and ledger recovery",
+          "files": [
+            "quant/run.py",
+            "quant/db/ledger.py"
+          ],
+          "test_file": "tests/unit/test_ws00_04.py",
+          "contracts": [
+            "C00"
+          ],
+          "golden_cases": [
+            "evaluation_revisions"
+          ],
+          "acceptance": "One failed attempt leaves no partial cohort; run status/error survives; journal inserts and control updates replay in sequence; changed before hash fails replay; restored tables and ledger_events match source.",
+          "verify": "python -m pytest tests/unit/test_ws00_04.py -q"
+        },
+        {
+          "id": "WS00.05",
+          "title": "Offline fixtures, CLI and check runner",
+          "files": [
+            "tests/conftest.py",
+            "tests/synthetic.py",
+            "tests/helpers.py",
+            "quant/cli.py",
+            "quant/__main__.py",
+            "quant/__init__.py",
+            "scripts/check.sh",
+            "pytest.ini"
+          ],
+          "test_file": "tests/unit/test_ws00_05.py",
+          "contracts": [
+            "C00"
+          ],
+          "golden_cases": [
+            "planted_rank",
+            "split_dividend"
+          ],
+          "acceptance": "All external transport is disabled by default; fixture seed 0 repeats byte-identically; source/event fixtures use explicit known_at; CLI help and error codes work; default collection includes the two unchanged legacy test modules.",
+          "verify": "python -m pytest tests/unit/test_ws00_05.py -q"
+        }
+      ]
+    },
+    {
+      "id": "WS01",
+      "name": "Universe, identity and sectors",
+      "document": "subagents/WS01_universe_identity_sectors.md",
+      "depends_on": [
+        "WS00"
+      ],
+      "spec_sections": [
+        "2",
+        "3"
+      ],
+      "tasks": [
+        {
+          "id": "WS01.01",
+          "title": "Constituent parsing and capture archive",
+          "files": [
+            "quant/data/universe.py",
+            "quant/commands/universe.py"
+          ],
+          "test_file": "tests/unit/test_ws01_01.py",
+          "contracts": [
+            "C01"
+          ],
+          "golden_cases": [
+            "pit_cutoff"
+          ],
+          "acceptance": "Accept five required headers and special-character symbols; reject duplicate ISIN/symbol and malformed/short live lists; stale fallback retains original observed_at; an unchanged freshly fetched checksum is allowed.",
+          "verify": "python -m pytest tests/unit/test_ws01_01.py -q"
+        },
+        {
+          "id": "WS01.02",
+          "title": "Identity and tracking to every maturity",
+          "files": [
+            "quant/data/identity.py"
+          ],
+          "test_file": "tests/unit/test_ws01_02.py",
+          "contracts": [
+            "C01"
+          ],
+          "golden_cases": [
+            "cohort_maturity"
+          ],
+          "acceptance": "A same-ISIN rename keeps security_id; changed ISIN needs a separate identity; removed member remains tracked from cohorts even before any labels exist; retain it while any of six horizons or a paper order remains open.",
+          "verify": "python -m pytest tests/unit/test_ws01_02.py -q"
+        },
+        {
+          "id": "WS01.03",
+          "title": "Sector rules and point-in-time groups",
+          "files": [
+            "quant/sectors/taxonomy.py",
+            "quant/sectors/crosswalk.py",
+            "config/sector_groups_v1.csv",
+            "config/yahoo_crosswalk_v1.csv"
+          ],
+          "test_file": "tests/unit/test_ws01_03.py",
+          "contracts": [
+            "C01"
+          ],
+          "golden_cases": [
+            "pit_cutoff"
+          ],
+          "acceptance": "FS stays unsplit initially; explicit small-sector merges apply at membership date; unknown sector becomes UNCLASSIFIED; future reclassification cannot change old cohort groups; no decisionless taxonomy changes.",
+          "verify": "python -m pytest tests/unit/test_ws01_03.py -q"
+        }
+      ]
+    },
+    {
+      "id": "WS03",
+      "name": "Yahoo captures and point-in-time fundamentals",
+      "document": "subagents/WS03_fundamentals_holdings_pit.md",
+      "depends_on": [
+        "WS00",
+        "WS01"
+      ],
+      "spec_sections": [
+        "2",
+        "4.4",
+        "10.4"
+      ],
+      "tasks": [
+        {
+          "id": "WS03.01",
+          "title": "Throttled client, archive and units",
+          "files": [
+            "quant/data/yahoo.py"
+          ],
+          "test_file": "tests/unit/test_ws03_01.py",
+          "contracts": [
+            "C02"
+          ],
+          "golden_cases": [
+            "source_basis",
+            "cost"
+          ],
+          "acceptance": "Fake client records >=0.5s between accessor calls and >=1s between batches; threads=False; 429 retry uses injected sleep120 without real waits; None stays missing; debtToEquity357 ->3.57; dividendRate75/price5300; archive exact returned bytes/metadata.",
+          "verify": "python -m pytest tests/unit/test_ws03_01.py -q"
+        },
+        {
+          "id": "WS03.02",
+          "title": "Bitemporal statements and TTM",
+          "files": [
+            "quant/data/fundamentals.py"
+          ],
+          "test_file": "tests/unit/test_ws03_02.py",
+          "contracts": [
+            "C02"
+          ],
+          "golden_cases": [
+            "annual_quarterly",
+            "pit_cutoff",
+            "calendar_lags"
+          ],
+          "acceptance": "Read annual100 and Q425 separately at one fiscal end; a later150 revision is invisible at prior cutoff; estimated lag never bypasses fetched_at; eight consecutive quarters required for TTM offset4; absent earlier-year quarters yield NaN.",
+          "verify": "python -m pytest tests/unit/test_ws03_02.py -q"
+        },
+        {
+          "id": "WS03.03",
+          "title": "Holdings, attributes and capture command",
+          "files": [
+            "quant/data/holdings.py",
+            "quant/data/attributes.py",
+            "quant/data/capture.py",
+            "quant/commands/data.py"
+          ],
+          "test_file": "tests/unit/test_ws03_03.py",
+          "contracts": [
+            "C02"
+          ],
+          "golden_cases": [
+            "holdings",
+            "pit_cutoff"
+          ],
+          "acceptance": "Current run capture is invisible to previous cutoff; lag 3 needs four distinct monthly captures; latest same-month capture wins before cutoff; sector text is stored only in attributes; command archives raw price responses but does not claim C03 integration until WS11.",
+          "verify": "python -m pytest tests/unit/test_ws03_03.py -q"
+        }
+      ]
+    },
+    {
+      "id": "WS02",
+      "name": "Prices, actions and benchmarks",
+      "document": "subagents/WS02_prices_actions_benchmarks.md",
+      "depends_on": [
+        "WS00",
+        "WS01",
+        "WS03"
+      ],
+      "spec_sections": [
+        "4.2",
+        "4.3",
+        "7.4"
+      ],
+      "tasks": [
+        {
+          "id": "WS02.01",
+          "title": "Price schema, basis normalization and TRI",
+          "files": [
+            "quant/data/prices.py"
+          ],
+          "test_file": "tests/unit/test_ws02_01.py",
+          "contracts": [
+            "C03"
+          ],
+          "golden_cases": [
+            "source_basis",
+            "split",
+            "dividend",
+            "split_dividend"
+          ],
+          "acceptance": "Call the canonical price DDL; delivered split-adjusted close/volume normalize exactly as the oracle; unknown basis refuses; split600->100 ratio6 has TRI100->100; dividend100->90 plus10 has TRI100->100; no extra split term on already normalized input.",
+          "verify": "python -m pytest tests/unit/test_ws02_01.py -q"
+        },
+        {
+          "id": "WS02.02",
+          "title": "Reconciliation, quarantine and decisions",
+          "files": [
+            "quant/data/actions.py",
+            "quant/commands/prices.py"
+          ],
+          "test_file": "tests/unit/test_ws02_02.py",
+          "contracts": [
+            "C03"
+          ],
+          "golden_cases": [
+            "evaluation_revisions",
+            "split"
+          ],
+          "acceptance": "Changed historical vendor bytes preserve old vintage; unexplained revisions remain quarantined; actor/decision mismatch refuses acceptance; action correction appends; approved resolution never mutates factor_values or scores.",
+          "verify": "python -m pytest tests/unit/test_ws02_02.py -q"
+        },
+        {
+          "id": "WS02.03",
+          "title": "Monthly panels, benchmarks and archive recovery",
+          "files": [
+            "quant/data/benchmarks.py"
+          ],
+          "test_file": "tests/unit/test_ws02_03.py",
+          "contracts": [
+            "C03"
+          ],
+          "golden_cases": [
+            "source_basis",
+            "revision_tracks"
+          ],
+          "acceptance": "Panel uses cohort source refs and actual ADV; gross EW equals manual constituent gross returns; missing optional index is unavailable; restore cache from archived vintage; a changed re-download fails manifest verification and leaves committed hashes intact.",
+          "verify": "python -m pytest tests/unit/test_ws02_03.py -q"
+        }
+      ]
+    },
+    {
+      "id": "WS04",
+      "name": "Data-quality contracts and gates",
+      "document": "subagents/WS04_data_quality_gates.md",
+      "depends_on": [
+        "WS01",
+        "WS03",
+        "WS02"
+      ],
+      "spec_sections": [
+        "4.6"
+      ],
+      "tasks": [
+        {
+          "id": "WS04.01",
+          "title": "Field bounds and drift",
+          "files": [
+            "quant/data/contracts.py",
+            "config/field_contracts_v1.json"
+          ],
+          "test_file": "tests/unit/test_ws04_01.py",
+          "contracts": [
+            "C04"
+          ],
+          "golden_cases": [
+            "pit_cutoff"
+          ],
+          "acceptance": "Invalid yield3.49 is masked only in a copy; actual source stays3.49; fixed-bin PSI handles empty/zero bins with documented epsilon1e-6 and reports missing; first baseline is DEFERRED, not fabricated history.",
+          "verify": "python -m pytest tests/unit/test_ws04_01.py -q"
+        },
+        {
+          "id": "WS04.02",
+          "title": "Pre-computation gates",
+          "files": [
+            "quant/data/gates.py"
+          ],
+          "test_file": "tests/unit/test_ws04_02.py",
+          "contracts": [
+            "C04"
+          ],
+          "golden_cases": [
+            "pit_cutoff"
+          ],
+          "acceptance": "G1-G7 use captured provenance and configured denominators; fresh unchanged membership passes G2; no pre-cutoff fundamentals blocks bootstrap; record all gates before raising Blocked.",
+          "verify": "python -m pytest tests/unit/test_ws04_02.py -q"
+        },
+        {
+          "id": "WS04.03",
+          "title": "Post-compute coverage and replay callbacks",
+          "files": [
+            "quant/data/gates.py"
+          ],
+          "test_file": "tests/unit/test_ws04_03.py",
+          "contracts": [
+            "C04"
+          ],
+          "golden_cases": [
+            "constant_rank",
+            "rank_ties"
+          ],
+          "acceptance": "G8 uses actual calculated NaNs with financial applicability excluded from denominator; >=3 excluded actives blocks; callback absent is implementation failure; first-month historical replay is legitimately DEFERRED; failed staging writes no published scores.",
+          "verify": "python -m pytest tests/unit/test_ws04_03.py -q"
+        }
+      ]
+    },
+    {
+      "id": "WS05",
+      "name": "Factor inputs, standardisation and library",
+      "document": "subagents/WS05_factor_library.md",
+      "depends_on": [
+        "WS04"
+      ],
+      "spec_sections": [
+        "3.4",
+        "5"
+      ],
+      "tasks": [
+        {
+          "id": "WS05.01",
+          "title": "Restricted FactorInputs",
+          "files": [
+            "quant/factors/base.py",
+            "quant/factors/inputs.py"
+          ],
+          "test_file": "tests/unit/test_ws05_01.py",
+          "contracts": [
+            "C05"
+          ],
+          "golden_cases": [
+            "pit_cutoff",
+            "holdings"
+          ],
+          "acceptance": "Physically filtered inputs expose no connection/client/labels; future or undeclared fields raise LookaheadError; each result records exact observation refs; old as_of gets same data after a future revision.",
+          "verify": "python -m pytest tests/unit/test_ws05_01.py -q"
+        },
+        {
+          "id": "WS05.02",
+          "title": "Centered bounded ranks",
+          "files": [
+            "quant/factors/standardise.py"
+          ],
+          "test_file": "tests/unit/test_ws05_02.py",
+          "contracts": [
+            "C05"
+          ],
+          "golden_cases": [
+            "rank_ties",
+            "constant_rank",
+            "negative_direction"
+          ],
+          "acceptance": "Match every golden z within 1e-12; tied values stay tied; constant group is NaN; mean0 and abs<=3 for finite groups; do not assert unit variance; negative direction is applied once.",
+          "verify": "python -m pytest tests/unit/test_ws05_02.py -q"
+        },
+        {
+          "id": "WS05.03",
+          "title": "Price factors and diagnostics",
+          "files": [
+            "quant/factors/momentum.py",
+            "quant/factors/low_risk.py",
+            "quant/factors/controls.py",
+            "quant/factors/legacy.py"
+          ],
+          "test_file": "tests/unit/test_ws05_03.py",
+          "contracts": [
+            "C05"
+          ],
+          "golden_cases": [
+            "split",
+            "source_basis",
+            "planted_rank"
+          ],
+          "acceptance": "Geometric TRI fixes momentum endpoints;253 bars required for 252 returns; sample shortage produces flags; beta uses aligned index returns; dc_flag is diagnostic only; size reads captured mcap and is not backfillable.",
+          "verify": "python -m pytest tests/unit/test_ws05_03.py -q"
+        },
+        {
+          "id": "WS05.04",
+          "title": "Fundamental and flow factors",
+          "files": [
+            "quant/factors/quality.py",
+            "quant/factors/value.py",
+            "quant/factors/growth.py",
+            "quant/factors/flows.py"
+          ],
+          "test_file": "tests/unit/test_ws05_04.py",
+          "contracts": [
+            "C05"
+          ],
+          "golden_cases": [
+            "annual_quarterly",
+            "holdings",
+            "negative_direction"
+          ],
+          "acceptance": "All launch formulas match MASTER_SPEC5.3; nonfinancial exclusions, nonpositive denominators, missing quarters and fiscal alignment are tested; low accruals gets higher oriented z; no default growth or ROE.",
+          "verify": "python -m pytest tests/unit/test_ws05_04.py -q"
+        },
+        {
+          "id": "WS05.05",
+          "title": "Registry, provenance and sector features",
+          "files": [
+            "quant/factors/registry.py",
+            "quant/factors/sector.py",
+            "quant/commands/factors.py"
+          ],
+          "test_file": "tests/unit/test_ws05_05.py",
+          "contracts": [
+            "C05"
+          ],
+          "golden_cases": [
+            "pit_cutoff",
+            "constant_rank"
+          ],
+          "acceptance": "Sync rejects changed code/helper hashes without affected version bumps; registered future hypotheses stay out of earlier cohorts; controls use valid lifecycle shadow; compute returns staging rows only; sector features use frozen groups.",
+          "verify": "python -m pytest tests/unit/test_ws05_05.py -q"
+        }
+      ]
+    },
+    {
+      "id": "WS06",
+      "name": "Models, screens and family learning",
+      "document": "subagents/WS06_scoring_models_learning.md",
+      "depends_on": [
+        "WS05"
+      ],
+      "spec_sections": [
+        "6"
+      ],
+      "tasks": [
+        {
+          "id": "WS06.01",
+          "title": "Exact integer family weights",
+          "files": [
+            "quant/model/learn.py"
+          ],
+          "test_file": "tests/unit/test_ws06_01.py",
+          "contracts": [
+            "C06"
+          ],
+          "golden_cases": [
+            "weight_fit",
+            "equal_weights"
+          ],
+          "acceptance": "Match expected units and sum10000; common finite evidence intersection determines N; below 12 matured3M rows returns EW; all nonpositive means return EW even with gate open; bounds hold across2..14 families; repeats are identical.",
+          "verify": "python -m pytest tests/unit/test_ws06_01.py -q"
+        },
+        {
+          "id": "WS06.02",
+          "title": "Hierarchical and flat composites, coverage and screens",
+          "files": [
+            "quant/model/composite.py",
+            "quant/model/screens.py"
+          ],
+          "test_file": "tests/unit/test_ws06_02.py",
+          "contracts": [
+            "C06"
+          ],
+          "golden_cases": [
+            "negative_direction",
+            "rank_ties"
+          ],
+          "acceptance": "Flat mode equals direct finite-factor mean and differs from hierarchical in an unbalanced family fixture; probation has half status weight; financial non-applicability is excluded; MOM_ONLY may score from one family; illiquid names remain stored but ineligible.",
+          "verify": "python -m pytest tests/unit/test_ws06_02.py -q"
+        },
+        {
+          "id": "WS06.03",
+          "title": "Versioned model staging and invariants",
+          "files": [
+            "quant/model/models.py",
+            "quant/commands/model.py"
+          ],
+          "test_file": "tests/unit/test_ws06_03.py",
+          "contracts": [
+            "C06"
+          ],
+          "golden_cases": [
+            "equal_weights",
+            "revision_tracks"
+          ],
+          "acceptance": "Score every initialized model using frozen definitions and explicitly supplied history; current registry changes do not alter old version; same draft repeats identical hashes; challenger cannot change champion role without decision; valid promoted challenger need not equal EW.",
+          "verify": "python -m pytest tests/unit/test_ws06_03.py -q"
+        }
+      ]
+    },
+    {
+      "id": "WS07",
+      "name": "Labels, statistics, evaluation and curves",
+      "document": "subagents/WS07_labels_evaluation_stats.md",
+      "depends_on": [
+        "WS02",
+        "WS05",
+        "WS06"
+      ],
+      "spec_sections": [
+        "2.3",
+        "7"
+      ],
+      "tasks": [
+        {
+          "id": "WS07.01",
+          "title": "Cohort labels and appended corrections",
+          "files": [
+            "quant/evaluation/labels.py"
+          ],
+          "test_file": "tests/unit/test_ws07_01.py",
+          "contracts": [
+            "C07"
+          ],
+          "golden_cases": [
+            "revision_tracks",
+            "evaluation_revisions",
+            "split_dividend"
+          ],
+          "acceptance": "Original cohort member count survives index dropout; no row before endpoint; missing quote is not automatically delisted; action resolution appends group-wide affected revisions; old rows unchanged; live/backfill same-date labels remain separate.",
+          "verify": "python -m pytest tests/unit/test_ws07_01.py -q"
+        },
+        {
+          "id": "WS07.02",
+          "title": "Statistical functions and oriented metrics",
+          "files": [
+            "quant/evaluation/stats.py",
+            "quant/evaluation/metrics.py"
+          ],
+          "test_file": "tests/unit/test_ws07_02.py",
+          "contracts": [
+            "C07"
+          ],
+          "golden_cases": [
+            "hac",
+            "hac_insufficient",
+            "negative_direction",
+            "planted_rank"
+          ],
+          "acceptance": "Match hand-computed HAC gamma0/gamma1/se; short/constant vectors return unavailable uncertainty; oriented low-is-good signal IC+1; constant Spearman is None; paired tests use same cohorts; positive/negative raw signs are not applied twice.",
+          "verify": "python -m pytest tests/unit/test_ws07_02.py -q"
+        },
+        {
+          "id": "WS07.03",
+          "title": "Revision selection and causal training history",
+          "files": [
+            "quant/evaluation/evaluate.py",
+            "quant/evaluation/walkforward.py",
+            "quant/commands/evaluate.py"
+          ],
+          "test_file": "tests/unit/test_ws07_03.py",
+          "contracts": [
+            "C07"
+          ],
+          "golden_cases": [
+            "evaluation_revisions",
+            "pit_cutoff"
+          ],
+          "acceptance": "Monthly window keys use empty strings; unchanged evaluation inserts0; revised evidence appends with supersedes; select exactly one latest-known revision before status filtering; no future endpoint, later revision or backfill enters family fitting; do not compress calendar gaps for HAC.",
+          "verify": "python -m pytest tests/unit/test_ws07_03.py -q"
+        },
+        {
+          "id": "WS07.04",
+          "title": "Leakage suite and stored-history curves",
+          "files": [
+            "quant/evaluation/leakage.py",
+            "quant/evaluation/curves.py"
+          ],
+          "test_file": "tests/unit/test_ws07_04.py",
+          "contracts": [
+            "C07"
+          ],
+          "golden_cases": [
+            "planted_rank",
+            "pit_cutoff",
+            "negative_direction"
+          ],
+          "acceptance": "Run T1-T10 from the test plan with explicit prerequisites; deterministic planted rank matches exactIC; moving publication dates cannot bypass capture time; no production edits during injections; learning curves read original stored weights; missing bands display unavailable.",
+          "verify": "python -m pytest tests/unit/test_ws07_04.py -q"
+        },
+        {
+          "id": "WS07.05",
+          "title": "Backfill replay and warmup accounting",
+          "files": [
+            "quant/evaluation/backfill.py"
+          ],
+          "test_file": "tests/unit/test_ws07_05.py",
+          "contracts": [
+            "C07"
+          ],
+          "golden_cases": [
+            "revision_tracks",
+            "cohort_maturity"
+          ],
+          "acceptance": "Replay only price/volume factors with warmup; no current mcap or statements; record requested/actual date counts and survivorship caveat; negative measured backfill is accepted as an outcome, not adjusted to force positivity.",
+          "verify": "python -m pytest tests/unit/test_ws07_05.py -q"
+        }
+      ]
+    },
+    {
+      "id": "WS08",
+      "name": "Paper portfolios, costs and scoreboard",
+      "document": "subagents/WS08_portfolio_costs_scoreboard.md",
+      "depends_on": [
+        "WS06",
+        "WS07"
+      ],
+      "spec_sections": [
+        "2.4",
+        "8"
+      ],
+      "tasks": [
+        {
+          "id": "WS08.01",
+          "title": "Construction and cost arithmetic",
+          "files": [
+            "quant/portfolio/costs.py",
+            "quant/portfolio/construct.py"
+          ],
+          "test_file": "tests/unit/test_ws08_01.py",
+          "contracts": [
+            "C08"
+          ],
+          "golden_cases": [
+            "cost"
+          ],
+          "acceptance": "Bucket boundaries are inclusive as specified; rank45 retained/rank61 removed; sector cap skips entrants; bucketC <=.02 and infeasible residual goes to cash; ties byID; .10 weight B trade costs.00037.",
+          "verify": "python -m pytest tests/unit/test_ws08_01.py -q"
+        },
+        {
+          "id": "WS08.02",
+          "title": "Pending orders, dated fills and NAV",
+          "files": [
+            "quant/portfolio/paper.py",
+            "quant/commands/portfolio.py"
+          ],
+          "test_file": "tests/unit/test_ws08_02.py",
+          "contracts": [
+            "C08"
+          ],
+          "golden_cases": [
+            "execution",
+            "split_dividend",
+            "cost"
+          ],
+          "acceptance": "Orders cannot fill before actual eligible close; repeated settlement adds no fill; NAV spans actual event dates with no pre-inception returns; factor/model cohort TOP_Q20 and MATCHED_EW books include entry and exit costs, remain pending when prices are missing and provide frozen selection evidence.",
+          "verify": "python -m pytest tests/unit/test_ws08_02.py -q"
+        },
+        {
+          "id": "WS08.03",
+          "title": "Matched benchmarks, spreads and scoreboard",
+          "files": [
+            "quant/portfolio/scoreboard.py"
+          ],
+          "test_file": "tests/unit/test_ws08_03.py",
+          "contracts": [
+            "C08"
+          ],
+          "golden_cases": [
+            "cost",
+            "hac_insufficient"
+          ],
+          "acceptance": "Compare net with net using identical universe/execution; matched EW minus itself is0; cost events inside full interval are summed; no simulated quintile book means unavailable net spread; no forced TOP30-turnover-below-DEC10 inequality; IR absent below 24 portfolio months.",
+          "verify": "python -m pytest tests/unit/test_ws08_03.py -q"
+        }
+      ]
+    },
+    {
+      "id": "WS09",
+      "name": "Bootstrap, hypotheses, governance and reports",
+      "document": "subagents/WS09_knowledge_governance.md",
+      "depends_on": [
+        "WS06",
+        "WS07",
+        "WS08"
+      ],
+      "spec_sections": [
+        "5.4",
+        "9"
+      ],
+      "tasks": [
+        {
+          "id": "WS09.01",
+          "title": "Recorded bootstrap and hypothesis budget",
+          "files": [
+            "quant/knowledge/bootstrap.py",
+            "quant/knowledge/registry.py"
+          ],
+          "test_file": "tests/unit/test_ws09_01.py",
+          "contracts": [
+            "C09"
+          ],
+          "golden_cases": [
+            "governance"
+          ],
+          "acceptance": "Seed only exact launch definitions with system/spec-hash decision, idempotently; no fake human or Tier2 approval; annual seventh and family fourth registration refused; launch exemption does not exclude hypotheses from reported trial counts; first cutoff is after registration.",
+          "verify": "python -m pytest tests/unit/test_ws09_01.py -q"
+        },
+        {
+          "id": "WS09.02",
+          "title": "Criteria and fixed review opportunities",
+          "files": [
+            "quant/knowledge/review.py"
+          ],
+          "test_file": "tests/unit/test_ws09_02.py",
+          "contracts": [
+            "C09"
+          ],
+          "golden_cases": [
+            "negative_direction",
+            "hac_insufficient",
+            "promotion_budget"
+          ],
+          "acceptance": "Decision vectors test each criterion independently; positive oriented IC is good for both raw directions; use the single look-adjusted t_crit and cumulative trial count; factor looks are 12/24/36 and model looks 24/36/48, consumed once even when ancillary criteria fail; unavailable cost/ablation is unmet; model review consumes the same paired interval.",
+          "verify": "python -m pytest tests/unit/test_ws09_02.py -q"
+        },
+        {
+          "id": "WS09.03",
+          "title": "Approval, ratification and prospective changes",
+          "files": [
+            "quant/knowledge/proposals.py",
+            "quant/knowledge/adr.py",
+            "quant/commands/kb.py"
+          ],
+          "test_file": "tests/unit/test_ws09_03.py",
+          "contracts": [
+            "C09"
+          ],
+          "golden_cases": [
+            "governance",
+            "evaluation_revisions"
+          ],
+          "acceptance": "LLM actor plus human prefix refused; Tier2 refused; Tier1 criteria all true yields provisional; human ratifies; expiry appends reversion and prospective model version; failed reversion blocks next publication; original scores unchanged; ADR exists for every applied decision.",
+          "verify": "python -m pytest tests/unit/test_ws09_03.py -q"
+        },
+        {
+          "id": "WS09.04",
+          "title": "Reports and knowledge mirrors",
+          "files": [
+            "quant/knowledge/report.py",
+            "quant/knowledge/lessons.py",
+            "knowledge/README.md"
+          ],
+          "test_file": "tests/unit/test_ws09_04.py",
+          "contracts": [
+            "C09"
+          ],
+          "golden_cases": [
+            "hac_insufficient",
+            "evaluation_revisions"
+          ],
+          "acceptance": "Render persisted evidence only; separate tracks, originally-published vs revised view, actual cutoff/generated times and pending orders; preserve content-addressed report manifests with exact references and frozen control summaries; reproduce an old report after later revisions; finite band required only when status says estimable; include ratifications and phase-specific acceptance, no unmeasured performance claims.",
+          "verify": "python -m pytest tests/unit/test_ws09_04.py -q"
+        }
+      ]
+    },
+    {
+      "id": "WS10",
+      "name": "Read-only legacy migration",
+      "document": "subagents/WS10_legacy_migration.md",
+      "depends_on": [
+        "WS01",
+        "WS02",
+        "WS03",
+        "WS05",
+        "WS06",
+        "WS07",
+        "WS09"
+      ],
+      "spec_sections": [
+        "10.6"
+      ],
+      "tasks": [
+        {
+          "id": "WS10.01",
+          "title": "Source inventory and fixture extraction",
+          "files": [
+            "quant/migrate/legacy.py",
+            "scripts/build_legacy_sample.py"
+          ],
+          "test_file": "tests/unit/test_ws10_01.py",
+          "contracts": [
+            "C10"
+          ],
+          "golden_cases": [
+            "annual_quarterly"
+          ],
+          "acceptance": "Open source mode=ro; record SHA256/counts; extract20 known tickers into temporary fixture; dry-run changes neither database nor files; mismatched source facts are reported and never repaired in legacy DB.",
+          "verify": "python -m pytest tests/unit/test_ws10_01.py -q"
+        },
+        {
+          "id": "WS10.02",
+          "title": "Cohort mapping, factors and models",
+          "files": [
+            "quant/migrate/legacy.py"
+          ],
+          "test_file": "tests/unit/test_ws10_02.py",
+          "contracts": [
+            "C10"
+          ],
+          "golden_cases": [
+            "revision_tracks"
+          ],
+          "acceptance": "Six snapshot-map records, four published full legacy cohorts,1997 rows/model on fullsource; two legacy models and 11factor fields; use raw original values for attribution; flags preserve known defects; no legacy inputs become clean live facts.",
+          "verify": "python -m pytest tests/unit/test_ws10_02.py -q"
+        },
+        {
+          "id": "WS10.03",
+          "title": "Attribution and migration repeatability",
+          "files": [
+            "quant/migrate/legacy.py",
+            "quant/commands/migrate.py"
+          ],
+          "test_file": "tests/unit/test_ws10_03.py",
+          "contracts": [
+            "C10"
+          ],
+          "golden_cases": [
+            "evaluation_revisions"
+          ],
+          "acceptance": "Fullsource legacy-quote attribution within.01 of red-team table; adjusted result shown separately without enforced sign; irregular adjacent periods are not h1 labels; second migration is unchanged0; source SHA256 remains identical; factual system ADRs only.",
+          "verify": "python -m pytest tests/unit/test_ws10_03.py -q"
+        }
+      ]
+    },
+    {
+      "id": "WS11",
+      "name": "Integration, UI and acceptance",
+      "document": "subagents/WS11_orchestration_ui_integration.md",
+      "depends_on": [
+        "WS00",
+        "WS01",
+        "WS03",
+        "WS02",
+        "WS04",
+        "WS05",
+        "WS06",
+        "WS07",
+        "WS08",
+        "WS09",
+        "WS10"
+      ],
+      "spec_sections": [
+        "9.1",
+        "10",
+        "11"
+      ],
+      "tasks": [
+        {
+          "id": "WS11.01",
+          "title": "Monthly orchestration and recovery",
+          "files": [
+            "quant/run.py",
+            "quant/commands/run.py"
+          ],
+          "test_file": "tests/integration/test_ws11_01.py",
+          "contracts": [
+            "C11"
+          ],
+          "golden_cases": [
+            "pit_cutoff",
+            "execution",
+            "evaluation_revisions"
+          ],
+          "acceptance": "Test MASTER_SPEC9.1 step order: settle/mature/evaluate before fit; lock and publication precheck; coldstart BLOCKED no scores; pre-cutoff capture allows later publication; crash before publish leaves no cohort; retry and concurrent start cannot duplicate; failed scores still produce earlier labels/report.",
+          "verify": "python -m pytest tests/integration/test_ws11_01.py -q"
+        },
+        {
+          "id": "WS11.02",
+          "title": "Offline UI and evidence export",
+          "files": [
+            "quant/ui_export.py",
+            "ui/index.html",
+            "ui/app.js",
+            "ui/style.css",
+            "ui/vendor/chart.umd.js",
+            "ui/vendor/VERSION"
+          ],
+          "test_file": "tests/integration/test_ws11_02.py",
+          "contracts": [
+            "C11"
+          ],
+          "golden_cases": [
+            "hac_insufficient",
+            "revision_tracks"
+          ],
+          "acceptance": "Eight tabs work offline with empty/blocked/live/legacy states; output no numeric inference without uncertainty status; reject missing band labeled estimable; show generation/exec dates and pending orders; no console errors or font/CDN requests.",
+          "verify": "python -m pytest tests/integration/test_ws11_02.py -q"
+        },
+        {
+          "id": "WS11.03",
+          "title": "Verification, scheduling script and owner documentation",
+          "files": [
+            "quant/verify.py",
+            "quant/status.py",
+            "scripts/signoff.sh",
+            "monthly_cron.sh",
+            "README.md",
+            "AGENTS.md"
+          ],
+          "test_file": "tests/integration/test_ws11_03.py",
+          "contracts": [
+            "C11"
+          ],
+          "golden_cases": [
+            "governance"
+          ],
+          "acceptance": "Sign-off prints engineering/operational/longitudinal separately with PASS/FAIL/DEFERRED; real checks on isolated DB and frozen source; persisted report reproduces old evidence even after revisions; cron script only, no schedule installed; root docs distinguish unchanged legacy invariants from V2; no automatic pushes.",
+          "verify": "python -m pytest tests/integration/test_ws11_03.py -q"
+        }
+      ]
+    }
   ]
 }

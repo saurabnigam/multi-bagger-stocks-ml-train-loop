@@ -1,5 +1,7 @@
 # Context Brief for the V2 Engine Design (written 2026-09-05)
 
+> Historical context only. Revision2 of MASTER_SPEC.md, INTERFACES.md and contracts/ supersedes the seed hypotheses, private environment paths, dates and proposed defaults below. Do not implement this brief as an alternative contract.
+
 This is the single page every designer, reviewer and implementer reads first. It states what the owner wants, what exists today, what was found wrong with it, and the constraints. It does not decide the design; it seeds it. Challenge the seed hypotheses where they are wrong.
 
 ---

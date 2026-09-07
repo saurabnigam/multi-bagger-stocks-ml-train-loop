@@ -6,3 +6,21 @@ Append one section per workstream (format in `subagents/README.md` → Progress 
 Built: docs/spec/MASTER_SPEC.md, subagents/*.md, docs/spec/TEST_AND_VERIFICATION_PLAN.md, docs/spec/HANDOFF.md
 Tests: `pytest -q` (legacy suite) -> 58 passed
 Notes: no V2 code exists yet. WS00 starts from an empty `quant/` package.
+
+## Specification revision 2 — 2026-09-07 — Codex
+
+State: documentation correction complete; all 43 V2 implementation tasks pending.
+Base commit: `435b0c0a9875e59c094df1e349953865e0f1f0a4` on `v2-engine-spec`.
+Spec fingerprint: `3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f`.
+
+Files: master, canonical interfaces, SQL/config contracts, 23 synthetic examples, frozen legacy inventory, executable spec checker, verification plan, handoff, correction record, all twelve workstream docs and the 43-task manifest. Historical design drafts remain non-normative.
+
+Acceptance: `python3 docs/spec/check_spec.py` -> exit 0; 10 specification check groups PASS, 45 state tables and 4 cache tables checked; dependencies and task/document references validated. This check does not execute a V2 implementation.
+
+Regression: the existing dependency environment's Python 3.14.3 ran `-m pytest -q` -> exit 0; 58 passed in 5.47 seconds. The default system Python lacked pytest, so the pre-existing environment was used; no dependency installation was needed. `git diff --check` -> exit 0. Frozen legacy file hashes and the 2543/12/4773 source row counts match the recorded inventory.
+
+Review: see `docs/spec/REVISION_2_REVIEW.md` for gap-to-contract/test mapping and limitations. New checks include annual/Q4 coexistence, nullable-key rejection, immutable revisions, track separation, separate entry/exit order identities, integer weights, tied ranks, sign orientation, corporate-action arithmetic, HAC, maturity and promotion-budget examples.
+
+Deferred: production APIs, all task acceptance suites, recorded/live adapters, operational runs, longitudinal replay and any actual Gemini Flash execution. No V2 engineering completion or predictive-performance claim is made. Legacy source/database files remain unchanged.
+
+Next: hand the revision-2 HANDOFF section 1 prompt to the implementing assistant. Begin at WS00.01 after checking this spec fingerprint and the unchanged legacy baseline. No implementation task should be marked complete based on this documentation entry.
