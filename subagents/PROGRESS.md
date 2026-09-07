@@ -217,5 +217,18 @@ Deviations: none
 Deferred real checks: none
 Next: WS04.03
 
+## WS04.03 — Post-compute coverage and replay callbacks — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: b4fe770d10b7596ae3eb4b14d3c3332c94314c24
+Files: quant/data/gates.py, tests/unit/test_ws04_03.py
+Acceptance: `python -m pytest tests/unit/test_ws04_03.py -q` -> exit 0, 6 passed in 0.45 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 140 passed in 3.35s
+Contract cases: constant_rank, rank_ties
+Deviations: none
+Deferred real checks: none
+Next: WS05.01
+
+
 
 

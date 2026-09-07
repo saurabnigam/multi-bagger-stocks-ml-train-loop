@@ -285,7 +285,17 @@ def _run_post_gates(
 
             # Exclude structural non-applicability from denominator
             # If applies_to_financials is False, filter out financials from denominator
-            applicable_members = group
+            applies_fin = True
+            if "applies_to_financials" in group.columns:
+                applies_fin = bool(group["applies_to_financials"].iloc[0])
+            elif fid in ("roce@1", "accruals@1", "cash_conversion_3y@1", "leverage@1", "fcf_yield@1"):
+                applies_fin = False
+
+            if not applies_fin:
+                applicable_members = group[group["sector_group"] != "Financial Services"]
+            else:
+                applicable_members = group
+
             total_applicable = len(applicable_members)
             if total_applicable == 0:
                 continue
