@@ -1,0 +1,38 @@
+yahoo_sector,yahoo_industry,nse_sector,confidence
+Financial Services,Banks - Regional,Financial Services,1.0
+Financial Services,Banks - Diversified,Financial Services,1.0
+Financial Services,Credit Services,Financial Services,1.0
+Financial Services,Asset Management,Financial Services,1.0
+Financial Services,Insurance - Life,Financial Services,1.0
+Financial Services,Insurance - Diversified,Financial Services,1.0
+Financial Services,,Financial Services,0.95
+Technology,Software - Application,Information Technology,0.95
+Technology,Software - Infrastructure,Information Technology,0.95
+Technology,Information Technology Services,Information Technology,0.95
+Technology,,Information Technology,0.90
+Healthcare,Drug Manufacturers - Specialty & Generic,Healthcare,0.95
+Healthcare,Healthcare Plans,Healthcare,0.95
+Healthcare,Biotechnology,Healthcare,0.95
+Healthcare,,Healthcare,0.90
+Consumer Cyclical,Auto Manufacturers,Automobile and Auto Components,0.90
+Consumer Cyclical,Auto Parts,Automobile and Auto Components,0.90
+Consumer Cyclical,Textile Manufacturing,Textiles,0.90
+Consumer Cyclical,,Consumer Durables,0.70
+Industrials,Aerospace & Defense,Capital Goods,0.85
+Industrials,Electrical Equipment & Parts,Capital Goods,0.85
+Industrials,Engineering & Construction,Construction,0.85
+Industrials,,Capital Goods,0.75
+Basic Materials,Specialty Chemicals,Chemicals,0.90
+Basic Materials,Steel,Metals & Mining,0.90
+Basic Materials,,Materials,0.75
+Energy,Oil & Gas Refining & Marketing,Oil Gas & Consumable Fuels,0.90
+Energy,Oil & Gas Integrated,Oil Gas & Consumable Fuels,0.90
+Energy,,Oil Gas & Consumable Fuels,0.85
+Communication Services,Telecom Services,Telecommunication,0.95
+Communication Services,Entertainment,Media Entertainment & Publication,0.90
+Communication Services,,Telecommunication,0.80
+Real Estate,Real Estate - Development,Realty,0.90
+Real Estate,,Realty,0.85
+Utilities,Utilities - Regulated Electric,Power,0.90
+Utilities,,Utilities,0.85
+Consumer Defensive,,Fast Moving Consumer Goods,0.80

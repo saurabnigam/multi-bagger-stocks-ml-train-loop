@@ -1,0 +1,24 @@
+version,nse_sector,yahoo_industry_pattern,sector_group,macro_sector,merge_into,min_group_size,registered_on,decision_id
+1,Financial Services,,Financial Services,Financial Services,,8,2026-01-01,DEC_INIT
+1,Consumer Durables,,Consumer Durables,Consumer Discretionary,,8,2026-01-01,DEC_INIT
+1,Textiles,,Textiles,Consumer Discretionary,Consumer Durables,8,2026-01-01,DEC_INIT
+1,Media Entertainment & Publication,,Media Entertainment & Publication,Consumer Services,Consumer Services,8,2026-01-01,DEC_INIT
+1,Consumer Services,,Consumer Services,Consumer Services,,8,2026-01-01,DEC_INIT
+1,Diversified,,Diversified,Services,Services,8,2026-01-01,DEC_INIT
+1,Services,,Services,Services,,8,2026-01-01,DEC_INIT
+1,Telecommunication,,Telecommunication,Telecommunication,Services,8,2026-01-01,DEC_INIT
+1,Automobile and Auto Components,,Automobile and Auto Components,Consumer Discretionary,,8,2026-01-01,DEC_INIT
+1,Automobile,,Automobile and Auto Components,Consumer Discretionary,,8,2026-01-01,DEC_INIT
+1,Capital Goods,,Capital Goods,Industrials,,8,2026-01-01,DEC_INIT
+1,Chemicals,,Chemicals,Materials,,8,2026-01-01,DEC_INIT
+1,Construction,,Construction,Industrials,,8,2026-01-01,DEC_INIT
+1,Construction Materials,,Construction Materials,Materials,,8,2026-01-01,DEC_INIT
+1,Fast Moving Consumer Goods,,Fast Moving Consumer Goods,Consumer Staples,,8,2026-01-01,DEC_INIT
+1,Healthcare,,Healthcare,Healthcare,,8,2026-01-01,DEC_INIT
+1,Information Technology,,Information Technology,Information Technology,,8,2026-01-01,DEC_INIT
+1,Metals & Mining,,Metals & Mining,Materials,,8,2026-01-01,DEC_INIT
+1,Oil Gas & Consumable Fuels,,Oil Gas & Consumable Fuels,Energy,,8,2026-01-01,DEC_INIT
+1,Power,,Power,Utilities,,8,2026-01-01,DEC_INIT
+1,Realty,,Realty,Real Estate,,8,2026-01-01,DEC_INIT
+1,Forest Materials,,Forest Materials,Materials,Materials,8,2026-01-01,DEC_INIT
+1,Utilities,,Utilities,Utilities,,8,2026-01-01,DEC_INIT
