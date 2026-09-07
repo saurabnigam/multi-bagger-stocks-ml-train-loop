@@ -193,3 +193,16 @@ Deviations: none
 Deferred real checks: none
 Next: WS04.01
 
+## WS04.01 — Field bounds and drift — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: f65626b1cb1e5b15be81fe8817a3791a85cb992b
+Files: quant/data/contracts.py, config/field_contracts_v1.json, tests/unit/test_ws04_01.py
+Acceptance: `python -m pytest tests/unit/test_ws04_01.py -q` -> exit 0, 7 passed in 0.03 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 128 passed in 3.07s
+Contract cases: pit_cutoff
+Deviations: none
+Deferred real checks: none
+Next: WS04.02
+
+
