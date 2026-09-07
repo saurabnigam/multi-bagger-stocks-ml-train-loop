@@ -120,3 +120,15 @@ Contract cases: pit_cutoff
 Deviations: none
 Deferred real checks: none
 Next: WS03.01
+
+## WS03.01 — Throttled client, archive and units — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 00c8e285a852a32c2534f3b73361005fa7571ec8
+Files: quant/data/yahoo.py, tests/unit/test_ws03_01.py
+Acceptance: `python -m pytest tests/unit/test_ws03_01.py -q` -> exit 0, 4 passed in 2.84 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 97 passed in 1.76s
+Contract cases: source_basis, cost
+Deviations: none
+Deferred real checks: none
+Next: WS03.02
