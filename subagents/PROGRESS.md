@@ -371,6 +371,19 @@ Deviations: none
 Deferred real checks: none
 Next: WS07.05
 
+## WS07.05 — Backfill replay and warmup accounting — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 93e7ac14fb2da143eb91789c165d2077e68cfb6e
+Files: quant/evaluation/backfill.py, tests/unit/test_ws07_05.py
+Acceptance: `python -m pytest tests/unit/test_ws07_05.py -q` -> exit 0, 3 passed in 0.83 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 204 passed in 5.21s
+Contract cases: revision_tracks, cohort_maturity
+Deviations: none
+Deferred real checks: none
+Next: WS08.01
+
+
 
 
 
