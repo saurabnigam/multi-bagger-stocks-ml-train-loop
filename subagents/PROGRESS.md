@@ -49,4 +49,17 @@ Deviations: none
 Deferred real checks: none
 Next: WS00.03
 
+## WS00.03 — Trading calendar and execution clock — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: b5daea6e4b470bf7817eb48624128f133488f72c
+Files: quant/data/__init__.py, quant/data/calendar.py, tests/unit/test_ws00_03.py
+Acceptance: `python -m pytest tests/unit/test_ws00_03.py -q` -> exit 0, 3 passed in 0.47 seconds
+Regression: `python3 docs/spec/check_spec.py && python -m pytest -q` -> exit 0, 10 spec check groups PASS, 73 passed in 1.18s
+Contract cases: calendar_lags, execution, cohort_maturity, pit_cutoff
+Deviations: none
+Deferred real checks: none
+Next: WS00.04
+
+
 
