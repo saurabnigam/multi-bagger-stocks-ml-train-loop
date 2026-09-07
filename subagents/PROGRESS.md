@@ -359,5 +359,18 @@ Deviations: none
 Deferred real checks: none
 Next: WS07.04
 
+## WS07.04 — Leakage suite and stored-history curves — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 81dae80a56247c7c13dc14d0ea238714ebfe0d12
+Files: quant/evaluation/leakage.py, quant/evaluation/curves.py, tests/unit/test_ws07_04.py
+Acceptance: `python -m pytest tests/unit/test_ws07_04.py -q` -> exit 0, 4 passed in 0.71 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 201 passed in 4.78s
+Contract cases: planted_rank, pit_cutoff, negative_direction
+Deviations: none
+Deferred real checks: none
+Next: WS07.05
+
+
 
 
