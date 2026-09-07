@@ -132,3 +132,15 @@ Contract cases: source_basis, cost
 Deviations: none
 Deferred real checks: none
 Next: WS03.02
+
+## WS03.02 — Bitemporal statements and TTM — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 7a8ff9c9e53bf68dbf392dd758ca93bf34268e3d
+Files: quant/data/fundamentals.py, tests/unit/test_ws03_02.py
+Acceptance: `python -m pytest tests/unit/test_ws03_02.py -q` -> exit 0, 5 passed in 0.53 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 102 passed in 2.34s
+Contract cases: annual_quarterly, pit_cutoff, calendar_lags
+Deviations: none
+Deferred real checks: none
+Next: WS03.03
