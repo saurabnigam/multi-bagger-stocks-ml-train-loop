@@ -180,3 +180,16 @@ Contract cases: evaluation_revisions, split
 Deviations: none
 Deferred real checks: none
 Next: WS02.03
+
+## WS02.03 — Monthly panels, benchmark aggregates and manifest recovery — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 9ad5fa3f80c61c77ce8276fdbfa2db7dfa30554c
+Files: quant/data/benchmarks.py, quant/data/prices.py, tests/unit/test_ws02_03.py
+Acceptance: `python -m pytest tests/unit/test_ws02_03.py -q` -> exit 0, 4 passed in 0.59 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 121 passed in 4.60s
+Contract cases: pit_cutoff, cohort_maturity, source_basis
+Deviations: none
+Deferred real checks: none
+Next: WS04.01
+

@@ -12,7 +12,7 @@ import pandas as pd
 from quant.data.yahoo import YahooClient
 from quant.errors import Refused
 from quant.run import RunContext
-from quant.types import Result
+from quant.types import Check, Draft, Result
 
 
 PRICE_SCHEMA_PATH = "quant/db/price_schema.sql"
@@ -267,6 +267,7 @@ class PriceStore:
         """Return raw closing prices indexed by date with security_id columns."""
         if not security_ids:
             return pd.DataFrame()
+        security_ids = [int(x) for x in security_ids]
 
         placeholders = ",".join("?" for _ in security_ids)
         query = f"""
@@ -304,6 +305,7 @@ class PriceStore:
         """Return raw trading volume indexed by date with security_id columns."""
         if not security_ids:
             return pd.DataFrame()
+        security_ids = [int(x) for x in security_ids]
 
         placeholders = ",".join("?" for _ in security_ids)
         query = f"""
@@ -341,6 +343,7 @@ class PriceStore:
         """Return split-adjusted close rebased to end date."""
         if not security_ids:
             return pd.DataFrame()
+        security_ids = [int(x) for x in security_ids]
 
         placeholders = ",".join("?" for _ in security_ids)
         query = f"""
@@ -396,6 +399,7 @@ class PriceStore:
         """
         if not security_ids:
             return pd.DataFrame()
+        security_ids = [int(x) for x in security_ids]
 
         placeholders = ",".join("?" for _ in security_ids)
         query = f"""
@@ -461,6 +465,7 @@ class PriceStore:
         """Compute average daily turnover in INR over rolling window."""
         if not security_ids:
             return pd.DataFrame(columns=[f"adv_{window}_inr", f"n_days_{window}"])
+        security_ids = [int(x) for x in security_ids]
 
         placeholders = ",".join("?" for _ in security_ids)
         query = f"""
@@ -497,3 +502,122 @@ class PriceStore:
         res = pd.DataFrame.from_dict(out, orient="index")
         res.index.name = "security_id"
         return res
+
+    def manifest_write(self, output: Path | str, vintage_at: str) -> str:
+        """Write price manifest JSON for observations up to vintage_at."""
+        import hashlib
+        import json
+
+        out_path = Path(output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with self.conn() as p_conn:
+            cur = p_conn.cursor()
+            cur.execute(
+                """
+                SELECT security_id, date, close_raw, volume_raw, split_ratio, dividend_raw
+                FROM prices_daily
+                WHERE observed_at <= ?
+                ORDER BY security_id ASC, date ASC
+                """,
+                (vintage_at,),
+            )
+            rows = cur.fetchall()
+
+        rows_json = json.dumps([[r[0], r[1], float(r[2]), float(r[3]), float(r[4]), float(r[5])] for r in rows], sort_keys=True)
+        content_hash = hashlib.sha256(rows_json.encode("utf-8")).hexdigest()
+
+        manifest_data = {
+            "vintage_at": vintage_at,
+            "sha256": content_hash,
+            "row_count": len(rows),
+        }
+        with open(out_path, "w") as f:
+            json.dump(manifest_data, f, indent=2)
+
+        return content_hash
+
+    def manifest_verify(self, manifest: Path | str) -> Check:
+        """Verify price database matches committed manifest hash."""
+        import hashlib
+        import json
+
+        m_path = Path(manifest)
+        with open(m_path, "r") as f:
+            data = json.load(f)
+
+        expected_hash = data["sha256"]
+        vintage_at = data["vintage_at"]
+
+        with self.conn() as p_conn:
+            cur = p_conn.cursor()
+            cur.execute(
+                """
+                SELECT security_id, date, close_raw, volume_raw, split_ratio, dividend_raw
+                FROM prices_daily
+                WHERE observed_at <= ?
+                ORDER BY security_id ASC, date ASC
+                """,
+                (vintage_at,),
+            )
+            rows = cur.fetchall()
+
+        rows_json = json.dumps([[r[0], r[1], float(r[2]), float(r[3]), float(r[4]), float(r[5])] for r in rows], sort_keys=True)
+        current_hash = hashlib.sha256(rows_json.encode("utf-8")).hexdigest()
+
+        if current_hash == expected_hash:
+            return Check(
+                id="price_manifest",
+                status="PASS",
+                observed=current_hash,
+                expected=expected_hash,
+                reason="Price manifest matches",
+                blocking=True,
+            )
+        return Check(
+            id="price_manifest",
+            status="FAIL",
+            observed=current_hash,
+            expected=expected_hash,
+            reason="Price manifest hash mismatch",
+            blocking=True,
+        )
+
+
+def monthly_panel(ctx: RunContext, draft: Draft) -> pd.DataFrame:
+    """Build in-memory prices_monthly DataFrame matching state schema."""
+    store = getattr(ctx, "store", None) or PriceStore(ctx.cfg.paths.prices_db, state_conn=ctx.conn)
+    sids = sorted([int(x) for x in draft.members["security_id"].unique()])
+
+    close_df = store.close_raw(sids, start=draft.as_of, end=draft.as_of, vintage_at=draft.knowledge_cutoff)
+    tri_df = store.tri(sids, start=draft.as_of, end=draft.as_of, vintage_at=draft.knowledge_cutoff)
+    adv_df = store.adv_inr(sids, as_of=draft.as_of, vintage_at=draft.knowledge_cutoff, window=63)
+
+    records = []
+    manifest_sha = draft.source_refs.get("price_manifest_sha", "")
+
+    for sid in sids:
+        c_val = float(close_df[sid].iloc[0]) if not close_df.empty and sid in close_df.columns and not pd.isna(close_df[sid].iloc[0]) else np.nan
+        t_val = float(tri_df[sid].iloc[0]) if not tri_df.empty and sid in tri_df.columns and not pd.isna(tri_df[sid].iloc[0]) else np.nan
+        adv_row = adv_df.loc[sid] if sid in adv_df.index else {}
+        adv_val = adv_row.get("adv_63_inr", np.nan)
+        n_days = adv_row.get("n_days_63", 0)
+
+        records.append({
+            "cohort_id": draft.cohort_id,
+            "as_of": draft.as_of,
+            "security_id": sid,
+            "close_raw": c_val,
+            "tri": t_val,
+            "adv_63_inr": adv_val,
+            "n_days_63": int(n_days) if not pd.isna(n_days) else 0,
+            "mcap_inr": np.nan,
+            "shares_out": np.nan,
+            "quote_legacy": None,
+            "source": "yahoo",
+            "price_manifest_sha": manifest_sha,
+            "run_id": ctx.run_id,
+        })
+
+    return pd.DataFrame(records)
+
