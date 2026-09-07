@@ -229,6 +229,19 @@ Deviations: none
 Deferred real checks: none
 Next: WS05.01
 
+## WS05.01 — Restricted FactorInputs — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 168dda7e704172f8832a8cb4200424566378e9f5
+Files: quant/factors/__init__.py, quant/factors/base.py, quant/factors/inputs.py, tests/unit/test_ws05_01.py
+Acceptance: `python -m pytest tests/unit/test_ws05_01.py -q` -> exit 0, 4 passed in 0.48 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 144 passed in 3.46s
+Contract cases: pit_cutoff, holdings
+Deviations: none
+Deferred real checks: none
+Next: WS05.02
+
+
 
 
 
