@@ -335,3 +335,16 @@ Deviations: none
 Deferred real checks: none
 Next: WS07.02
 
+## WS07.02 — Statistical functions and oriented metrics — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: dc3d25b1695fa97f6c3ceca56ba4bfd80b741ca1
+Files: quant/evaluation/stats.py, quant/evaluation/metrics.py, tests/unit/test_ws07_02.py
+Acceptance: `python -m pytest tests/unit/test_ws07_02.py -q` -> exit 0, 10 passed in 0.72 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 192 passed in 5.48s
+Contract cases: hac, hac_insufficient, negative_direction, planted_rank
+Deviations: none
+Deferred real checks: none
+Next: WS07.03
+
+
