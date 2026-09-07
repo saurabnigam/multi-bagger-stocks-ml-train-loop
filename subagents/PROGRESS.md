@@ -275,10 +275,14 @@ Deviations: none
 Deferred real checks: none
 Next: WS05.05
 
-
-
-
-
-
-
-
+## WS05.05 — Registry, provenance and sector features — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 7a58ef5805225c56092d527efe8ed4da591a743d
+Files: quant/cli.py, quant/config.py, quant/factors/registry.py, quant/factors/sector.py, quant/commands/factors.py, tests/unit/test_ws05_05.py
+Acceptance: `python -m pytest tests/unit/test_ws05_05.py -q` -> exit 0, 5 passed in 1.01 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 161 passed in 5.64s
+Contract cases: pit_cutoff, constant_rank
+Deviations: none
+Deferred real checks: none
+Next: WS06.01

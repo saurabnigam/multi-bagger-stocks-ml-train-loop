@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any
+import os
 import tomllib
 
 
@@ -96,7 +97,11 @@ class Config:
 def load(path: str | Path | None = None) -> Config:
     repo_root = Path(__file__).resolve().parents[1]
     if path is None:
-        target_path = repo_root / "config/quant.toml"
+        cfg_env = os.environ.get("QUANT_CONFIG_PATH")
+        if cfg_env:
+            target_path = Path(cfg_env)
+        else:
+            target_path = repo_root / "config/quant.toml"
     else:
         target_path = Path(path)
         if not target_path.is_absolute():
@@ -105,4 +110,12 @@ def load(path: str | Path | None = None) -> Config:
     with open(target_path, "rb") as f:
         data = tomllib.load(f)
         
-    return Config(data, repo_root)
+    cfg = Config(data, repo_root)
+    overrides = {}
+    if "QUANT_DB_PATH" in os.environ:
+        overrides["db"] = os.environ["QUANT_DB_PATH"]
+    if "QUANT_PRICES_DB_PATH" in os.environ:
+        overrides["prices_db"] = os.environ["QUANT_PRICES_DB_PATH"]
+    if overrides:
+        cfg = cfg.with_paths(**overrides)
+    return cfg

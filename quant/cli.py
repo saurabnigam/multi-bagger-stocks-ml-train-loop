@@ -17,6 +17,14 @@ def register(group: str, name: str, handler: Callable, help_text: str) -> None:
 
 
 def _init_default_commands():
+    try:
+        import quant.commands.universe
+        import quant.commands.prices
+        import quant.commands.data
+        import quant.commands.factors
+    except ImportError:
+        pass
+
     if "db" not in _COMMAND_REGISTRY:
         register("db", "init", lambda args: 0, "Initialize database schema")
         register("db", "verify", lambda args: 0, "Verify database ledger")
