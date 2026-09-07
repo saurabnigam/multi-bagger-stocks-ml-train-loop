@@ -205,4 +205,17 @@ Deviations: none
 Deferred real checks: none
 Next: WS04.02
 
+## WS04.02 — Pre-computation gates — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 05ed00f915fa258416d649d0ca3ba302caae7a5e
+Files: quant/data/gates.py, tests/unit/test_ws04_02.py
+Acceptance: `python -m pytest tests/unit/test_ws04_02.py -q` -> exit 0, 6 passed in 0.36 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 134 passed in 3.70s
+Contract cases: pit_cutoff
+Deviations: none
+Deferred real checks: none
+Next: WS04.03
+
+
 
