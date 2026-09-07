@@ -298,3 +298,15 @@ Contract cases: weight_fit, equal_weights
 Deviations: none
 Deferred real checks: none
 Next: WS06.02
+
+## WS06.02 — Hierarchical and flat composites, coverage and screens — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 543425cba2553d16af09c99481a22ac5df6e4284
+Files: quant/model/composite.py, quant/model/screens.py, tests/unit/test_ws06_02.py
+Acceptance: `python -m pytest tests/unit/test_ws06_02.py -q` -> exit 0, 5 passed in 0.72 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 173 passed in 4.71s
+Contract cases: negative_direction, rank_ties
+Deviations: none
+Deferred real checks: none
+Next: WS06.03
