@@ -144,3 +144,15 @@ Contract cases: annual_quarterly, pit_cutoff, calendar_lags
 Deviations: none
 Deferred real checks: none
 Next: WS03.03
+
+## WS03.03 — Holdings, attributes and capture command — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 04a432a1bb43b8be92df2709e3e1104e76c72e34
+Files: quant/data/holdings.py, quant/data/attributes.py, quant/data/capture.py, quant/commands/data.py, tests/unit/test_ws03_03.py
+Acceptance: `python -m pytest tests/unit/test_ws03_03.py -q` -> exit 0, 5 passed in 0.76 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 107 passed in 2.46s
+Contract cases: holdings, pit_cutoff
+Deviations: none
+Deferred real checks: none
+Next: WS02.01
