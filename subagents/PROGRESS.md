@@ -61,5 +61,18 @@ Deviations: none
 Deferred real checks: none
 Next: WS00.04
 
+## WS00.04 — Run lifecycle and ledger recovery — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 8e37e71dbbc82226292e105e4685ff86cb32cfd5
+Files: quant/run.py, quant/db/ledger.py, tests/unit/test_ws00_04.py
+Acceptance: `python -m pytest tests/unit/test_ws00_04.py -q` -> exit 0, 3 passed in 0.61 seconds
+Regression: `python3 docs/spec/check_spec.py && python -m pytest -q` -> exit 0, 10 spec check groups PASS, 76 passed in 1.44s
+Contract cases: evaluation_revisions
+Deviations: none
+Deferred real checks: none
+Next: WS00.05
+
+
 
 
