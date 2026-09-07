@@ -37,3 +37,16 @@ Deviations: none
 Deferred real checks: none
 Next: WS00.02
 
+## WS00.02 — Canonical schemas and protected writes — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 5fca6f809985ba3b490f20bbd5c7f8fb258756e6
+Files: quant/db/__init__.py, quant/db/core.py, quant/db/schema.sql, quant/db/price_schema.sql, tests/unit/test_ws00_02.py
+Acceptance: `python -m pytest tests/unit/test_ws00_02.py -q` -> exit 0, 5 passed in 0.54 seconds
+Regression: `python3 docs/spec/check_spec.py && python -m pytest -q` -> exit 0, 10 spec check groups PASS, 70 passed in 5.02s
+Contract cases: annual_quarterly, evaluation_revisions, revision_tracks
+Deviations: none
+Deferred real checks: none
+Next: WS00.03
+
+
