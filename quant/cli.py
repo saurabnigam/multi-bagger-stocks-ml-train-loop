@@ -23,6 +23,7 @@ def _init_default_commands():
         import quant.commands.data
         import quant.commands.factors
         import quant.commands.model
+        import quant.commands.evaluate
     except ImportError:
         pass
 

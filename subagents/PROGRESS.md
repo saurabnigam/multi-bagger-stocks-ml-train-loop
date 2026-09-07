@@ -347,4 +347,17 @@ Deviations: none
 Deferred real checks: none
 Next: WS07.03
 
+## WS07.03 — Revision selection and causal training history — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 2842fe31a980554c03fe0b2fae62241680a6d093
+Files: quant/cli.py, quant/commands/evaluate.py, quant/evaluation/evaluate.py, quant/evaluation/walkforward.py, tests/unit/test_ws07_03.py
+Acceptance: `python -m pytest tests/unit/test_ws07_03.py -q` -> exit 0, 5 passed in 0.82 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 197 passed in 5.15s
+Contract cases: evaluation_revisions, pit_cutoff
+Deviations: none
+Deferred real checks: none
+Next: WS07.04
+
+
 
