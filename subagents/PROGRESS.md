@@ -395,8 +395,14 @@ Deviations: none
 Deferred real checks: none
 Next: WS08.02
 
-
-
-
-
-
+## WS08.02 — Pending orders, dated fills and NAV — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 7c78844fa0076a084eb75ce7c83f120e79ec36e1
+Files: quant/cli.py, quant/commands/portfolio.py, quant/portfolio/paper.py, tests/unit/test_ws08_02.py
+Acceptance: `python -m pytest tests/unit/test_ws08_02.py -q` -> exit 0, 9 passed in 0.84 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 219 passed in 7.65s
+Contract cases: execution, split_dividend, cost
+Deviations: none
+Deferred real checks: none
+Next: WS08.03
