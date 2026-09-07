@@ -156,3 +156,15 @@ Contract cases: holdings, pit_cutoff
 Deviations: none
 Deferred real checks: none
 Next: WS02.01
+
+## WS02.01 — Price schema, basis normalization and TRI — 2026-09-07 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 05b348149e6fbc77dcf95eb774a3f6834b07fe41
+Files: quant/data/prices.py, tests/unit/test_ws02_01.py
+Acceptance: `python -m pytest tests/unit/test_ws02_01.py -q` -> exit 0, 6 passed in 0.46 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 113 passed in 3.03s
+Contract cases: source_basis, split, dividend, split_dividend
+Deviations: none
+Deferred real checks: none
+Next: WS02.02
