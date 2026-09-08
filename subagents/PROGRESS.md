@@ -503,3 +503,16 @@ Deviations: none
 Deferred real checks: none
 Next: WS11.01
 
+## WS11.01 — Monthly orchestration and recovery — 2026-09-08 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 2ffa356a68393e8392fb1fa877ec10360a0fbffb
+Files: quant/run.py, quant/commands/run.py, quant/cli.py, tests/integration/test_ws11_01.py
+Acceptance: `python -m pytest tests/integration/test_ws11_01.py -q` -> exit 0, 6 passed in 1.53 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 271 passed in 9.97s
+Contract cases: pit_cutoff, execution, evaluation_revisions
+Deviations: none
+Deferred real checks: none
+Next: WS11.02
+
+

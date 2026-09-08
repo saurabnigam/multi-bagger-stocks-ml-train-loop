@@ -27,6 +27,7 @@ def _init_default_commands():
         import quant.commands.portfolio
         import quant.commands.kb
         import quant.commands.migrate
+        import quant.commands.run
     except ImportError:
         pass
 
@@ -76,6 +77,9 @@ def main(argv: list[str] | None = None) -> int:
             cmd_p.add_argument("--through", type=str, help="Through date (YYYY-MM-DD)")
             cmd_p.add_argument("--dry-run", action="store_true", help="Perform dry run without writing")
             cmd_p.add_argument("--legacy-db", type=str, help="Legacy database path")
+            cmd_p.add_argument("--skip-capture", action="store_true", help="Skip data capture phase")
+            cmd_p.add_argument("--stop-after", type=str, help="Stop pipeline after given phase")
+            cmd_p.add_argument("--push", action="store_true", help="Push changes to remote repository")
 
     try:
         args = parser.parse_args(argv)
