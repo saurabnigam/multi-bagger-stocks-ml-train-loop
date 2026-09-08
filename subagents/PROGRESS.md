@@ -467,4 +467,17 @@ Deviations: none
 Deferred real checks: none
 Next: WS10.01
 
+## WS10.01 — Source inventory and fixture extraction — 2026-09-08 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 2b5ca62e153f360980cf7bc5eb478b0f80bb5f25
+Files: quant/migrate/__init__.py, quant/migrate/legacy.py, scripts/build_legacy_sample.py, tests/unit/test_ws10_01.py
+Acceptance: `python -m pytest tests/unit/test_ws10_01.py -q` -> exit 0, 4 passed in 0.17 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 253 passed in 8.51s
+Contract cases: annual_quarterly
+Deviations: none
+Deferred real checks: none
+Next: WS10.02
+
+
 
