@@ -490,3 +490,16 @@ Contract cases: revision_tracks
 Deviations: none
 Deferred real checks: none
 Next: WS10.03
+
+## WS10.03 — Attribution and migration repeatability — 2026-09-08 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: a1dd215e0fb12bb0e97df17961b7b0bfd3989e2c
+Files: quant/cli.py, quant/migrate/legacy.py, quant/commands/migrate.py, knowledge/decisions/ADR-D-0000-migration.md, tests/unit/test_ws10_03.py
+Acceptance: `python -m pytest tests/unit/test_ws10_03.py -q` -> exit 0, 7 passed in 2.09 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 265 passed in 9.42s
+Contract cases: evaluation_revisions
+Deviations: none
+Deferred real checks: none
+Next: WS11.01
+

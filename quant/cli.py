@@ -26,6 +26,7 @@ def _init_default_commands():
         import quant.commands.evaluate
         import quant.commands.portfolio
         import quant.commands.kb
+        import quant.commands.migrate
     except ImportError:
         pass
 
@@ -73,6 +74,8 @@ def main(argv: list[str] | None = None) -> int:
             cmd_p.add_argument("--config", type=str, help="Config path")
             cmd_p.add_argument("--cohort-id", type=str, help="Cohort identifier")
             cmd_p.add_argument("--through", type=str, help="Through date (YYYY-MM-DD)")
+            cmd_p.add_argument("--dry-run", action="store_true", help="Perform dry run without writing")
+            cmd_p.add_argument("--legacy-db", type=str, help="Legacy database path")
 
     try:
         args = parser.parse_args(argv)

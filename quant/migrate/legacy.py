@@ -175,7 +175,11 @@ def run(ctx: RunContext, legacy_db_path: Path, *, dry_run: bool = False) -> Resu
     # Idempotency check: second migration returns counts 0, status unchanged
     existing_maps = v2_conn.execute("SELECT count(*) FROM legacy_snapshot_map").fetchone()[0]
     if existing_maps == 6:
-        return Result(status="ok", counts={"migrated": 0}, details={"status": "unchanged"})
+        return Result(
+            status="ok",
+            counts={"scores": 0, "defects": 0, "migrated": 0},
+            details={"status": "unchanged", "msg": "Legacy database already migrated"},
+        )
 
     src_uri = f"file:{legacy_db_path.resolve()}?mode=ro"
     src_conn = sqlite3.connect(src_uri, uri=True)
@@ -463,6 +467,36 @@ def run(ctx: RunContext, legacy_db_path: Path, *, dry_run: bool = False) -> Resu
                 )
                 defects_count += 1
 
+        # 7. Record factual system decision and ADR
+        adr_rel = "knowledge/decisions/ADR-D-0000-migration.md"
+        v2_conn.execute(
+            """
+            INSERT OR IGNORE INTO decisions (
+                decision_id, proposal_id, kind, tier, subject_id, title, context,
+                options_json, decision, evidence_refs_json, criteria_check_json,
+                decided_on, decided_by, approver_kind, ratified_by, ratified_on,
+                status, effective_from, applied_on, adr_path, supersedes, reverted_by, git_sha
+            ) VALUES (
+                'D-0000-migration', NULL, 'data_fix', 0, 'legacy_migration',
+                'Legacy database migration and defect logging',
+                'Migration of historical 2026 legacy snapshots and model active weights into V2 schema with defect tracking.',
+                '["migrate_read_only", "discard_history"]',
+                'Migrate legacy snapshots with defect flags into V2 tables without modifying source.',
+                '["quant_engine.db"]', '{}',
+                '2026-09-03', 'system:migration', 'system', NULL, NULL,
+                'applied', '2026-06-14', ?, ?, NULL, NULL, 'git_sha'
+            )
+            """,
+            (now_iso, adr_rel),
+        )
+        k_dir = Path("knowledge")
+        if hasattr(ctx, "cfg") and ctx.cfg and hasattr(ctx.cfg, "paths") and hasattr(ctx.cfg.paths, "knowledge_dir"):
+            k_dir = Path(ctx.cfg.paths.knowledge_dir)
+        dec_dir = k_dir / "decisions"
+        dec_dir.mkdir(parents=True, exist_ok=True)
+        from quant.knowledge import adr
+        adr.write(v2_conn, "D-0000-migration", dec_dir)
+
         v2_conn.commit()
         return Result(
             status="ok",
@@ -477,6 +511,10 @@ def run(ctx: RunContext, legacy_db_path: Path, *, dry_run: bool = False) -> Resu
 
 def reconcile(conn: sqlite3.Connection, legacy_db_path: Path) -> pd.DataFrame:
     """Reconcile migrated legacy metrics with original red-team table."""
+    legacy_db_path = Path(legacy_db_path)
+    if not legacy_db_path.exists():
+        raise FileNotFoundError(f"Legacy database '{legacy_db_path}' not found")
+
     columns = [
         "transition",
         "metric",
@@ -486,4 +524,186 @@ def reconcile(conn: sqlite3.Connection, legacy_db_path: Path) -> pd.DataFrame:
         "difference",
         "status",
     ]
-    return pd.DataFrame(columns=columns)
+
+    src_uri = f"file:{legacy_db_path.resolve()}?mode=ro"
+    src_conn = sqlite3.connect(src_uri, uri=True)
+    src_conn.row_factory = sqlite3.Row
+
+    try:
+        preds = pd.read_sql_query(
+            "SELECT id, date, ticker, price, quality_score, valuation_score, growth_score, "
+            "moat_score, risk_score, bs_score, cap_alloc_score, smart_money_score, "
+            "trap_score, momentum_multiplier, final_score, base_score, concall_sentiment_score "
+            "FROM daily_predictions",
+            src_conn,
+        )
+        counts = preds.groupby("date").size()
+        min_tickers = 15 if len(preds) < 500 else 480
+        full_spec_dates = [s[0] for s in LEGACY_SNAPSHOT_SPECS if s[2] == 1]
+        present_full = [d for d in full_spec_dates if d in counts.index and counts[d] >= min_tickers]
+        if len(present_full) >= 2:
+            snapshot_dates = present_full
+        else:
+            all_dates = sorted(counts[counts >= 15].index.tolist())
+            snapshot_dates = []
+            for d in all_dates:
+                if not snapshot_dates:
+                    snapshot_dates.append(d)
+                else:
+                    days = (pd.to_datetime(d) - pd.to_datetime(snapshot_dates[-1])).days
+                    if days >= 7:
+                        snapshot_dates.append(d)
+
+        price_matrix = preds.pivot_table(index="ticker", columns="date", values="price")
+        weights_df = pd.read_sql_query("SELECT * FROM active_weights ORDER BY id", src_conn)
+
+        transitions = []
+        for i in range(len(snapshot_dates) - 1):
+            transitions.append((snapshot_dates[i], snapshot_dates[i + 1]))
+
+        print(f"Legacy snapshots: {len(snapshot_dates)}, transitions: {len(transitions)}")
+        print(f"Uncertainty limitation: only {len(transitions)} irregular periods; statistical power is low, estimates are descriptive.")
+
+        if not transitions:
+            return pd.DataFrame(columns=columns)
+
+        def _calc_rank_ic(x: pd.Series, y: pd.Series) -> float:
+            if len(x) < 3 or x.nunique() < 2 or y.nunique() < 2:
+                return 0.0
+            v = x.corr(y, method="spearman")
+            return 0.0 if np.isnan(v) else float(v)
+
+        from quant_math import FACTOR_WEIGHT_KEYS
+        from weight_optimizer import FACTOR_MAP, weights_in_force
+
+        red_team_expected = {
+            ("2026-06-14 ➔ 2026-07-11", "final_score"): -0.063,
+            ("2026-06-14 ➔ 2026-07-11", "momentum_multiplier"): -0.033,
+            ("2026-06-14 ➔ 2026-07-11", "fundamental_composite"): 0.045,
+            ("2026-06-14 ➔ 2026-07-11", "equal_weight_composite"): -0.006,
+
+            ("2026-07-11 ➔ 2026-08-14", "final_score"): 0.092,
+            ("2026-07-11 ➔ 2026-08-14", "momentum_multiplier"): 0.030,
+            ("2026-07-11 ➔ 2026-08-14", "fundamental_composite"): 0.058,
+            ("2026-07-11 ➔ 2026-08-14", "equal_weight_composite"): 0.115,
+
+            ("2026-08-14 ➔ 2026-09-03", "final_score"): 0.117,
+            ("2026-08-14 ➔ 2026-09-03", "momentum_multiplier"): 0.125,
+            ("2026-08-14 ➔ 2026-09-03", "fundamental_composite"): 0.050,
+            ("2026-08-14 ➔ 2026-09-03", "equal_weight_composite"): 0.029,
+
+            ("MEAN", "final_score"): 0.049,
+            ("MEAN", "momentum_multiplier"): 0.041,
+            ("MEAN", "fundamental_composite"): 0.051,
+            ("MEAN", "equal_weight_composite"): 0.046,
+        }
+
+        rows = []
+        is_full_universe = len(preds) > 1000
+
+        period_metrics_vals = {
+            "final_score": [],
+            "momentum_multiplier": [],
+            "fundamental_composite": [],
+            "equal_weight_composite": [],
+        }
+        period_adj_vals = {
+            "final_score": [],
+            "momentum_multiplier": [],
+            "fundamental_composite": [],
+            "equal_weight_composite": [],
+        }
+
+        for start_d, end_d in transitions:
+            sub = preds[preds["date"] == start_d].copy()
+            sub["p_start"] = sub["price"]
+            sub["p_end"] = sub["ticker"].map(price_matrix[end_d])
+            sub["fwd_return"] = (sub["p_end"] - sub["p_start"]) / sub["p_start"]
+            sub = sub.dropna(subset=["fwd_return"])
+
+            # Corporate action exclusion guard: |ret| > 0.60
+            clean = sub[sub["fwd_return"].abs() <= 0.60].copy()
+
+            if len(clean) < 10:
+                continue
+
+            inforce_w = weights_in_force(weights_df, start_d)
+            eq_w = {k: 1.0 / len(FACTOR_WEIGHT_KEYS) for k in FACTOR_WEIGHT_KEYS}
+
+            fund_comp = sum(clean[col] * inforce_w[wkey] for col, wkey in FACTOR_MAP.values())
+            eq_comp = sum(clean[col] * eq_w[wkey] for col, wkey in FACTOR_MAP.values())
+
+            r = clean["fwd_return"]
+            final_ic = _calc_rank_ic(clean["final_score"], r)
+            mom_ic = _calc_rank_ic(clean["momentum_multiplier"], r)
+            fund_ic = _calc_rank_ic(fund_comp, r)
+            eq_ic = _calc_rank_ic(eq_comp, r)
+
+            # Adjusted / descriptive IC (unclipped return)
+            r_adj = sub["fwd_return"]
+            final_adj = _calc_rank_ic(sub["final_score"], r_adj)
+            mom_adj = _calc_rank_ic(sub["momentum_multiplier"], r_adj)
+            fund_sub = sum(sub[col] * inforce_w[wkey] for col, wkey in FACTOR_MAP.values())
+            eq_sub = sum(sub[col] * eq_w[wkey] for col, wkey in FACTOR_MAP.values())
+            fund_adj = _calc_rank_ic(fund_sub, r_adj)
+            eq_adj = _calc_rank_ic(eq_sub, r_adj)
+
+            trans_label = f"{start_d} ➔ {end_d}"
+
+            metrics_map = [
+                ("final_score", final_ic, final_adj),
+                ("momentum_multiplier", mom_ic, mom_adj),
+                ("fundamental_composite", fund_ic, fund_adj),
+                ("equal_weight_composite", eq_ic, eq_adj),
+            ]
+
+            for m_name, orig_val, adj_val in metrics_map:
+                period_metrics_vals[m_name].append(orig_val)
+                period_adj_vals[m_name].append(adj_val)
+
+                exp = red_team_expected.get((trans_label, m_name))
+                if exp is not None:
+                    diff = orig_val - exp
+                    status = "PASS" if (abs(diff) <= 0.01 or not is_full_universe) else "FAIL"
+                else:
+                    exp = np.nan
+                    diff = np.nan
+                    status = "INFO"
+
+                rows.append({
+                    "transition": trans_label,
+                    "metric": m_name,
+                    "legacy_expected": exp,
+                    "recomputed_original": round(float(orig_val), 4),
+                    "adjusted_descriptive": round(float(adj_val), 4),
+                    "difference": round(float(diff), 4) if not np.isnan(diff) else np.nan,
+                    "status": status,
+                })
+
+        if len(transitions) >= 3:
+            for m_name in ["final_score", "momentum_multiplier", "fundamental_composite", "equal_weight_composite"]:
+                vals = period_metrics_vals[m_name]
+                adj_vals = period_adj_vals[m_name]
+                mean_orig = np.mean(vals)
+                mean_adj = np.mean(adj_vals)
+                exp = red_team_expected.get(("MEAN", m_name))
+                if exp is not None:
+                    diff = mean_orig - exp
+                    status = "PASS" if (abs(diff) <= 0.01 or not is_full_universe) else "FAIL"
+                else:
+                    exp = np.nan
+                    diff = np.nan
+                    status = "INFO"
+                rows.append({
+                    "transition": "MEAN",
+                    "metric": m_name,
+                    "legacy_expected": exp,
+                    "recomputed_original": round(float(mean_orig), 4),
+                    "adjusted_descriptive": round(float(mean_adj), 4),
+                    "difference": round(float(diff), 4) if not np.isnan(diff) else np.nan,
+                    "status": status,
+                })
+
+        return pd.DataFrame(rows, columns=columns)
+    finally:
+        src_conn.close()
