@@ -430,3 +430,15 @@ Contract cases: governance
 Deviations: none
 Deferred real checks: none
 Next: WS09.02
+
+## WS09.02 — Criteria and fixed review opportunities — 2026-09-08 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: f6be652da4c38901d2252850047ed6b7d3b36afe
+Files: quant/knowledge/review.py, tests/unit/test_ws09_02.py
+Acceptance: `python -m pytest tests/unit/test_ws09_02.py -q` -> exit 0, 6 passed in 1.31 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 237 passed in 6.84s
+Contract cases: negative_direction, hac_insufficient, promotion_budget
+Deviations: none
+Deferred real checks: none
+Next: WS09.03
