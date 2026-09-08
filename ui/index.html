@@ -3,46 +3,187 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multibagger Screener v2</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>Antigravity Quant Engine V2</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Chart.js for rendering cash flow charts -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="vendor/chart.umd.js"></script>
 </head>
 <body>
-    <div class="app-container">
-        
-        <!-- Sidebar: Master View -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <h2>Antigravity Quant</h2>
-                <p>V16 Self-Learning Engine</p>
-                <div id="ai-weights-container" style="font-size: 11px; margin-top: 8px; color: #666; background: #f0f0f5; padding: 6px; border-radius: 4px; border: 1px solid #d1d1d6;">
-                    <!-- Weights injected by JS -->
-                </div>
-                <div class="sidebar-tabs" style="display: flex; margin-top: 12px; gap: 8px;">
-                    <button id="tab-accepted" class="tab-btn active" style="flex: 1; padding: 6px; font-weight: 600; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer;">Accepted</button>
-                    <button id="tab-rejected" class="tab-btn" style="flex: 1; padding: 6px; font-weight: 600; background: #e5e5ea; color: #333; border: none; border-radius: 4px; cursor: pointer;">Rejected</button>
-                    <button id="tab-turnaround" class="tab-btn" style="flex: 1; padding: 6px; font-size: 11px; font-weight: 600; background: #ff9500; color: white; border: none; border-radius: 4px; cursor: pointer;">Turnaround</button>
-                </div>
-            </div>
-            <ul id="stock-list" class="stock-list">
-                <!-- Dynamically populated via JS -->
-            </ul>
-        </aside>
-
-        <!-- Main Content: Detail View -->
-        <main class="main-content">
-            <div id="detail-view" class="detail-view empty-state">
-                <div class="empty-icon">📈</div>
-                <h3>Select a stock to view detailed analysis</h3>
-                <p>All quantitative metrics and red-team audits are loaded.</p>
-            </div>
-        </main>
-
+    <div class="header-bar">
+        <div class="brand">
+            <h1>Antigravity Quant Engine</h1>
+            <span class="version-tag">V2 Institutional</span>
+        </div>
+        <div class="status-summary" id="system-status-summary" data-supported-states="empty,blocked,live,legacy">
+            <span class="status-badge badge-live" id="sys-track-badge">LIVE</span>
+            <span class="meta-item">As-Of: <b id="sys-as-of">--</b></span>
+            <span class="meta-item">Cutoff: <span id="sys-cutoff">--</span></span>
+            <span class="meta-item">Generated: <span id="sys-generated">--</span></span>
+        </div>
     </div>
 
+    <!-- Navigation: 8 Core Tabs -->
+    <nav class="main-nav">
+        <button id="tab-ranking" class="nav-tab active" data-tab="ranking">Ranking</button>
+        <button id="tab-learning" class="nav-tab" data-tab="learning">Learning</button>
+        <button id="tab-scoreboard" class="nav-tab" data-tab="scoreboard">Scoreboard</button>
+        <button id="tab-factors" class="nav-tab" data-tab="factors">Factors</button>
+        <button id="tab-sectors" class="nav-tab" data-tab="sectors">Sectors</button>
+        <button id="tab-data" class="nav-tab" data-tab="data">Data</button>
+        <button id="tab-knowledge" class="nav-tab" data-tab="knowledge">Knowledge</button>
+        <button id="tab-legacy" class="nav-tab" data-tab="legacy">Legacy</button>
+    </nav>
+
+    <!-- Tab Contents -->
+    <div class="tab-body-container">
+        <!-- Tab 1: Ranking -->
+        <section id="content-ranking" class="tab-pane active">
+            <div class="ranking-layout">
+                <aside class="sidebar">
+                    <div class="sidebar-header">
+                        <div class="sidebar-tabs">
+                            <button id="subtab-accepted" class="subtab-btn active">Accepted</button>
+                            <button id="subtab-rejected" class="subtab-btn">Rejected</button>
+                            <button id="subtab-turnaround" class="subtab-btn">Turnaround</button>
+                        </div>
+                    </div>
+                    <ul id="stock-list" class="stock-list">
+                        <!-- Populated by JS -->
+                    </ul>
+                </aside>
+                <main class="main-content">
+                    <div id="detail-view" class="detail-view empty-state">
+                        <div class="empty-icon">📈</div>
+                        <h3>Select a stock to view detailed analysis</h3>
+                        <p>All quantitative factors, weights, and decision traces are available.</p>
+                    </div>
+                </main>
+            </div>
+        </section>
+
+        <!-- Tab 2: Learning -->
+        <section id="content-learning" class="tab-pane">
+            <div class="pane-header">
+                <h2>Multi-Period Out-of-Sample Learning Curves</h2>
+                <p>Oriented Rank IC, walk-forward test of learning rule, and empirical confidence intervals.</p>
+            </div>
+            <div class="pane-content">
+                <div class="card chart-card">
+                    <canvas id="learning-chart" height="100"></canvas>
+                </div>
+                <div class="card table-card">
+                    <h3>Evaluations & Out-of-Sample Performance</h3>
+                    <div id="evaluations-table-container">
+                        <!-- Table injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 3: Scoreboard -->
+        <section id="content-scoreboard" class="tab-pane">
+            <div class="pane-header">
+                <h2>Paper Portfolios, Execution & Scoreboard</h2>
+                <p>Simulated portfolios, pending execution orders, benchmark comparisons, and net selection spread.</p>
+            </div>
+            <div class="pane-content">
+                <div class="card table-card">
+                    <h3>Pending Orders (Next Session Execution)</h3>
+                    <div id="pending-orders-container">
+                        <!-- Table injected by JS -->
+                    </div>
+                </div>
+                <div class="card table-card">
+                    <h3>Portfolio Scoreboard & Benchmark Pairs</h3>
+                    <div id="portfolios-container">
+                        <!-- Portfolios injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 4: Factors -->
+        <section id="content-factors" class="tab-pane">
+            <div class="pane-header">
+                <h2>Factor Registry & Operational Diagnostics</h2>
+                <p>Pre-registered factor definitions, formulas, coverage contracts, and active model weights.</p>
+            </div>
+            <div class="pane-content">
+                <div class="card table-card">
+                    <div id="factors-container">
+                        <!-- Factors injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 5: Sectors -->
+        <section id="content-sectors" class="tab-pane">
+            <div class="pane-header">
+                <h2>Sector Group Taxonomy & Neutralisation</h2>
+                <p>Industry mapping, macro sectors, and minimum group constraints for centered rank calculations.</p>
+            </div>
+            <div class="pane-content">
+                <div class="card table-card">
+                    <div id="sectors-container">
+                        <!-- Sectors injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 6: Data -->
+        <section id="content-data" class="tab-pane">
+            <div class="pane-header">
+                <h2>Data Ingestion, Point-In-Time Captures & Quality Gates</h2>
+                <p>Strict observation cutoffs, capture manifests, pre-compute G1-G7 and post-compute G8-G10 gate audits.</p>
+            </div>
+            <div class="pane-content">
+                <div class="card table-card">
+                    <div id="data-provenance-container">
+                        <!-- Provenance injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 7: Knowledge -->
+        <section id="content-knowledge" class="tab-pane">
+            <div class="pane-header">
+                <h2>Knowledge Base, Governance & Decisions</h2>
+                <p>Architecture Decision Records (ADRs), proposals, review budget, and human co-sign ratifications.</p>
+            </div>
+            <div class="pane-content">
+                <div class="card table-card">
+                    <h3>Decisions & Architecture Records</h3>
+                    <div id="decisions-container">
+                        <!-- Decisions injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 8: Legacy -->
+        <section id="content-legacy" class="tab-pane">
+            <div class="pane-header">
+                <h2>Historical 2026 Legacy Snapshots & Red-Team Audit</h2>
+                <p>Read-only migration of V18 active weights, attribution reconciliation, and flagged defects.</p>
+            </div>
+            <div class="pane-content">
+                <div class="card table-card">
+                    <div id="legacy-container">
+                        <!-- Legacy details injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Offline local scripts -->
     <script src="data.js"></script>
+    <script src="data_learning.js"></script>
+    <script src="data_scoreboard.js"></script>
+    <script src="data_factors.js"></script>
+    <script src="data_kb.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
