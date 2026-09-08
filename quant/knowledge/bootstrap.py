@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 import sqlite3
 from typing import TYPE_CHECKING, Any
 
@@ -56,6 +57,25 @@ def seed(ctx: RunContext, spec_sha256: str) -> Result:
         """,
         (json.dumps([spec_sha256]), timestamp, git_sha),
     )
+
+    k_dir = Path(ctx.cfg.paths.knowledge_dir) if hasattr(ctx.cfg, "paths") and hasattr(ctx.cfg.paths, "knowledge_dir") else Path("knowledge")
+    adr_file = k_dir / "decisions" / "ADR-0001-bootstrap.md"
+    adr_file.parent.mkdir(parents=True, exist_ok=True)
+    if not adr_file.exists():
+        adr_file.write_text(
+            f"# ADR: System bootstrap launch set (DEC_BOOTSTRAP)\n\n"
+            f"- **Decision ID:** DEC_BOOTSTRAP\n"
+            f"- **Date:** {timestamp}\n"
+            f"- **Tier:** Tier 0\n"
+            f"- **Kind:** system_bootstrap\n"
+            f"- **Subject ID:** launch_set\n"
+            f"- **Approver Kind:** system\n"
+            f"- **Decided By:** system\n"
+            f"- **Status:** applied\n\n"
+            f"## Context\nInitial system bootstrap referencing spec hash {spec_sha256}.\n\n"
+            f"## Decision\napproved\n",
+            encoding="utf-8",
+        )
 
     # 2. Seed launch models
     seed_models(ctx, "DEC_BOOTSTRAP")

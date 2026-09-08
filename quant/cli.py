@@ -25,6 +25,7 @@ def _init_default_commands():
         import quant.commands.model
         import quant.commands.evaluate
         import quant.commands.portfolio
+        import quant.commands.kb
     except ImportError:
         pass
 
@@ -62,11 +63,16 @@ def main(argv: list[str] | None = None) -> int:
         cmd_subparsers = grp_parser.add_subparsers(dest="command", help=f"{grp} subcommands")
         for cmd_name, (handler, h_text) in cmds.items():
             cmd_p = cmd_subparsers.add_parser(cmd_name, help=h_text)
+            cmd_p.add_argument("target", nargs="?", default=None, help="Target ID (e.g. proposal_id, decision_id)")
             cmd_p.add_argument("--commit", action="store_true", help="Commit changes")
             cmd_p.add_argument("--as-of", type=str, help="Target as-of date (YYYY-MM-DD)")
             cmd_p.add_argument("--actor-kind", type=str, default="system", help="Actor kind (human|llm|system)")
             cmd_p.add_argument("--by", type=str, default="system:cli", help="Actor identifier")
             cmd_p.add_argument("--note", type=str, help="Rationale/note")
+            cmd_p.add_argument("--db-path", type=str, help="Database path")
+            cmd_p.add_argument("--config", type=str, help="Config path")
+            cmd_p.add_argument("--cohort-id", type=str, help="Cohort identifier")
+            cmd_p.add_argument("--through", type=str, help="Through date (YYYY-MM-DD)")
 
     try:
         args = parser.parse_args(argv)

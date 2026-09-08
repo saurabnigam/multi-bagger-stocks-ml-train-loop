@@ -442,3 +442,16 @@ Contract cases: negative_direction, hac_insufficient, promotion_budget
 Deviations: none
 Deferred real checks: none
 Next: WS09.03
+
+## WS09.03 — Approval, ratification and prospective changes — 2026-09-08 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: e6b78f69651a0aeae6f9ca544b62db40be9b31d9
+Files: quant/cli.py, quant/knowledge/bootstrap.py, quant/knowledge/proposals.py, quant/knowledge/adr.py, quant/commands/kb.py, tests/unit/test_ws09_03.py
+Acceptance: `python -m pytest tests/unit/test_ws09_03.py -q` -> exit 0, 6 passed in 8.81 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 243 passed in 8.98s
+Contract cases: governance, evaluation_revisions
+Deviations: none
+Deferred real checks: none
+Next: WS09.04
+
