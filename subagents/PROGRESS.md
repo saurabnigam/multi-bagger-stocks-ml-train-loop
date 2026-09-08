@@ -406,3 +406,15 @@ Contract cases: execution, split_dividend, cost
 Deviations: none
 Deferred real checks: none
 Next: WS08.03
+
+## WS08.03 — Matched benchmarks, spreads and scoreboard — 2026-09-08 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 5a6482ae7708ad2aef7a587336ba21b06fb5968a
+Files: quant/portfolio/scoreboard.py, quant/commands/portfolio.py, tests/unit/test_ws08_03.py
+Acceptance: `python -m pytest tests/unit/test_ws08_03.py -q` -> exit 0, 8 passed in 0.39 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 227 passed in 11.78s
+Contract cases: cost, hac_insufficient
+Deviations: none
+Deferred real checks: none
+Next: WS09.01

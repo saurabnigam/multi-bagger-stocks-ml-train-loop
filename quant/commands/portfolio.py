@@ -115,6 +115,27 @@ def cmd_portfolio_roll_forward(args: argparse.Namespace) -> int:
         return 0
 
 
+def cmd_portfolio_scoreboard(args: argparse.Namespace) -> int:
+    """Compute and display portfolio alpha scoreboard."""
+    from quant.portfolio.scoreboard import compute
+
+    cfg = load(args.config if hasattr(args, "config") and args.config else None)
+    db_path = Path(args.db_path) if hasattr(args, "db_path") and args.db_path else cfg.paths.db
+    through = getattr(args, "through", None) or getattr(args, "as_of", None)
+    if not through:
+        sys.stderr.write("Error: --through or --as-of required\n")
+        return 1
+
+    with connect(db_path, readonly=True) as conn:
+        df = compute(conn, through=through, cfg=cfg)
+        if df.empty:
+            print("No portfolios found.")
+        else:
+            print(df.to_string(index=False))
+        return 0
+
+
 register("portfolio", "plan", cmd_portfolio_plan, "Plan pending portfolio orders for cohort")
 register("portfolio", "settle", cmd_portfolio_settle, "Settle pending portfolio orders up to through date")
 register("portfolio", "roll_forward", cmd_portfolio_roll_forward, "Roll forward portfolio NAV and returns")
+register("portfolio", "scoreboard", cmd_portfolio_scoreboard, "Compute scoreboard for portfolios")
