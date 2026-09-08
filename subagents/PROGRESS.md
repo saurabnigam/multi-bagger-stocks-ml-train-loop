@@ -455,3 +455,16 @@ Deviations: none
 Deferred real checks: none
 Next: WS09.04
 
+## WS09.04 — Reports and knowledge mirrors — 2026-09-08 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: 55bcd7447883652dbd86f7aa3c025095d36e8461
+Files: quant/knowledge/report.py, quant/knowledge/lessons.py, knowledge/README.md, quant/commands/kb.py, tests/unit/test_ws09_04.py
+Acceptance: `python -m pytest tests/unit/test_ws09_04.py -q` -> exit 0, 6 passed in 0.39 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 249 passed in 7.76s
+Contract cases: hac_insufficient, evaluation_revisions
+Deviations: none
+Deferred real checks: none
+Next: WS10.01
+
+

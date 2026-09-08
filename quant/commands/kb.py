@@ -121,9 +121,27 @@ def cmd_kb_check(args: argparse.Namespace) -> int:
         return 0 if report.passed else 1
 
 
+def cmd_kb_report(args: argparse.Namespace) -> int:
+    """Render monthly evidence report for an as-of date."""
+    from quant.knowledge.report import render, render_backfill
+
+    cfg = load(args.config if hasattr(args, "config") and args.config else None)
+    db_path = Path(args.db_path) if hasattr(args, "db_path") and args.db_path else cfg.paths.db
+    as_of = getattr(args, "as_of", None) or "2026-09-01"
+    track = getattr(args, "track", "live") or "live"
+    with connect(db_path, readonly=True) as conn:
+        if track == "backfill":
+            p = render_backfill(conn, as_of, cfg)
+        else:
+            p = render(conn, as_of, cfg)
+        print(f"Report generated: {p}")
+        return 0
+
+
 register("kb", "draft", cmd_kb_draft, "Draft proposals from active criteria reviews")
 register("kb", "approve", cmd_kb_approve, "Approve a proposal")
 register("kb", "reject", cmd_kb_reject, "Reject a proposal")
 register("kb", "ratify", cmd_kb_ratify, "Ratify a provisional decision")
 register("kb", "apply", cmd_kb_apply, "Apply approved decisions prospectively")
 register("kb", "check", cmd_kb_check, "Verify ADR consistency")
+register("kb", "report", cmd_kb_report, "Render monthly empirical report")
