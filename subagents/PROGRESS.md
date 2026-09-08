@@ -524,5 +524,20 @@ Acceptance: `python -m pytest tests/integration/test_ws11_02.py -q` -> exit 0, 6
 Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 277 passed in 10.40s
 Contract cases: hac_insufficient, revision_tracks
 Deviations: none
-Deferred real checks: none
 Next: WS11.03
+
+## WS11.03 — Verification, scheduling script and owner documentation — 2026-09-08 — Gemini 3.8 Flash
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete
+Base commit: d8b27382c4ba98440536eebeea844c8c72ca86d2
+Files: quant/verify.py, quant/status.py, scripts/signoff.sh, monthly_cron.sh, README.md, AGENTS.md, tests/integration/test_ws11_03.py
+Acceptance: `python -m pytest tests/integration/test_ws11_03.py -q` -> exit 0, 6 passed in 0.31 seconds
+Regression: `scripts/check.sh` -> exit 0, 10 spec check groups PASS, 283 passed in 10.77s
+Phased Sign-Off: `scripts/signoff.sh` -> exit 0:
+  - Engineering Acceptance: PASS
+  - Operational Acceptance: PASS
+  - Longitudinal Acceptance: DEFERRED (Awaiting 12-month forward live cohort maturity; zero live performance claimed at handoff)
+Contract cases: governance
+Deviations: none
+Deferred real checks: longitudinal live cohort forward maturity
+Next: All 43 tasks across all 12 workstreams in manifest complete! Proceed to Section 2: phased sign-off verification.
