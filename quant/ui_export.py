@@ -100,11 +100,15 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
         ci_lo = d.get("ci90_lo")
         ci_hi = d.get("ci90_hi")
 
-        # Invariant: Export raises on a claimed estimable interval whose endpoints are absent
-        if u_stat == "estimable" and (ci_lo is None or ci_hi is None):
+        # A row that claims an estimable interval must carry both endpoints (MASTER_SPEC 7.3:
+        # never print a missing band as a number). Per-date cross-sections normally have no
+        # band at all and are labelled not_applicable.
+        claims_band = u_stat == "estimable" or (ci_lo is not None) != (ci_hi is not None)
+        if claims_band and (ci_lo is None or ci_hi is None):
             raise ValueError(
                 f"Claimed estimable interval whose endpoints are absent: eval_id={d['eval_id']}, metric={d['metric']}"
             )
+        band_status = "ok" if (ci_lo is not None and ci_hi is not None) else "not_applicable"
 
         eval_item = {
             "eval_id": d["eval_id"],
@@ -122,12 +126,24 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
             "ci_lo": ci_lo,
             "ci_hi": ci_hi,
             "uncertainty_status": u_stat,
+            "band_status": band_status,
             "evidence_hash": d["evidence_hash"],
         }
         evaluations.append(eval_item)
 
     curve_rows = cur.execute("SELECT * FROM evidence_curve ORDER BY horizon_m ASC").fetchall()
-    curves = [dict(r) for r in curve_rows]
+    curves = []
+    for r in curve_rows:
+        c = dict(r)
+        # Invariant: a curve claiming an estimable band must carry both endpoints; an
+        # insufficient/constant curve must not carry a band.
+        has_band = c.get("ci90_lo") is not None and c.get("ci90_hi") is not None
+        if c.get("status") == "ok" and not has_band:
+            raise ValueError(f"evidence_curve {c.get('subject_id')} h={c.get('horizon_m')} status ok without band endpoints")
+        if c.get("status") != "ok" and has_band:
+            raise ValueError(f"evidence_curve {c.get('subject_id')} h={c.get('horizon_m')} status {c.get('status')} with a band")
+        c["band_status"] = "ok" if c.get("status") == "ok" else f"unavailable ({c.get('status')})"
+        curves.append(c)
 
     learning_payload = {
         "as_of": as_of,

@@ -31,7 +31,7 @@ class Roce(Factor):
                 lookback_days=365,
                 applies_to_financials=False,
                 level="stock",
-                backfillable=True,
+                backfillable=False,  # needs statements/attributes/holdings: not a backfillable price factor
                 min_coverage=0.70,
                 evidence="Greenblatt ROCE / capital employed",
                 hypothesis_id="hyp_roce_1",
@@ -75,7 +75,7 @@ class Accruals(Factor):
                 lookback_days=365,
                 applies_to_financials=False,
                 level="stock",
-                backfillable=True,
+                backfillable=False,  # needs statements/attributes/holdings: not a backfillable price factor
                 min_coverage=0.70,
                 evidence="Sloan (1996) accrual anomaly",
                 hypothesis_id="hyp_accruals_1",
@@ -115,7 +115,7 @@ class CashConversion3y(Factor):
                 lookback_days=1095,
                 applies_to_financials=False,
                 level="stock",
-                backfillable=True,
+                backfillable=False,  # needs statements/attributes/holdings: not a backfillable price factor
                 min_coverage=0.70,
                 evidence="multi-year cash conversion quality",
                 hypothesis_id="hyp_cash_conv_1",
@@ -168,7 +168,7 @@ class Leverage(Factor):
                 lookback_days=365,
                 applies_to_financials=False,
                 level="stock",
-                backfillable=True,
+                backfillable=False,  # needs statements/attributes/holdings: not a backfillable price factor
                 min_coverage=0.70,
                 evidence="net debt to EBITDA solvency risk",
                 hypothesis_id="hyp_leverage_1",
@@ -208,7 +208,7 @@ class RoeStability3y(Factor):
                 lookback_days=1095,
                 applies_to_financials=True,
                 level="stock",
-                backfillable=True,
+                backfillable=False,  # needs statements/attributes/holdings: not a backfillable price factor
                 min_coverage=0.70,
                 evidence="consistency of ROE compounders",
                 hypothesis_id="hyp_roe_stab_1",

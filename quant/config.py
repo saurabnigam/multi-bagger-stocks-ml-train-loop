@@ -135,10 +135,18 @@ def load(path: str | Path | None = None) -> Config:
         
     cfg = Config(data, repo_root)
     overrides = {}
-    if "QUANT_DB_PATH" in os.environ:
-        overrides["db"] = os.environ["QUANT_DB_PATH"]
-    if "QUANT_PRICES_DB_PATH" in os.environ:
-        overrides["prices_db"] = os.environ["QUANT_PRICES_DB_PATH"]
+    env_map = {
+        "QUANT_DB_PATH": "db",
+        "QUANT_PRICES_DB_PATH": "prices_db",
+        "QUANT_DATA_DIR": "data_dir",
+        "QUANT_UI_DIR": "ui_dir",
+        "QUANT_LEGACY_DB_PATH": "legacy_db",
+        "QUANT_KNOWLEDGE_DIR": "knowledge_dir",
+        "QUANT_ARCHIVE_DIR": "archive_dir",
+    }
+    for env_key, path_key in env_map.items():
+        if os.environ.get(env_key):
+            overrides[path_key] = os.environ[env_key]
     if overrides:
         cfg = cfg.with_paths(**overrides)
     return cfg

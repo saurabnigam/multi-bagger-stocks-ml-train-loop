@@ -25,7 +25,7 @@ class InstHoldChg3m(Factor):
                 lookback_days=120,
                 applies_to_financials=True,
                 level="stock",
-                backfillable=True,
+                backfillable=False,  # needs statements/attributes/holdings: not a backfillable price factor
                 min_coverage=0.50,
                 evidence="institutional accumulation/distribution",
                 hypothesis_id="hyp_inst_flows_1",

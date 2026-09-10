@@ -1,4 +1,12 @@
-"""Automated monthly report authoring, content-addressed storage and reproducibility (C09)."""
+"""Automated monthly report authoring, content-addressed storage and reproducibility (C09).
+
+MASTER_SPEC 9.4: a report is rendered only from a pinned manifest of persisted
+evidence (cohort, run, selected evaluation/label/portfolio revision keys, gate
+results, proposals, decisions, orders, evidence curves) plus the renderer code
+hash. ``report_id`` is the SHA256 of the canonical manifest body, so re-rendering
+the same snapshot is a no-op and changed evidence or a changed renderer yields
+a different report_id. Rendering never computes statistics.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +18,13 @@ from typing import Any
 
 from quant.config import Config
 
+_INFERENTIAL_STATUSES = ("ok", "insufficient", "constant")
+
+
+def renderer_sha256() -> str:
+    """Hash of this renderer's source; part of the manifest so renderer drift changes report_id."""
+    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
 
 def _get_knowledge_dir(cfg: Config) -> Path:
     if hasattr(cfg, "paths") and hasattr(cfg.paths, "knowledge_dir"):
@@ -17,11 +32,15 @@ def _get_knowledge_dir(cfg: Config) -> Path:
     return Path("knowledge")
 
 
+def _rows(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> list[dict[str, Any]]:
+    return [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+
 def _build_snapshot_from_db(
     conn: sqlite3.Connection, as_of: str, track: str
 ) -> dict[str, Any]:
-    """Extract pinned evidence snapshot from SQLite database."""
-    # 1. Cohort
+    """Extract the pinned evidence snapshot for one as_of/track from the state database."""
+    # 1. Cohort and its run
     c_row = conn.execute(
         """
         SELECT cohort_id, as_of, track, knowledge_cutoff, definition_hash,
@@ -33,9 +52,9 @@ def _build_snapshot_from_db(
         (as_of, track),
     ).fetchone()
     cohort = dict(c_row) if c_row else {}
-
+    cohort_id = cohort.get("cohort_id")
     run_id = cohort.get("run_id")
-    run = {}
+    run: dict[str, Any] = {}
     if run_id:
         r_row = conn.execute(
             """
@@ -48,104 +67,184 @@ def _build_snapshot_from_db(
         if r_row:
             run = dict(r_row)
 
-    # 2. Latest evaluations for this as_of and track
-    eval_rows = conn.execute(
+    # 2. Latest revision of every per-date evaluation for this as_of/track
+    eval_rows = _rows(
+        conn,
         """
         SELECT eval_id, computed_run_id, computed_at, subject_kind, subject_id, subject_version,
                as_of, horizon_m, scope, track, metric, value, n, n_eff, se, ci90_lo, ci90_hi,
                status, method, window_start, window_end, evidence_hash, revision, supersedes_eval_id
         FROM evaluations
         WHERE as_of = ? AND track = ?
-        ORDER BY subject_id ASC, metric ASC, horizon_m ASC, revision DESC
+        ORDER BY subject_kind ASC, subject_id ASC, subject_version ASC, metric ASC, horizon_m ASC,
+                 scope ASC, method ASC, revision DESC
         """,
         (as_of, track),
-    ).fetchall()
-
-    # Deduplicate by (subject_kind, subject_id, metric, horizon_m) selecting highest revision
-    seen_keys = set()
+    )
+    seen_keys: set[tuple] = set()
     selected_evals = []
-    for r in eval_rows:
-        d = dict(r)
-        key = (d["subject_kind"], d["subject_id"], d["metric"], d["horizon_m"])
+    for d in eval_rows:
+        key = (d["subject_kind"], d["subject_id"], d["subject_version"], d["metric"], d["horizon_m"], d["scope"], d["method"])
         if key not in seen_keys:
             seen_keys.add(key)
             selected_evals.append(d)
 
-    # 3. Decisions relevant up to as_of
-    d_rows = conn.execute(
+    # 3. Latest evidence curve per subject key on this track
+    curve_rows = _rows(
+        conn,
+        """
+        SELECT computed_at, subject_kind, subject_id, subject_version, horizon_m, track, evidence_hash,
+               months_clean, n_labelled, n_eff, ic_cum_mean, ic_hac_se, ic_hac_t, ci90_lo, ci90_hi, status
+        FROM evidence_curve WHERE track = ?
+        ORDER BY subject_kind, subject_id, subject_version, horizon_m, computed_at DESC
+        """,
+        (track,),
+    )
+    seen_c: set[tuple] = set()
+    selected_curves = []
+    for d in curve_rows:
+        key = (d["subject_kind"], d["subject_id"], d["subject_version"], d["horizon_m"])
+        if key not in seen_c:
+            seen_c.add(key)
+            selected_curves.append(d)
+
+    # 4. Gates of the publishing run, decisions, proposals for this month, pending orders
+    gates = _rows(
+        conn,
+        "SELECT gate, phase, status, observed_json, expected_json, reason, blocking FROM dq_runs "
+        "WHERE run_id = ? ORDER BY phase DESC, gate ASC",
+        (run_id,),
+    ) if run_id else []
+    decisions = _rows(
+        conn,
         """
         SELECT decision_id, proposal_id, kind, tier, subject_id, title, context,
                decided_on, decided_by, approver_kind, ratified_by, ratified_on,
                status, effective_from, applied_on, adr_path, git_sha
         FROM decisions
         WHERE status IN ('approved', 'provisional', 'applied', 'reverted')
-        ORDER BY decided_on ASC
+        ORDER BY decided_on ASC, decision_id ASC
+        """,
+    )
+    proposals = _rows(
+        conn,
+        "SELECT proposal_id, kind, subject_id, status, rule_id, proposed_by, decision_id FROM proposals "
+        "WHERE as_of = ? ORDER BY proposal_id ASC",
+        (as_of,),
+    )
+    orders = _rows(
+        conn,
         """
-    ).fetchall()
-    decisions = [dict(r) for r in d_rows]
+        SELECT order_id, portfolio_id, cohort_id, security_id, created_at, earliest_exec_at,
+               purpose, side, target_weight, status, liquidity_bucket, decision_id
+        FROM portfolio_orders WHERE cohort_id = ? ORDER BY order_id ASC
+        """,
+        (cohort_id,),
+    ) if cohort_id else []
 
-    # 4. Pending orders for this cohort
-    cohort_id = cohort.get("cohort_id")
-    ord_rows = []
-    if cohort_id:
-        ord_rows = conn.execute(
-            """
-            SELECT order_id, portfolio_id, cohort_id, security_id, created_at, earliest_exec_at,
-                   purpose, side, target_weight, status, liquidity_bucket, decision_id
-            FROM portfolio_orders
-            WHERE cohort_id = ?
-            ORDER BY order_id ASC
-            """,
-            (cohort_id,),
-        ).fetchall()
-    orders = [dict(r) for r in ord_rows]
+    # 5. Label revision keys for this cohort and portfolio returns at this month end
+    label_keys = _rows(
+        conn,
+        """
+        SELECT horizon_m, max(revision) AS revision, count(*) AS rows, sum(status = 'ok') AS n_ok,
+               max(computed_at) AS computed_at
+        FROM labels WHERE cohort_id = ? GROUP BY horizon_m ORDER BY horizon_m
+        """,
+        (cohort_id,),
+    ) if cohort_id else []
+    portfolio_returns = _rows(
+        conn,
+        """
+        SELECT portfolio_id, month_end, revision, ret_gross, ret_net, ret_net_stress, cost, turnover_one_way,
+               n_positions, evidence_hash, computed_at
+        FROM portfolio_returns WHERE month_end = ? ORDER BY portfolio_id, revision
+        """,
+        (as_of,),
+    )
 
-    # Calculate known_at
-    timestamps = []
-    if cohort.get("published_at"):
-        timestamps.append(cohort["published_at"])
-    if cohort.get("generated_at"):
-        timestamps.append(cohort["generated_at"])
-    for ev in selected_evals:
-        if ev.get("computed_at"):
-            timestamps.append(ev["computed_at"])
-    for o in orders:
-        if o.get("created_at"):
-            timestamps.append(o["created_at"])
+    # known_at: latest timestamp of any pinned evidence
+    timestamps: list[str] = []
+    for key in ("published_at", "generated_at"):
+        if cohort.get(key):
+            timestamps.append(cohort[key])
+    timestamps += [ev["computed_at"] for ev in selected_evals if ev.get("computed_at")]
+    timestamps += [c["computed_at"] for c in selected_curves if c.get("computed_at")]
+    timestamps += [o["created_at"] for o in orders if o.get("created_at")]
+    timestamps += [lk["computed_at"] for lk in label_keys if lk.get("computed_at")]
+    timestamps += [pr["computed_at"] for pr in portfolio_returns if pr.get("computed_at")]
     for d in decisions:
-        if d.get("decided_on"):
-            timestamps.append(d["decided_on"])
-        if d.get("ratified_on"):
-            timestamps.append(d["ratified_on"])
-
+        for key in ("decided_on", "ratified_on"):
+            if d.get(key):
+                timestamps.append(d[key])
     known_at = max(timestamps) if timestamps else f"{as_of}T18:30:00.000000Z"
 
-    manifest_body = {
+    return {
         "as_of": as_of,
         "track": track,
         "known_at": known_at,
         "cohort": cohort,
         "run": run,
+        "renderer_sha256": renderer_sha256(),
         "selected_evaluation_keys": selected_evals,
+        "selected_curve_keys": selected_curves,
+        "label_revision_keys": label_keys,
+        "portfolio_return_keys": portfolio_returns,
+        "gates": gates,
         "control_summaries": {
             "decisions": decisions,
+            "proposals": proposals,
             "orders": orders,
         },
     }
-    return manifest_body
+
+
+def _fmt(v: Any, digits: int = 4) -> str:
+    if v is None:
+        return "NULL"
+    try:
+        return f"{float(v):.{digits}f}"
+    except (TypeError, ValueError):
+        return str(v)
+
+
+def _band(status: Any, lo: Any, hi: Any) -> str:
+    """Finite band only when both endpoints are pinned for an estimable statistic; never invented."""
+    if status in ("ok", "estimable") and lo is not None and hi is not None:
+        return f"[{_fmt(lo)}, {_fmt(hi)}]"
+    return f"unavailable ({status})"
+
+
+def _per_date_band(ev: dict[str, Any]) -> str:
+    """Per-date cross-sections carry no time-series band unless one was explicitly pinned."""
+    if ev.get("ci90_lo") is not None and ev.get("ci90_hi") is not None:
+        return f"[{_fmt(ev.get('ci90_lo'))}, {_fmt(ev.get('ci90_hi'))}]"
+    return "not_applicable"
 
 
 def _render_content(manifest: dict[str, Any], report_id: str) -> str:
-    """Generate deterministic markdown content from pinned manifest data."""
+    """Deterministic markdown from the pinned manifest. Renders; never calculates statistics."""
     as_of = manifest["as_of"]
     track = manifest["track"]
     known_at = manifest.get("known_at", "N/A")
-    cohort = manifest.get("cohort", {})
-    run = manifest.get("run", {})
-    evals = manifest.get("selected_evaluation_keys", [])
-    control_summaries = manifest.get("control_summaries", {})
-    decisions = control_summaries.get("decisions", [])
-    orders = control_summaries.get("orders", [])
+    cohort = manifest.get("cohort", {}) or {}
+    run = manifest.get("run", {}) or {}
+    evals = manifest.get("selected_evaluation_keys", []) or []
+    curves = manifest.get("selected_curve_keys", []) or []
+    label_keys = manifest.get("label_revision_keys", []) or []
+    port_returns = manifest.get("portfolio_return_keys", []) or []
+    gates = manifest.get("gates", []) or []
+    control = manifest.get("control_summaries", {}) or {}
+    decisions = control.get("decisions", []) or []
+    proposals = control.get("proposals", []) or []
+    orders = control.get("orders", []) or []
+
+    blocking_fail = [g for g in gates if g.get("status") == "FAIL" and g.get("blocking")]
+    if not cohort:
+        verdict = "No cohort was published for this cycle."
+    elif blocking_fail:
+        verdict = f"Cohort published with {len(blocking_fail)} blocking gate failures recorded (inspect section 2)."
+    else:
+        verdict = "Cohort published; all applicable blocking gates passed."
 
     lines = [
         f"# Monthly Quant Engine Report: {as_of} ({track.upper()})",
@@ -159,13 +258,15 @@ def _render_content(manifest: dict[str, Any], report_id: str) -> str:
         f"- **Cohort Generated At:** {cohort.get('generated_at', 'N/A')}",
         f"- **Run ID:** {run.get('run_id', 'N/A')}",
         f"- **Git SHA:** `{run.get('git_sha', 'N/A')}`",
+        f"- **Renderer SHA256:** `{manifest.get('renderer_sha256', 'N/A')}`",
         "",
-        "## 1. Executive Summary & Required Actions",
+        "## 1. Verdict and required actions",
         "",
-        f"Automated empirical report generated from immutable evidence for cycle {as_of}.",
-        "All claims are strictly bounded by recorded out-of-sample data.",
+        verdict,
         "",
-        "## 2. Gates & Data Provenance",
+        "Every number below is read from pinned, persisted evidence; nothing is computed at render time.",
+        "",
+        "## 2. Gates and data provenance",
         "",
         f"- **Definition Hash:** `{cohort.get('definition_hash', 'N/A')}`",
         f"- **Membership Hash:** `{cohort.get('membership_hash', 'N/A')}`",
@@ -173,36 +274,78 @@ def _render_content(manifest: dict[str, Any], report_id: str) -> str:
         f"- **Config SHA256:** `{run.get('config_sha256', 'N/A')}`",
         f"- **Registry SHA256:** `{run.get('registry_sha256', 'N/A')}`",
         "",
-        "## 3. Evaluated Metrics & Empirical Evidence",
+    ]
+    if gates:
+        lines.append("| Phase | Gate | Status | Blocking | Reason |")
+        lines.append("| :--- | :--- | :--- | :--- | :--- |")
+        for g in gates:
+            lines.append(f"| {g.get('phase')} | {g.get('gate')} | {g.get('status')} | {int(bool(g.get('blocking')))} | {g.get('reason')} |")
+    else:
+        lines.append("No gate results recorded for this cycle.")
+
+    lines += [
         "",
-        "| Subject | Metric | Horizon (m) | Method | Value | n | n_eff | 90% Confidence Band | Uncertainty Status |",
+        "## 3. Matured labels",
+        "",
+    ]
+    if label_keys:
+        lines.append("| Horizon (m) | Latest revision | Rows | ok | Computed at |")
+        lines.append("| :--- | :--- | :--- | :--- | :--- |")
+        for lk in label_keys:
+            lines.append(f"| {lk.get('horizon_m')} | {lk.get('revision')} | {lk.get('rows')} | {lk.get('n_ok')} | {lk.get('computed_at')} |")
+    else:
+        lines.append("No matured labels for this cohort yet.")
+
+    lines += [
+        "",
+        "## 4. Per-date evaluations (monthly cross-sections; a band appears only when pinned)",
+        "",
+        "| Subject | Metric | Horizon (m) | Scope | Method | Value | n | Status | Band |",
         "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
     ]
-
     for ev in evals:
         sub = f"{ev.get('subject_id', 'N/A')} (v{ev.get('subject_version', 1)})"
-        metric = ev.get("metric", "N/A")
-        hm = ev.get("horizon_m", "N/A")
-        meth = ev.get("method", "N/A")
-        val = f"{ev.get('value'):.4f}" if ev.get("value") is not None else "NULL"
-        n = ev.get("n", "N/A")
-        n_eff = f"{ev.get('n_eff'):.1f}" if ev.get("n_eff") is not None else "N/A"
-        ustat = ev.get("status", "unknown")
+        status = ev.get("status", "unknown")
+        lines.append(
+            f"| {sub} | {ev.get('metric', 'N/A')} | {ev.get('horizon_m', 'N/A')} | {ev.get('scope', 'N/A')} | "
+            f"{ev.get('method', 'N/A')} | {_fmt(ev.get('value'))} | {ev.get('n', 'N/A')} | {status} | {_per_date_band(ev)} |"
+        )
+    if not evals:
+        lines.append("| (none) | | | | | | | | |")
 
-        # Invariant: Finite band required ONLY when status says estimable
-        if ustat == "estimable" and ev.get("ci90_lo") is not None and ev.get("ci90_hi") is not None:
-            band = f"[{ev.get('ci90_lo'):.4f}, {ev.get('ci90_hi'):.4f}]"
-        else:
-            band = f"N/A ({ustat})"
-
-        lines.append(f"| {sub} | {metric} | {hm} | {meth} | {val} | {n} | {n_eff} | {band} | {ustat} |")
-
-    lines.extend([
+    lines += [
         "",
-        "## 4. Portfolios & Pending Orders",
+        "## 5. Evidence curves (time-series statistics with HAC uncertainty)",
         "",
-    ])
+        "| Subject | Horizon (m) | Months clean | n labelled | n_eff | Cumulative mean IC | HAC se | HAC t | 90% band | Status |",
+        "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+    ]
+    for c in curves:
+        sub = f"{c.get('subject_id', 'N/A')} (v{c.get('subject_version', 1)})"
+        lines.append(
+            f"| {sub} | {c.get('horizon_m')} | {c.get('months_clean')} | {c.get('n_labelled')} | {_fmt(c.get('n_eff'), 2)} | "
+            f"{_fmt(c.get('ic_cum_mean'))} | {_fmt(c.get('ic_hac_se'))} | {_fmt(c.get('ic_hac_t'), 2)} | "
+            f"{_band(c.get('status'), c.get('ci90_lo'), c.get('ci90_hi'))} | {c.get('status')} |"
+        )
+    if not curves:
+        lines.append("| (none) | | | | | | | | | |")
 
+    lines += [
+        "",
+        "## 6. Portfolios, returns and pending orders",
+        "",
+    ]
+    if port_returns:
+        lines.append("| Portfolio | Revision | Gross | Net | Net (stress) | Cost | Turnover | Positions |")
+        lines.append("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |")
+        for pr in port_returns:
+            lines.append(
+                f"| {pr.get('portfolio_id')} | {pr.get('revision')} | {_fmt(pr.get('ret_gross'))} | {_fmt(pr.get('ret_net'))} | "
+                f"{_fmt(pr.get('ret_net_stress'))} | {_fmt(pr.get('cost'))} | {_fmt(pr.get('turnover_one_way'))} | {pr.get('n_positions')} |"
+            )
+    else:
+        lines.append("No portfolio returns recorded at this month end.")
+    lines.append("")
     if orders:
         lines.append("| Order ID | Portfolio | Security ID | Side | Target Weight | Purpose | Status | Earliest Exec |")
         lines.append("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |")
@@ -215,12 +358,19 @@ def _render_content(manifest: dict[str, Any], report_id: str) -> str:
     else:
         lines.append("No pending orders for this cycle.")
 
-    lines.extend([
+    lines += [
         "",
-        "## 5. Governance, Ratifications & Decisions",
+        "## 7. Criteria, proposals and decisions",
         "",
-    ])
-
+    ]
+    if proposals:
+        lines.append("| Proposal | Kind | Subject | Status | Rule | Proposed by |")
+        lines.append("| :--- | :--- | :--- | :--- | :--- | :--- |")
+        for p in proposals:
+            lines.append(f"| {p.get('proposal_id')} | {p.get('kind')} | {p.get('subject_id')} | {p.get('status')} | {p.get('rule_id')} | {p.get('proposed_by')} |")
+    else:
+        lines.append("No proposals drafted this cycle.")
+    lines.append("")
     if decisions:
         lines.append("| Decision ID | Kind | Tier | Subject ID | Status | Approver | Ratified By | Decided On |")
         lines.append("| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |")
@@ -233,13 +383,17 @@ def _render_content(manifest: dict[str, Any], report_id: str) -> str:
     else:
         lines.append("No decisions logged.")
 
-    lines.extend([
+    lines += [
+        "",
+        "## 8. Reproduction",
+        "",
+        f"`python -m quant verify report --as-of {as_of}` re-renders this report from its manifest "
+        f"`knowledge/reports/{as_of[:7]}/{report_id}.json` and compares it byte for byte.",
         "",
         "---",
         "Small or dependent samples may not distinguish skill from noise.",
         "",
-    ])
-
+    ]
     return "\n".join(lines)
 
 
@@ -257,7 +411,6 @@ def _render_track(
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     if snapshot is not None:
-        # Use provided snapshot
         manifest_body = snapshot.get("manifest_body", snapshot)
         manifest_clean = {k: v for k, v in manifest_body.items() if k not in ("report_id", "output_hashes")}
         canonical_json = json.dumps(manifest_clean, sort_keys=True, separators=(",", ":"))
@@ -273,21 +426,21 @@ def _render_track(
     report_md_path = reports_dir / f"{report_id}.md"
     manifest_json_path = reports_dir / f"{report_id}.json"
 
-    # Deterministic markdown rendering
     content = _render_content(manifest_full, report_id)
+    if not report_md_path.exists() or report_md_path.read_text(encoding="utf-8") != content:
+        report_md_path.write_text(content, encoding="utf-8")
+    manifest_text = json.dumps(manifest_full, indent=2, sort_keys=True)
+    if not manifest_json_path.exists() or manifest_json_path.read_text(encoding="utf-8") != manifest_text:
+        manifest_json_path.write_text(manifest_text, encoding="utf-8")
 
-    report_md_path.write_text(content, encoding="utf-8")
-    manifest_json_path.write_text(
-        json.dumps(manifest_full, indent=2, sort_keys=True), encoding="utf-8"
-    )
-
-    # Navigation index YYYY-MM.md
+    # Navigation index YYYY-MM.md (replaceable index only; lists every report of the month)
     nav_index_path = knowledge_dir / "reports" / f"{as_of[:7]}.md"
-    nav_content = (
-        f"# Reports Index for {as_of[:7]}\n\n"
-        f"- [{track.upper()} Report ({report_id})]({as_of[:7]}/{report_id}.md)\n"
-    )
-    nav_index_path.write_text(nav_content, encoding="utf-8")
+    entries = sorted(p.stem for p in reports_dir.glob("*.md"))
+    nav_lines = [f"# Reports Index for {as_of[:7]}", ""]
+    for rid in entries:
+        marker = " (this render)" if rid == report_id else ""
+        nav_lines.append(f"- [{rid}]({as_of[:7]}/{rid}.md){marker}")
+    nav_index_path.write_text("\n".join(nav_lines) + "\n", encoding="utf-8")
 
     return report_md_path
 

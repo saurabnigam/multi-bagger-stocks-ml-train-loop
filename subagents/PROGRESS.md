@@ -541,3 +541,42 @@ Contract cases: governance
 Deviations: none
 Deferred real checks: longitudinal live cohort forward maturity
 Next: All 43 tasks across all 12 workstreams in manifest complete! Proceed to Section 2: phased sign-off verification.
+
+## REVIEW — Gemini Flash implementation review and gap fixes — 2026-09-10 — Claude Fable 5.1
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete (branch review/v2-implementation-gaps, worktree mb-review-fixes; based on codex/v2-implementation 1a7fccc)
+Base commit: 1a7fccc
+Files: quant/db/core.py, quant/db/ledger.py, quant/run.py, quant/data/{gates,prices,capture,calendar,universe,identity}.py,
+  quant/evaluation/{leakage,backfill,labels,evaluate,curves}.py, quant/portfolio/{paper,construct,costs}.py,
+  quant/knowledge/{review,proposals,report,registry,adr,bootstrap,lessons}.py, quant/model/{models,screens,composite}.py,
+  quant/factors/{inputs,standardise,quality,value,growth,flows}.py, quant/migrate/legacy.py, quant/commands/*.py, quant/cli.py,
+  quant/verify.py, quant/status.py, quant/ui_export.py, quant/config.py, quant/types.py, quant/sectors/taxonomy.py,
+  config/legacy_identity_map_v1.csv, config/nifty500_constituents_2026-09-09.csv, scripts/signoff.sh, scripts/check.sh,
+  monthly_cron.sh, .gitignore, AGENTS.md, README.md, docs/spec/SIGNOFF_2026-09-08.md, tests/unit/test_review_*.py,
+  tests/integration/test_review_signoff.py
+Findings fixed (severity order): (1) writes bypassed the ledger (ledger_events 0 after migration) -> DB-level journal
+  triggers, savepoint-owned staging, no library commits; db verify reproduces all 45 tables from a 33k-event ledger.
+  (2) monthly scoring path was dead (Draft constructed with missing fields, exceptions swallowed, is_clean hard-coded) ->
+  runner rewritten per spec 9.1 with BOOTSTRAP_REQUIRED, real hashes, atomic publish, ledger export/verify.
+  (3) prices never ingested (download result discarded, no backfill/update) and prices_monthly.tri was always 100 ->
+  PriceStore.backfill/update/reconcile, fixed-base TRI, archived raw downloads. (4) leakage T3-T10 hard-coded PASS ->
+  real checks/fixtures. (5) gates defaulted to PASS without evidence -> computed from store/DB; missing evidence FAILs.
+  (6) backfill fabricated factor values -> real replay. (7) labels/paper returns from wrong dates -> store TRI at sessions.
+  (8) review scope 'full' never matched, lag 1, dead partial-IC/correlation criteria -> eligible scope, lag h-1, real
+  evaluations. (9) proposals expiry inserted an empty champion version -> reversion plan. (10) screens/composite/inputs
+  hid missing data -> ineligible/unscored/masked. (11) migration LEGACY_ ISINs, 'Broad' groups, raw z, inverted defect
+  dates -> identity map (500/501 resolved), NSE groups, sector-neutral z, defects per red-team review. (12) db/status/
+  verify CLI no-ops -> real commands. (13) AGENTS/README/SIGNOFF claimed retired invariants and fabricated workstreams
+  -> corrected; signoff.sh emits S01-S15 with real exit codes.
+Acceptance: `python -m pytest -q` -> 408 passed; `docs/spec/check_spec.py` -> 10 PASS; `scripts/signoff.sh --phase
+  engineering` -> see docs (S01-S08); `python -m quant db migrate-legacy` then `db verify` -> 45 tables match.
+Deviations/assumptions: BOOTSTRAP_REQUIRED uses a 50% admissible-fundamentals share (spec gives no number); calendar
+  uses price-store sessions with a flagged weekday fallback (no verified sessions file yet); per-date evaluations store
+  n_eff NULL; provisional Tier-1 effects apply prospectively and revert on expiry.
+Remaining gaps (not fixed): decision kinds other than factor lifecycle have no substantive apply effect; mb36_touch and
+  label statuses delisted/suspended/excluded_ca are not populated; verified NSE holiday calendar file absent; no live
+  cohort has been published yet, so T1/T3/T5/T9 have only run on fixtures; net_selection_spread keeps the C08 signature
+  and therefore uses fill-price ratios (no interim corporate-action TRI); Beta control falls back to an EW member average
+  when the benchmark series is absent.
+Next: merge review/v2-implementation-gaps into codex/v2-implementation (stop the concurrent Antigravity agent first),
+  run `python -m quant data capture` before the first live cutoff, then `run monthly` the following month.

@@ -121,6 +121,7 @@ def plan(ctx: RunContext, cohort_id: str) -> Result:
         exit_exec_at = f"{endpoint_date}T10:00:00.000000Z"
 
     orders_planned = 0
+    cash_by_portfolio: dict[str, float] = {}
 
     # 1. Rolling portfolios for scored models (e.g. top30_buffer)
     model_rows = conn.execute(
@@ -179,6 +180,14 @@ def plan(ctx: RunContext, cohort_id: str) -> Result:
         )
 
         target_map = dict(zip(positions["security_id"], positions["target_weight"]))
+        cash_w = float(positions["cash_weight"].iloc[0]) if ("cash_weight" in positions.columns and len(positions)) else 0.0
+        if cash_w > 1e-9 and getattr(ctx, "clock", None) is not None and getattr(ctx, "run_id", None) is not None:
+            # MASTER_SPEC 8: hold residual cash and report capacity; never scale weights up.
+            from quant.data.gates import record_event
+            record_event(ctx, code="CAPACITY_CASH", severity="INFO",
+                         detail={"portfolio_id": portfolio_id, "cohort_id": cohort_id, "cash_weight": cash_w,
+                                 "n_positions": int(len(positions))})
+        cash_by_portfolio[portfolio_id] = cash_w
         for _, delta in deltas.iterrows():
             sid = int(delta["security_id"])
             side = str(delta["side"]).lower()
@@ -267,7 +276,7 @@ def plan(ctx: RunContext, cohort_id: str) -> Result:
             cfg=ctx.cfg,
         )
 
-    return Result(status="ok", counts={"orders_planned": orders_planned})
+    return Result(status="ok", counts={"orders_planned": orders_planned}, details={"cash_weight": cash_by_portfolio})
 
 
 def _plan_attribution_pair(

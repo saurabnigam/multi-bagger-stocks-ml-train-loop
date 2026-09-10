@@ -141,7 +141,7 @@ def update(ctx: RunContext, through: str) -> Result:
             matured_cache[track_] = [
                 r[0]
                 for r in conn.execute(
-                    "SELECT as_of FROM cohorts WHERE track = ? AND is_clean = 1 ORDER BY as_of",
+                    "SELECT as_of FROM cohorts WHERE track = ? AND (is_clean = 1 OR track != 'live') ORDER BY as_of",
                     (track_,),
                 ).fetchall()
             ]

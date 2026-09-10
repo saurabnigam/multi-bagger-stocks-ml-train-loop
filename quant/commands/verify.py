@@ -52,5 +52,27 @@ def cmd_verify_report(args: argparse.Namespace) -> int:
     return 0 if rep.passed else 1
 
 
+def cmd_verify_leakage(args: argparse.Namespace) -> int:
+    """Run the T1-T10 leakage suite against persisted evidence (recorded as a 'verify' run)."""
+    from quant.data.prices import PriceStore
+    from quant.evaluation import leakage
+    from quant.run import RunContext
+    from quant.types import Actor, SystemClock
+
+    cfg = _cfg(args)
+    clock = SystemClock()
+    as_of = getattr(args, "as_of", None) or clock.iso()[:10]
+    actor = Actor(kind=getattr(args, "actor_kind", "system") or "system", name=getattr(args, "by", "cli") or "cli")
+    with RunContext(as_of=as_of, kind="verify", track="live", cfg=cfg, clock=clock, actor=actor) as ctx:
+        ctx.store = PriceStore(cfg.paths.prices_db, state_conn=ctx.conn)
+        rep = leakage.run(ctx, None)
+    _print_report(f"verify leakage (as-of={as_of})", rep)
+    deferred = [c.id for c in rep.checks if c.status == "DEFERRED"]
+    if deferred:
+        print(f"  deferred (prerequisites absent): {deferred}")
+    return 0 if rep.passed else 1
+
+
 register("verify", "pit", cmd_verify_pit, "Verify point-in-time integrity over the last N months")
+register("verify", "leakage", cmd_verify_leakage, "Run the T1-T10 leakage suite on persisted evidence")
 register("verify", "report", cmd_verify_report, "Verify a persisted report reproduces its pinned evidence")

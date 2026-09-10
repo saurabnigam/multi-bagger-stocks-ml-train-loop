@@ -79,15 +79,17 @@ def new_hypothesis(ctx: RunContext, fields: dict[str, Any]) -> str:
             "SELECT count(*) FROM hypotheses WHERE budget_year = ? AND counts_toward_budget = 1",
             (budget_year,),
         ).fetchone()[0]
-        if annual_used >= 6:
-            raise Refused("budget", f"Annual hypothesis budget of 6 exceeded for year {budget_year}")
+        annual_cap = int(getattr(getattr(ctx.cfg, "budget", None), "hypotheses_per_year", 6))
+        family_cap = int(getattr(getattr(ctx.cfg, "budget", None), "per_family_per_year", 3))
+        if annual_used >= annual_cap:
+            raise Refused("budget", f"Annual hypothesis budget of {annual_cap} exceeded for year {budget_year}")
 
         family_used = conn.execute(
             "SELECT count(*) FROM hypotheses WHERE budget_year = ? AND family = ? AND counts_toward_budget = 1",
             (budget_year, family),
         ).fetchone()[0]
-        if family_used >= 3:
-            raise Refused("budget", f"Family hypothesis budget of 3 exceeded for family '{family}' in year {budget_year}")
+        if family_used >= family_cap:
+            raise Refused("budget", f"Family hypothesis budget of {family_cap} exceeded for family '{family}' in year {budget_year}")
 
     seq = conn.execute(
         "SELECT coalesce(max(sequence_in_year), 0) + 1 FROM hypotheses WHERE budget_year = ?",

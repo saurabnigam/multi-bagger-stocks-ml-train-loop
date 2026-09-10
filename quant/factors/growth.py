@@ -25,7 +25,7 @@ class EpsGrowth3y(Factor):
                 lookback_days=1095,
                 applies_to_financials=True,
                 level="stock",
-                backfillable=True,
+                backfillable=False,  # needs statements/attributes/holdings: not a backfillable price factor
                 min_coverage=0.70,
                 evidence="3-year EPS compound growth",
                 hypothesis_id="hyp_eps_growth_3y_1",
@@ -72,7 +72,7 @@ class RevGrowth3y(Factor):
                 lookback_days=1095,
                 applies_to_financials=True,
                 level="stock",
-                backfillable=True,
+                backfillable=False,  # needs statements/attributes/holdings: not a backfillable price factor
                 min_coverage=0.70,
                 evidence="3-year revenue compound growth",
                 hypothesis_id="hyp_rev_growth_3y_1",
@@ -117,7 +117,7 @@ class EarnMom(Factor):
                 lookback_days=730,
                 applies_to_financials=True,
                 level="stock",
-                backfillable=True,
+                backfillable=False,  # needs statements/attributes/holdings: not a backfillable price factor
                 min_coverage=0.70,
                 evidence="quarterly earnings acceleration momentum",
                 hypothesis_id="hyp_earn_mom_1",

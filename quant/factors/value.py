@@ -31,7 +31,7 @@ class EarningsYield(Factor):
                 lookback_days=365,
                 applies_to_financials=True,
                 level="stock",
-                backfillable=True,
+                backfillable=False,  # needs statements/attributes/holdings: not a backfillable price factor
                 min_coverage=0.70,
                 evidence="enterprise earnings yield / PE inversion",
                 hypothesis_id="hyp_ey_1",
@@ -81,7 +81,7 @@ class BookToPrice(Factor):
                 lookback_days=365,
                 applies_to_financials=True,
                 level="stock",
-                backfillable=True,
+                backfillable=False,  # needs statements/attributes/holdings: not a backfillable price factor
                 min_coverage=0.70,
                 evidence="Fama French Book to Market",
                 hypothesis_id="hyp_bp_1",
@@ -117,7 +117,7 @@ class FcfYield(Factor):
                 lookback_days=1095,
                 applies_to_financials=False,
                 level="stock",
-                backfillable=True,
+                backfillable=False,  # needs statements/attributes/holdings: not a backfillable price factor
                 min_coverage=0.70,
                 evidence="free cash flow yield over 3 years",
                 hypothesis_id="hyp_fcf_yield_1",
@@ -177,7 +177,7 @@ class DivYield(Factor):
                 lookback_days=5,
                 applies_to_financials=True,
                 level="stock",
-                backfillable=True,
+                backfillable=False,  # needs statements/attributes/holdings: not a backfillable price factor
                 min_coverage=0.70,
                 evidence="dividend yield income factor",
                 hypothesis_id="hyp_div_yield_1",

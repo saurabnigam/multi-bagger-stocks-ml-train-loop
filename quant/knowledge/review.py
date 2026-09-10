@@ -228,17 +228,27 @@ def factor(conn: sqlite3.Connection, factor_id: str, as_of: str, cfg: Config) ->
         )
     )
 
-    # 6. Residual partial IC t >= 1.5
-    part_row = conn.execute(
-        "SELECT value, status FROM evaluations "
+    # 6. Residual partial IC: HAC t (lag h-1) of the per-date residual partial IC series
+    #    written by evaluate.run (metric 'partial_ic', eligible scope, 3M) must be >= 1.5.
+    part_rows = conn.execute(
+        "SELECT as_of, value, status, revision FROM evaluations "
         "WHERE subject_kind = 'factor' AND subject_id IN (?, ?) "
-        "  AND metric = 'partial_ic_t' AND as_of <= ? "
-        "ORDER BY as_of DESC LIMIT 1",
+        "  AND metric = 'partial_ic' AND horizon_m = 3 AND track = 'live' AND scope = 'eligible' "
+        "  AND as_of <= ? ORDER BY as_of ASC, revision DESC",
         (factor_id, f_name, as_of),
-    ).fetchone()
-    if part_row and part_row["value"] is not None:
-        part_t = float(part_row["value"])
-        passed_part = part_t >= 1.5
+    ).fetchall()
+    seen_p: set[str] = set()
+    part_series: list[float] = []
+    for r in part_rows:
+        if r["as_of"] in seen_p:
+            continue
+        seen_p.add(r["as_of"])
+        if r["status"] == "ok" and r["value"] is not None:
+            part_series.append(float(r["value"]) * direction)
+    part_series = part_series[:window_size]
+    if len(part_series) >= 4:
+        part_t = hac_mean_test(part_series, lag=lag).t
+        passed_part = part_t is not None and part_t >= 1.5
     else:
         part_t = None
         passed_part = False
@@ -248,24 +258,32 @@ def factor(conn: sqlite3.Connection, factor_id: str, as_of: str, cfg: Config) ->
             status="PASS" if passed_part else "FAIL",
             observed=part_t,
             expected=">= 1.5",
-            reason="Residual partial IC t-statistic",
+            reason=f"HAC t of residual partial IC over {len(part_series)} months (lag {lag}); unavailable is unmet",
             blocking=True,
         )
     )
 
-    # 7. Absolute same-family correlation <= 0.70
-    corr_row = conn.execute(
-        "SELECT max(abs(value)) as max_corr FROM evaluations "
-        "WHERE subject_kind = 'factor_pair' AND (subject_id = ? OR metric = 'family_correlation') "
-        "  AND as_of <= ? AND status = 'ok'",
-        (factor_id, as_of),
-    ).fetchone()
-    if corr_row and corr_row["max_corr"] is not None:
-        max_corr = float(corr_row["max_corr"])
+    # 7. Absolute same-family correlation <= 0.70 (max over the last 3 cohorts' evidence
+    #    written by evaluate.run: metric 'family_correlation', label-free, horizon 0)
+    corr_rows = conn.execute(
+        "SELECT as_of, value, status, revision FROM evaluations "
+        "WHERE subject_kind = 'factor' AND subject_id IN (?, ?) AND metric = 'family_correlation' "
+        "  AND track = 'live' AND as_of <= ? ORDER BY as_of DESC, revision DESC",
+        (factor_id, f_name, as_of),
+    ).fetchall()
+    seen_c: set[str] = set()
+    corr_vals: list[float] = []
+    for r in corr_rows:
+        if r["as_of"] in seen_c or len(seen_c) >= 3:
+            continue
+        seen_c.add(r["as_of"])
+        if r["status"] == "ok" and r["value"] is not None:
+            corr_vals.append(abs(float(r["value"])))
+    if corr_vals:
+        max_corr = max(corr_vals)
         passed_corr = max_corr <= 0.70
     else:
-        # Missing evidence makes the criterion unmet, not a free pass (no test-accommodation
-        # fallback to a passing value); consistent with net_spread/ablation below.
+        # Missing evidence makes the criterion unmet, not a free pass.
         max_corr = None
         passed_corr = False
     checks.append(
@@ -274,7 +292,7 @@ def factor(conn: sqlite3.Connection, factor_id: str, as_of: str, cfg: Config) ->
             status="PASS" if passed_corr else "FAIL",
             observed=max_corr,
             expected="<= 0.70",
-            reason="Same-family correlation (unavailable is unmet)",
+            reason=f"Max same-family |corr| over {len(corr_vals)} recent cohorts (unavailable is unmet)",
             blocking=True,
         )
     )
@@ -501,7 +519,7 @@ def model(conn: sqlite3.Connection, model_id: str, as_of: str, cfg: Config) -> C
 
     # 4. HAC t-statistic >= 2.0
     if n_months >= 24 and diffs:
-        hac_res = hac_mean_test(diffs, lag=3)
+        hac_res = hac_mean_test(diffs, lag=int(getattr(getattr(cfg, 'evaluation', None), 'portfolio_hac_lag', 3)))
         hac_t = hac_res.t
         passed_hac = hac_t is not None and hac_t >= 2.0
     else:
@@ -518,17 +536,31 @@ def model(conn: sqlite3.Connection, model_id: str, as_of: str, cfg: Config) -> C
         )
     )
 
-    # Model looks: [24, 36, 48]
-    if n_months >= 48:
-        next_review = None
-    elif n_months >= 36:
-        next_review = "48"
-    elif n_months >= 24:
-        next_review = "36"
-    else:
-        next_review = "24"
+    # Model looks are fixed at registration (cfg.budget.model_review_labelled_months, default
+    # [24, 36, 48]); each is consumed once via the model's hypothesis row, like factor looks.
+    opportunities = list(getattr(getattr(cfg, "budget", None), "model_review_labelled_months", None) or [24, 36, 48])
+    h_row = conn.execute(
+        "SELECT hypothesis_id, n_periods_at_eval FROM hypotheses WHERE subject_id = ? AND kind = 'model' "
+        "ORDER BY registered_on DESC LIMIT 1",
+        (model_id,),
+    ).fetchone()
+    stored_look = int(h_row["n_periods_at_eval"]) if h_row and h_row["n_periods_at_eval"] is not None else None
+    window_size, is_new_look = _due_look(stored_look, n_months, opportunities)
+    next_review = None
+    for opp in opportunities:
+        if opp > window_size:
+            next_review = str(opp)
+            break
+    if is_new_look and h_row and h_row["hypothesis_id"]:
+        update_control(
+            SimpleNamespace(conn=conn),
+            "hypotheses",
+            {"hypothesis_id": h_row["hypothesis_id"]},
+            {"n_periods_at_eval": window_size, "t_hac_at_eval": hac_t, "t_crit_at_eval": 2.0},
+        )
 
-    eligible = all(c.status == "PASS" for c in checks if c.blocking)
+    criteria_pass = all(c.status == "PASS" for c in checks if c.blocking)
+    eligible = is_new_look and criteria_pass
     return CriteriaCheck(
         subject_id=model_id,
         checks=checks,

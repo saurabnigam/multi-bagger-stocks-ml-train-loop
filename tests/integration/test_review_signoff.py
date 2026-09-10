@@ -7,6 +7,7 @@ and would recurse into the very test run executing this file.
 
 import json
 import os
+import tempfile
 import subprocess
 import sys
 from pathlib import Path
@@ -21,6 +22,11 @@ def _run_signoff(args, timeout=120):
     """Run scripts/signoff.sh with the current interpreter, from the repo root."""
     env = os.environ.copy()
     env.setdefault("QUANT_PYTHON", sys.executable)
+    # Isolate from any real state database in the checkout: operational/longitudinal
+    # prerequisites are judged against the configured db path (MASTER_SPEC 10.2 overrides).
+    isolated = tempfile.mkdtemp(prefix="signoff_isolated_")
+    env.setdefault("QUANT_DB_PATH", os.path.join(isolated, "absent.db"))
+    env.setdefault("QUANT_DATA_DIR", os.path.join(isolated, "data"))
     return subprocess.run(
         ["bash", str(SIGNOFF_SH), *args],
         cwd=str(REPO_ROOT),

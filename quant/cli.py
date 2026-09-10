@@ -67,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
             cmd_p.add_argument("--actor-kind", type=str, default="system", help="Actor kind (human|llm|system)")
             cmd_p.add_argument("--by", type=str, default="system:cli", help="Actor identifier")
             cmd_p.add_argument("--note", type=str, help="Rationale/note")
-            cmd_p.add_argument("--db-path", type=str, help="Database path")
+            cmd_p.add_argument("--db-path", "--db", dest="db_path", type=str, help="State database path")
             cmd_p.add_argument("--config", type=str, help="Config path")
             cmd_p.add_argument("--cohort-id", type=str, help="Cohort identifier")
             cmd_p.add_argument("--through", type=str, help="Through date (YYYY-MM-DD)")
