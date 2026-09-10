@@ -73,7 +73,17 @@ def test_status_read_detects_overdue_ratifications_golden_governance(tmp_path, c
 
 
 def test_verify_report_reproduces_evidence_refs(tmp_path, cfg, test_db):
-    """verify.report verifies recorded evaluation evidence refs and returns CheckReport."""
+    """verify.report re-renders a persisted report from its archived manifest and returns CheckReport.
+
+    NOTE (review fix): the original version of this test only inserted raw `evaluations` rows
+    (with a `status` value of 'estimable', which the real evaluations.status vocabulary --
+    ok/insufficient/constant, see quant.evaluation.stats/metrics -- never produces) and asserted
+    `rep.passed` without ever persisting a report. That matched the old, spec-noncompliant
+    verify.report, which only inspected the evaluations table and could PASS with no archived
+    report at all. verify.report must FAIL when there is no persisted report manifest to
+    reproduce (MASTER_SPEC 9.5 / INTERFACES C11), so this test now renders a real report via
+    quant.knowledge.report.render before verifying it, and uses the real status vocabulary.
+    """
     conn, db_path = test_db
     test_cfg = cfg.with_paths(db=db_path)
 
@@ -81,6 +91,10 @@ def test_verify_report_reproduces_evidence_refs(tmp_path, cfg, test_db):
         conn.execute(
             "INSERT INTO runs (run_id, as_of, kind, track, attempt, started_at, status, git_sha, code_sha256, config_sha256, registry_sha256) "
             "VALUES (1, '2026-09-30', 'monthly', 'live', 1, '2026-09-30T18:30:00.000000Z', 'ok', 'sha1', 'c_sha', 'cfg_sha', 'reg_sha')"
+        )
+        conn.execute(
+            "INSERT INTO cohorts (cohort_id, as_of, track, knowledge_cutoff, definition_hash, membership_hash, source_refs_json, published_at, generated_at, is_clean, run_id) "
+            "VALUES ('live:2026-09-30', '2026-09-30', 'live', '2026-09-30T18:29:59.999999Z', 'def', 'mem', '[]', '2026-09-30T18:30:00.000000Z', '2026-09-30T18:30:00.000000Z', 1, 1)"
         )
         conn.execute(
             """
@@ -91,14 +105,28 @@ def test_verify_report_reproduces_evidence_refs(tmp_path, cfg, test_db):
             ) VALUES (
                 1, 1, '2026-09-30T18:30:00.000000Z', 'model', 'CHAMPION', '1',
                 '2026-09-30', 3, 'universe', 'live', 'rank_ic', 0.05, 500, 480, 0.02, 0.01, 0.09,
-                'estimable', 'spearman', 'ev_hash_1', 1
+                'ok', 'spearman', 'ev_hash_1', 1
             )
             """
         )
 
+    from quant.knowledge.report import render as render_report
+
+    render_report(conn, "2026-09-30", test_cfg)
+
     rep = quant.verify.report(conn, "2026-09-30", test_cfg)
     assert isinstance(rep, CheckReport)
     assert rep.passed
+
+
+def test_verify_report_fails_without_a_persisted_report(tmp_path, cfg, test_db):
+    """verify.report must FAIL (never PASS) when no report was ever persisted for as_of."""
+    conn, db_path = test_db
+    test_cfg = cfg.with_paths(db=db_path)
+
+    rep = quant.verify.report(conn, "2026-09-30", test_cfg)
+    assert isinstance(rep, CheckReport)
+    assert not rep.passed
 
 
 def test_verify_pit_returns_check_report(tmp_path, cfg, test_db):

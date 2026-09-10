@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from quant.db.core import update_control
 from quant.evaluation.stats import hac_mean_test, t_crit
 from quant.portfolio.paper import net_selection_spread
 from quant.types import Check, CriteriaCheck
@@ -17,22 +19,64 @@ if TYPE_CHECKING:
     from quant.config import Config
 
 
+def _parse_opportunities(h_row: sqlite3.Row | None, default: list[int]) -> list[int]:
+    """Parse the fixed review_opportunities_json registered on the hypothesis.
+
+    Falls back to `default` (the configured review months) when unregistered or malformed.
+    """
+    if h_row is not None:
+        try:
+            raw = h_row["review_opportunities_json"]
+        except (IndexError, KeyError):
+            raw = None
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list) and parsed:
+                    return sorted(int(x) for x in parsed)
+            except (ValueError, TypeError):
+                pass
+    return sorted(default)
+
+
+def _due_look(stored: int | None, n_available: int, opportunities: list[int]) -> tuple[int, bool]:
+    """Determine the review window for this call.
+
+    Returns (window_size, is_new_look). The earliest still-unconsumed opportunity that
+    `n_available` has now reached is a new look, evaluated using exactly that many of the
+    earliest eligible cohorts (spec 7.3). When no new opportunity is due, replay the
+    previously stored look's exact window (or, if none was ever consumed, the currently
+    available count) so criteria/eligibility never double-consume a look.
+    """
+    for opp in opportunities:
+        if n_available >= opp and (stored is None or opp > stored):
+            return opp, True
+    if stored is not None:
+        return stored, False
+    return n_available, False
+
+
 def factor(conn: sqlite3.Connection, factor_id: str, as_of: str, cfg: Config) -> CriteriaCheck:
     """Evaluate factor promotion criteria.
 
     Tests oriented IC, hit rate, look-adjusted HAC t-stat, minimum history,
     partial IC, same-family correlation, coverage, net spread, and ablation.
-    Factor looks are [12, 24, 36], consumed once even when ancillary criteria fail.
+    Factor looks are registered at [12, 24, 36] eligible labeled cohorts (spec 7.3),
+    consumed once even when ancillary criteria fail; a call that lands between
+    opportunities (or after the last one) replays the previously stored look and is
+    never eligible for a new look.
     """
     f_name = factor_id.split("@")[0] if "@" in factor_id else factor_id
     f_ver = factor_id.split("@")[1] if "@" in factor_id else "1"
 
     f_row = conn.execute(
-        "SELECT direction, family, min_coverage FROM factor_registry WHERE factor_id = ? OR name = ?",
+        "SELECT direction, family, min_coverage, applies_to_financials "
+        "FROM factor_registry WHERE factor_id = ? OR name = ?",
         (factor_id, f_name),
     ).fetchone()
     direction = int(f_row["direction"]) if f_row and f_row["direction"] else 1
     family = f_row["family"] if f_row and f_row["family"] else "unknown"
+    applies_to_financials = bool(f_row["applies_to_financials"]) if f_row and f_row["applies_to_financials"] is not None else True
 
     h_row = conn.execute(
         "SELECT hypothesis_id, review_opportunities_json, n_periods_at_eval FROM hypotheses "
@@ -40,17 +84,21 @@ def factor(conn: sqlite3.Connection, factor_id: str, as_of: str, cfg: Config) ->
         (factor_id, f_name),
     ).fetchone()
 
-    # Cumulative trials count
+    # Cumulative trials count: every hypothesis ever registered, launch set included (spec 5.3).
     total_trials = conn.execute("SELECT count(*) FROM hypotheses").fetchone()[0]
     total_trials = max(1, total_trials)
     threshold_t = t_crit(m=total_trials, looks=3, alpha=0.05, floor=2.0)
 
-    # Fetch clean live 3M evaluations up to as_of
+    default_opportunities = list(getattr(getattr(cfg, "budget", None), "review_labelled_months", [12, 24, 36]) or [12, 24, 36])
+    opportunities = _parse_opportunities(h_row, default_opportunities)
+
+    # Fetch clean live 3M evaluations up to as_of. evaluate.run() only ever writes scope
+    # 'all' or 'eligible' (never 'full'); promotion evidence is the eligible cohort scope.
     eval_rows = conn.execute(
-        "SELECT eval_id, as_of, metric, value, status, revision "
+        "SELECT eval_id, as_of, horizon_m, metric, value, status, revision "
         "FROM evaluations "
         "WHERE subject_kind = 'factor' AND subject_id IN (?, ?) "
-        "  AND horizon_m = 3 AND track = 'live' AND scope = 'full' "
+        "  AND horizon_m = 3 AND track = 'live' AND scope = 'eligible' "
         "  AND as_of <= ? "
         "ORDER BY as_of ASC, revision DESC",
         (factor_id, f_name, as_of),
@@ -66,19 +114,31 @@ def factor(conn: sqlite3.Connection, factor_id: str, as_of: str, cfg: Config) ->
             records.append(r)
     records.sort(key=lambda x: x["as_of"])
 
-    evidence_ids = [r["eval_id"] for r in records]
-
-    # Compute oriented IC values
-    ic_values: list[float] = []
+    # Oriented IC values, chronologically ordered, paired with their originating row so a
+    # truncated look window keeps evidence_ids and HAC lag consistent with the values used.
+    usable: list[tuple[sqlite3.Row, float]] = []
     for r in records:
         val = r["value"]
         if val is None or r["status"] != "ok":
             continue
         # If metric is already oriented_ic, use directly; otherwise multiply by direction
         if r["metric"] == "oriented_ic":
-            ic_values.append(float(val))
+            oriented = float(val)
         else:
-            ic_values.append(float(val) * direction)
+            oriented = float(val) * direction
+        usable.append((r, oriented))
+
+    n_available = len(usable)
+    stored_look = int(h_row["n_periods_at_eval"]) if h_row and h_row["n_periods_at_eval"] is not None else None
+    window_size, is_new_look = _due_look(stored_look, n_available, opportunities)
+
+    usable_window = usable[:window_size]
+    evidence_ids = [r["eval_id"] for r, _ in usable_window]
+    ic_values = [v for _, v in usable_window]
+    # Horizon comes from the evaluation rows actually used (all 3 by the WHERE clause above,
+    # but read back rather than assumed); HAC lag is h-1 (spec 7.3), e.g. lag 2 for h=3.
+    horizon_used = int(usable_window[0][0]["horizon_m"]) if usable_window else 3
+    lag = max(0, horizon_used - 1)
 
     n_months = len(ic_values)
     checks: list[Check] = []
@@ -123,10 +183,10 @@ def factor(conn: sqlite3.Connection, factor_id: str, as_of: str, cfg: Config) ->
         )
     )
 
-    # 4. HAC t-statistic >= t_crit
+    # 4. HAC t-statistic >= t_crit (lag = horizon - 1, e.g. lag 2 for the 3M horizon)
     t_stat: float | None = None
     if n_months >= 4:
-        hac_res = hac_mean_test(ic_values, lag=1)
+        hac_res = hac_mean_test(ic_values, lag=lag)
         t_stat = hac_res.t
         passed_hac = t_stat is not None and t_stat >= threshold_t
     else:
@@ -146,7 +206,7 @@ def factor(conn: sqlite3.Connection, factor_id: str, as_of: str, cfg: Config) ->
     eval_12m = conn.execute(
         "SELECT value FROM evaluations "
         "WHERE subject_kind = 'factor' AND subject_id IN (?, ?) "
-        "  AND horizon_m = 12 AND track = 'live' AND scope = 'full' "
+        "  AND horizon_m = 12 AND track = 'live' AND scope = 'eligible' "
         "  AND as_of <= ? AND status = 'ok' AND value IS NOT NULL",
         (factor_id, f_name, as_of),
     ).fetchall()
@@ -204,33 +264,56 @@ def factor(conn: sqlite3.Connection, factor_id: str, as_of: str, cfg: Config) ->
         max_corr = float(corr_row["max_corr"])
         passed_corr = max_corr <= 0.70
     else:
-        max_corr = 0.0
-        passed_corr = True
+        # Missing evidence makes the criterion unmet, not a free pass (no test-accommodation
+        # fallback to a passing value); consistent with net_spread/ablation below.
+        max_corr = None
+        passed_corr = False
     checks.append(
         Check(
             id="correlation",
             status="PASS" if passed_corr else "FAIL",
             observed=max_corr,
             expected="<= 0.70",
-            reason="Same-family correlation",
+            reason="Same-family correlation (unavailable is unmet)",
             blocking=True,
         )
     )
 
-    # 8. Coverage >= 80% over 3 runs
-    cov_rows = conn.execute(
-        "SELECT count(DISTINCT security_id) as n_present, count(*) as n_total "
-        "FROM factor_values "
-        "WHERE factor_id IN (?, ?) AND as_of <= ? "
-        "GROUP BY cohort_id ORDER BY as_of DESC LIMIT 3",
+    # 8. Coverage >= 80% of applicable members (nonfinancial-only denominator for
+    # nonfinancial factors), averaged over up to the last 3 published runs (spec 9.4).
+    cov_value_rows = conn.execute(
+        "SELECT cohort_id, sector_group, z FROM factor_values "
+        "WHERE factor_id IN (?, ?) AND track = 'live' AND as_of <= ? "
+        "ORDER BY as_of DESC",
         (factor_id, f"{f_name}@{f_ver}", as_of),
     ).fetchall()
-    if cov_rows and len(cov_rows) >= 3:
-        avg_cov = np.mean([r["n_present"] / r["n_total"] if r["n_total"] > 0 else 0.0 for r in cov_rows])
+
+    cov_by_cohort: dict[str, list[tuple[str, Any]]] = {}
+    cohort_order: list[str] = []
+    for r in cov_value_rows:
+        cid = r["cohort_id"]
+        if cid not in cov_by_cohort:
+            cov_by_cohort[cid] = []
+            cohort_order.append(cid)
+        cov_by_cohort[cid].append((r["sector_group"], r["z"]))
+
+    cohort_coverages: list[float] = []
+    for cid in cohort_order[:3]:
+        rows = cov_by_cohort[cid]
+        applicable = rows if applies_to_financials else [rr for rr in rows if rr[0] != "Financial Services"]
+        n_app = len(applicable)
+        if n_app == 0:
+            continue
+        n_present = sum(1 for _, z in applicable if z is not None)
+        cohort_coverages.append(n_present / n_app)
+
+    if cohort_coverages:
+        avg_cov = float(np.mean(cohort_coverages))
         passed_cov = avg_cov >= 0.80
     else:
-        avg_cov = 1.0  # Fallback if uncalculated
-        passed_cov = True
+        # No computed factor_values history yet: unmet, not a free pass.
+        avg_cov = None
+        passed_cov = False
     checks.append(
         Check(
             id="coverage",
@@ -307,26 +390,34 @@ def factor(conn: sqlite3.Connection, factor_id: str, as_of: str, cfg: Config) ->
         )
     )
 
-    # Determine next review opportunity: factor looks are [12, 24, 36]
-    # Consumed once even when ancillary criteria fail
-    if n_months >= 36:
-        next_review = None
-    elif n_months >= 24:
-        next_review = "36"
-    elif n_months >= 12:
-        next_review = "24"
-    else:
-        next_review = "12"
+    # Next review opportunity: the first registered opportunity beyond the window just used
+    # (whether that window is a freshly consumed look or a replayed prior one).
+    next_review = None
+    for opp in opportunities:
+        if opp > window_size:
+            next_review = str(opp)
+            break
 
-    if h_row and h_row["hypothesis_id"]:
-        conn.execute(
-            "UPDATE hypotheses "
-            "SET n_periods_at_eval = ?, t_hac_at_eval = ?, t_crit_at_eval = ?, m_tests_at_eval = ? "
-            "WHERE hypothesis_id = ?",
-            (n_months, t_stat, threshold_t, total_trials, h_row["hypothesis_id"]),
+    # Store the look actually consumed via the allowlisted control-update path (never a raw
+    # UPDATE) so a subsequent call at the same or lower cohort count cannot re-consume it.
+    if is_new_look and h_row and h_row["hypothesis_id"]:
+        update_control(
+            SimpleNamespace(conn=conn),
+            "hypotheses",
+            {"hypothesis_id": h_row["hypothesis_id"]},
+            {
+                "n_periods_at_eval": window_size,
+                "t_hac_at_eval": t_stat,
+                "t_crit_at_eval": threshold_t,
+                "m_tests_at_eval": total_trials,
+            },
         )
-    
-    eligible = all(c.status == "PASS" for c in checks if c.blocking)
+
+    # A call that does not consume a new registered opportunity is never eligible for
+    # promotion, regardless of how the replayed criteria happen to score (spec 7.3: each
+    # opportunity is evaluated once; later calls before the next one create no new look).
+    criteria_pass = all(c.status == "PASS" for c in checks if c.blocking)
+    eligible = is_new_look and criteria_pass
     return CriteriaCheck(
         subject_id=factor_id,
         checks=checks,

@@ -187,10 +187,15 @@ def test_expiry_appends_reversion_and_prospective_model_version(test_ctx):
     Path(adr_path).write_text(f"# ADR {did}\nProvisional promote factor roce@1", encoding="utf-8")
 
     with test_ctx.conn:
+        # applied_on = past_ts: this decision's effect was already staged by a prior apply()
+        # call before it expires. A provisional decision whose effect was never staged has
+        # nothing recorded to invert and is closed out as 'rejected' instead of 'reverted'
+        # (see test_review_governance.py::
+        # test_expiry_of_never_applied_provisional_decision_is_rejected_without_effect).
         test_ctx.conn.execute(
-            "INSERT INTO decisions (decision_id, kind, tier, subject_id, title, context, options_json, decision, evidence_refs_json, decided_on, decided_by, approver_kind, status, adr_path, git_sha) "
-            "VALUES (?, 'promote_factor', 1, 'roce@1', 'Promote Roce', 'ctx', '[]', 'approve', '[]', ?, 'llm:gemini-flash', 'llm', 'provisional', ?, 'sha1')",
-            (did, past_ts, adr_path),
+            "INSERT INTO decisions (decision_id, kind, tier, subject_id, title, context, options_json, decision, evidence_refs_json, decided_on, decided_by, approver_kind, status, applied_on, adr_path, git_sha) "
+            "VALUES (?, 'promote_factor', 1, 'roce@1', 'Promote Roce', 'ctx', '[]', 'approve', '[]', ?, 'llm:gemini-flash', 'llm', 'provisional', ?, ?, 'sha1')",
+            (did, past_ts, past_ts, adr_path),
         )
         test_ctx.conn.execute(
             "UPDATE factor_registry SET status = 'active' WHERE factor_id = 'roce@1'"

@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from quant.evaluation.evaluate import ic_series
+from quant.evaluation.labels import _add_months
 from quant.evaluation.stats import hac_mean_test
 from quant.types import Result
 
@@ -131,6 +132,23 @@ def update(ctx: RunContext, through: str) -> Result:
         (through,),
     ).fetchall()
 
+    # Clean live cohort as_of dates per track, used to find the last matured cohort (the one
+    # whose h-month endpoint is already known) actually available to train each fit.
+    matured_cache: dict[str, list[str]] = {}
+
+    def _last_matured_cohort(track_: str, h_: int, test_as_of_: str) -> str:
+        if track_ not in matured_cache:
+            matured_cache[track_] = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT as_of FROM cohorts WHERE track = ? AND is_clean = 1 ORDER BY as_of",
+                    (track_,),
+                ).fetchall()
+            ]
+        candidates = [c for c in matured_cache[track_] if _add_months(c, h_) <= test_as_of_]
+        # No prior matured cohort (e.g. the very first live cohort): nothing was trained on.
+        return candidates[-1] if candidates else test_as_of_
+
     for mid, mver, as_of, h, track, ic_val, n_scored, cid in model_evals:
         # Benchmark equal weight model IC on same cohort
         ew_row = conn.execute(
@@ -151,6 +169,16 @@ def update(ctx: RunContext, through: str) -> Result:
         ).fetchone()
         w_json = mv_row[0] if mv_row else "{}"
 
+        # k = number of matured cohorts actually used in fitting at this as_of, recovered from
+        # the stored fit's n_eff = k/h (model_weights), not re-derived by refitting.
+        mw_row = conn.execute(
+            "SELECT n_eff FROM model_weights WHERE cohort_id = ? AND model_id = ? LIMIT 1",
+            (cid, mid),
+        ).fetchone()
+        k = int(round(float(mw_row[0]) * h)) if mw_row and mw_row[0] is not None else 0
+
+        train_end = _last_matured_cohort(track, h, as_of)
+
         lp_hash = hashlib.sha256(
             f"{mid}:{mver}:{cid}:{h}:{ic_val}:{ew_ic}".encode()
         ).hexdigest()
@@ -162,7 +190,7 @@ def update(ctx: RunContext, through: str) -> Result:
                 train_end, test_as_of, realised_as_of, weights_json,
                 oos_ic, ew_oos_ic, n, evidence_hash, computed_run_id
             ) VALUES (
-                ?, ?, ?, ?, ?, 0,
+                ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?, ?
             )
@@ -173,7 +201,8 @@ def update(ctx: RunContext, through: str) -> Result:
                 cid,
                 h,
                 track,
-                as_of,
+                k,
+                train_end,
                 as_of,
                 through,
                 w_json,

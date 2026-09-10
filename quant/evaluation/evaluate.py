@@ -61,7 +61,7 @@ def _upsert_evaluation(
     metric: str,
     value: float | None,
     n: int,
-    n_eff: float,
+    n_eff: float | None,
     status: str,
     method: str,
     evidence_hash: str,
@@ -201,7 +201,9 @@ def run(ctx: RunContext, through: str, track: str) -> Result:
                     label_s = pd.Series(labels, index=sids)
 
                     ic_val, n, status = rank_ic(score_s, label_s)
-                    n_eff = float(n / h) if h > 0 else float(n)
+                    # A single cross-sectional date has no time-series effective count; the
+                    # series-level n_eff = N_months/h is computed in evaluation/curves.py.
+                    n_eff = None
 
                     pairs_for_hash = [
                         (sids[i], scores[i], labels[i])
@@ -270,7 +272,8 @@ def run(ctx: RunContext, through: str, track: str) -> Result:
                     label_s = pd.Series(labels, index=sids)
 
                     ic_val, n, status = rank_ic(score_s, label_s)
-                    n_eff = float(n / h) if h > 0 else float(n)
+                    # See the factor loop above: n_eff is a series-level statistic, NULL here.
+                    n_eff = None
 
                     pairs_for_hash = [
                         (sids[i], scores[i], labels[i])

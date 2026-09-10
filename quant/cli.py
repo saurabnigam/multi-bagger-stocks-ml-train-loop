@@ -33,6 +33,7 @@ def _init_default_commands():
         "quant.commands.kb",
         "quant.commands.migrate",
         "quant.commands.run",
+        "quant.commands.verify",
     ):
         importlib.import_module(mod)
 
@@ -79,6 +80,15 @@ def main(argv: list[str] | None = None) -> int:
             cmd_p.add_argument("--start", type=str, help="Start date (YYYY-MM-DD)")
             cmd_p.add_argument("--end", type=str, help="End date (YYYY-MM-DD)")
             cmd_p.add_argument("--phase", type=str, help="Phase selector")
+            cmd_p.add_argument("--track", type=str, help="Track (live|backfill|legacy|counterfactual)")
+            cmd_p.add_argument("--isin", type=str, help="Security ISIN")
+            cmd_p.add_argument("--ex-date", dest="ex_date", type=str, help="Corporate action ex-date (YYYY-MM-DD)")
+            cmd_p.add_argument("--kind", type=str, help="Corporate action / capture kind")
+            cmd_p.add_argument("--factor", type=str, help="Corporate action adjustment factor")
+            cmd_p.add_argument("--decision-id", dest="decision_id", type=str, help="Governing decision ID")
+            cmd_p.add_argument("--event-id", dest="event_id", type=str, help="Data quality / corporate action event ID")
+            cmd_p.add_argument("--months", type=int, help="Number of months to verify")
+            cmd_p.add_argument("--verify", action="store_true", help="Perform verification (e.g. prices manifest --verify)")
 
     try:
         args = parser.parse_args(argv)

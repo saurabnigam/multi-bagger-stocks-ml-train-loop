@@ -29,6 +29,50 @@ def _add_months(as_of: str, months: int) -> str:
     return f"{year:04d}-{month:02d}-{last_day:02d}"
 
 
+def _price_store(ctx: RunContext) -> Any:
+    """The PriceStore to read from: ``ctx.store`` when set, else one opened at
+    ``cfg.paths.prices_db``. Returns None when no price data is reachable, in
+    which case callers fall back to the ``prices_monthly`` panel."""
+    store = getattr(ctx, "store", None)
+    if store is not None:
+        return store
+    cfg = getattr(ctx, "cfg", None)
+    if cfg is None or not hasattr(cfg, "paths") or not hasattr(cfg.paths, "prices_db"):
+        return None
+    try:
+        from quant.data.prices import PriceStore
+
+        return PriceStore(cfg.paths.prices_db, state_conn=getattr(ctx, "conn", None))
+    except Exception:
+        return None
+
+
+def _scoped_price_hash(tri_df: pd.DataFrame | None, sids: list[int], dates: list[str | None]) -> str:
+    """Content hash of exactly the tri() values read for these securities at
+    these dates.
+
+    Scoped to one cohort/horizon/group's own read, never the whole price
+    store: a whole-store hash (``PriceStore.manifest_hash``) changes on
+    every monthly ingest of the full universe, which would flip every
+    group's evidence_hash even when that group's own prices never moved --
+    forcing a spurious new label revision every single run, forever. This
+    hash only changes when one of THESE rows' own TRI values changes (a
+    genuine correction/backfill observed later).
+    """
+    rows: list[list[Any]] = []
+    if tri_df is not None and not tri_df.empty:
+        for d in dates:
+            if d is None or d not in tri_df.index:
+                continue
+            row = tri_df.loc[d]
+            for sid in sids:
+                v = row.get(sid)
+                if pd.notna(v):
+                    rows.append([int(sid), d, float(v)])
+    rows.sort(key=lambda r: (r[0], r[1]))
+    return hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()
+
+
 def mature(ctx: RunContext, through: str) -> Result:
     """Mature cohorts up to through date and compute/revise forward-return labels.
 
@@ -45,11 +89,26 @@ def mature(ctx: RunContext, through: str) -> Result:
         if (ctx and getattr(ctx, "clock", None))
         else f"{ctx.as_of or through}T00:00:00.000000Z"
     )
+    # The price vintage this maturation pass reads at: "the label computation
+    # time" (MASTER_SPEC 2.3). Revisions become visible exactly when a later
+    # mature() call runs at a later vintage_at and sees revised store prices.
+    vintage_at = computed_at
 
     # Configured horizons
     horizons = [1, 3, 6, 12, 24, 36]
     if ctx.cfg and hasattr(ctx.cfg, "horizons") and hasattr(ctx.cfg.horizons, "tracked_m"):
         horizons = list(ctx.cfg.horizons.tracked_m)
+
+    mb_multiple = 2.0
+    if ctx.cfg and hasattr(ctx.cfg, "horizons") and hasattr(ctx.cfg.horizons, "multibagger_multiple"):
+        mb_multiple = float(ctx.cfg.horizons.multibagger_multiple)
+    mb_threshold = mb_multiple - 1.0
+
+    history_start = "2015-01-01"
+    if ctx.cfg and hasattr(ctx.cfg, "yahoo") and hasattr(ctx.cfg.yahoo, "history_start"):
+        history_start = str(ctx.cfg.yahoo.history_start)
+
+    store = _price_store(ctx)
 
     # Find cohorts published on or before through
     cohort_rows = conn.execute(
@@ -89,13 +148,21 @@ def mature(ctx: RunContext, through: str) -> Result:
         sids = [r[0] for r in score_members]
         member_groups = {r[0]: r[1] for r in score_members}
 
-        # Start prices (at cohort as_of)
-        start_prices = dict(
-            conn.execute(
-                "SELECT security_id, tri FROM prices_monthly WHERE cohort_id = ?",
-                (cohort_id,),
-            ).fetchall()
-        )
+        # Grouping is fixed for the cohort (independent of horizon); compute
+        # it once here so the per-horizon loop can build a scoped price hash
+        # per group without re-deriving membership each time.
+        by_group: dict[str, list[int]] = {}
+        for sid in sids:
+            by_group.setdefault(member_groups.get(sid, "UNKNOWN"), []).append(sid)
+
+        # Start prices (at cohort as_of), same-track fallback for members the
+        # price store has no data for.
+        start_pm_rows = conn.execute(
+            "SELECT security_id, tri, price_manifest_sha FROM prices_monthly WHERE cohort_id = ?",
+            (cohort_id,),
+        ).fetchall()
+        start_prices_pm = {r[0]: r[1] for r in start_pm_rows}
+        start_manifest_pm = {r[0]: r[2] for r in start_pm_rows}
 
         for h in horizons:
             end_date = _add_months(as_of, h)
@@ -103,34 +170,87 @@ def mature(ctx: RunContext, through: str) -> Result:
                 # Horizon endpoint not yet reached
                 continue
 
-            # Fetch endpoint prices for the same track
-            # Look for cohort matching this track and end_date
+            # (1) Forward returns from the price store: one tri() call per
+            # cohort/horizon over [history_start, end_date] at vintage_at, so
+            # both the start and endpoint TRI come from the same revision.
+            store_start_tri: dict[int, float] = {}
+            store_end_tri: dict[int, float] = {}
+            endpoint_session: str | None = None
+            tri_df: pd.DataFrame | None = None
+            if store is not None:
+                try:
+                    endpoint_sessions = store.session_dates(as_of, end_date, min_securities=1)
+                except Exception:
+                    endpoint_sessions = []
+                endpoint_session = endpoint_sessions[-1] if endpoint_sessions else None
+                if endpoint_session is not None:
+                    try:
+                        tri_df = store.tri(sids, start=history_start, end=end_date, vintage_at=vintage_at)
+                    except Exception:
+                        tri_df = None
+                    if tri_df is not None and not tri_df.empty:
+                        if as_of in tri_df.index:
+                            row_s = tri_df.loc[as_of]
+                            store_start_tri = {
+                                sid: float(row_s.get(sid)) for sid in sids if pd.notna(row_s.get(sid))
+                            }
+                        if endpoint_session in tri_df.index:
+                            row_e = tri_df.loc[endpoint_session]
+                            store_end_tri = {
+                                sid: float(row_e.get(sid)) for sid in sids if pd.notna(row_e.get(sid))
+                            }
+
+            # Scoped price provenance for store-sourced members: one hash per
+            # sector group, built ONLY from the tri() rows read above for
+            # that group's own members at (as_of, endpoint_session). Never a
+            # whole-store hash -- see _scoped_price_hash docstring.
+            group_store_hash: dict[str, str] = {
+                grp: _scoped_price_hash(tri_df, grp_sids, [as_of, endpoint_session])
+                for grp, grp_sids in by_group.items()
+            }
+
+            # (2) Same-track prices_monthly fallback for members the store
+            # lacks: the endpoint cohort for this track and end_date, else a
+            # direct as_of match. Never mixes tracks.
             end_cohort = conn.execute(
                 "SELECT cohort_id FROM cohorts WHERE track = ? AND as_of = ? ORDER BY published_at DESC, cohort_id DESC",
                 (track, end_date),
             ).fetchone()
 
-            end_prices = {}
+            end_pm_rows: list
             if end_cohort:
-                end_prices = dict(
-                    conn.execute(
-                        "SELECT security_id, tri FROM prices_monthly WHERE cohort_id = ?",
-                        (end_cohort[0],),
-                    ).fetchall()
-                )
+                end_pm_rows = conn.execute(
+                    "SELECT security_id, tri, price_manifest_sha FROM prices_monthly WHERE cohort_id = ?",
+                    (end_cohort[0],),
+                ).fetchall()
             else:
-                # Try finding in prices_monthly by as_of date directly
-                rows = conn.execute(
-                    "SELECT security_id, tri FROM prices_monthly WHERE as_of = ?",
+                end_pm_rows = conn.execute(
+                    "SELECT security_id, tri, price_manifest_sha FROM prices_monthly WHERE as_of = ?",
                     (end_date,),
                 ).fetchall()
-                end_prices = dict(rows)
+            end_prices_pm = {r[0]: r[1] for r in end_pm_rows}
+            end_manifest_pm = {r[0]: r[2] for r in end_pm_rows}
 
             # Compute returns per member
             member_returns: dict[int, dict[str, Any]] = {}
             for sid in sids:
-                p_start = start_prices.get(sid)
-                p_end = end_prices.get(sid)
+                p_start = store_start_tri.get(sid)
+                p_end = store_end_tri.get(sid)
+                from_store = p_start is not None and p_end is not None
+
+                if p_start is None:
+                    p_start = start_prices_pm.get(sid)
+                if p_end is None:
+                    p_end = end_prices_pm.get(sid)
+
+                if from_store:
+                    manifest_sha = group_store_hash.get(member_groups.get(sid, "UNKNOWN"), "")
+                else:
+                    manifest_sha = (
+                        end_manifest_pm.get(sid)
+                        or start_manifest_pm.get(sid)
+                        or ""
+                    )
 
                 if (
                     p_start is not None
@@ -154,19 +274,15 @@ def mature(ctx: RunContext, through: str) -> Result:
                     "status": status,
                     "p_start": p_start,
                     "p_end": p_end,
+                    "price_manifest_sha": manifest_sha,
                 }
 
             # Universe median across ok members
             ok_logs = [m["r_log"] for m in member_returns.values() if m["status"] == "ok"]
             uni_median = float(np.median(ok_logs)) if ok_logs else 0.0
 
-            # Group by sector_group
-            by_group: dict[str, list[int]] = {}
-            for sid in sids:
-                grp = member_groups.get(sid, "UNKNOWN")
-                by_group.setdefault(grp, []).append(sid)
-
-            # Group medians and evidence hashes
+            # Group medians and evidence hashes (by_group was built once
+            # above, before the horizon loop -- it does not depend on h)
             for grp, grp_sids in by_group.items():
                 grp_ok_logs = [
                     member_returns[s]["r_log"]
@@ -181,8 +297,15 @@ def mature(ctx: RunContext, through: str) -> Result:
                         ret["r_group_median"] = grp_median
                         ret["l_rel"] = float(ret["r_log"] - grp_median)
                         ret["r_uni"] = float(ret["r_log"] - uni_median)
-                        ret["mb36"] = 1 if ret["r_arith"] >= 1.0 else 0
-                        ret["mb36_touch"] = 0
+                        # (4) mb36 is only defined at the 36-month horizon
+                        # (arith return >= configured multiple - 1); NULL at
+                        # every other horizon. mb36_touch (whether the path
+                        # ever touched the multiple, not just the endpoint)
+                        # stays NULL: it needs a max-TRI-along-the-path check
+                        # against daily/monthly bars between as_of and the
+                        # endpoint, which is not implemented here.
+                        ret["mb36"] = (1 if ret["r_arith"] >= mb_threshold else 0) if h == 36 else None
+                        ret["mb36_touch"] = None
                     else:
                         ret["r_group_median"] = None
                         ret["l_rel"] = None
@@ -190,7 +313,28 @@ def mature(ctx: RunContext, through: str) -> Result:
                         ret["mb36"] = None
                         ret["mb36_touch"] = None
 
-                # Compute evidence hash for this group
+                # (5) Evidence hash includes each member's price_manifest_sha
+                # (MASTER_SPEC 2.3: "the evidence hash includes all group
+                # members' price versions"). That manifest sha is a content
+                # hash of the price data actually used, so it is the price
+                # vintage: it changes only when the underlying prices behind
+                # this row change (a store correction observed by a later
+                # mature() call), never merely because wall-clock time moved
+                # on. Folding the raw vintage_at timestamp in here instead
+                # would force a new label revision every monthly run forever,
+                # even with byte-identical prices -- not "revisions are
+                # visible", just unbounded revision growth.
+                #
+                # Critically, price_manifest_sha itself must be scoped to
+                # THIS group's own members (group_store_hash, built from
+                # _scoped_price_hash above) rather than a whole-price-store
+                # hash: a whole-store hash changes on every monthly ingest of
+                # the ~500-name universe regardless of whether this group's
+                # own prices moved, which reproduces the exact same
+                # unbounded-revision-growth failure through a different
+                # input. Scoping to the group's own read makes this group's
+                # evidence_hash change if and only if this group's own
+                # r_log/status/price data changed.
                 hash_data = {
                     "cohort_id": cohort_id,
                     "horizon_m": h,
@@ -202,6 +346,7 @@ def mature(ctx: RunContext, through: str) -> Result:
                             member_returns[s]["status"],
                             member_returns[s]["r_log"],
                             member_returns[s]["p_end"],
+                            member_returns[s]["price_manifest_sha"],
                         )
                         for s in sorted(grp_sids)
                     ],
@@ -277,7 +422,7 @@ def mature(ctx: RunContext, through: str) -> Result:
                             ret["status"],
                             ret["mb36"],
                             ret["mb36_touch"],
-                            grp_evidence_hash,
+                            ret["price_manifest_sha"] or "",
                             run_id,
                             None,
                             sup_rev,

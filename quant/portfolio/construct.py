@@ -23,14 +23,31 @@ def rebalance(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Rebalance portfolio under stated rule, turnover buffer, sector caps, and liquidity limits.
 
+    target_n, sector_cap, buffer_rank and bucket_c_cap come from `cfg.portfolio`
+    (n_holdings, sector_cap_names, buffer_rank, bucket_c_max_weight respectively); the
+    literals below are used only when `cfg` or that section is absent.
+
+    For rule="top30_buffer", each selected name's nominal weight is 1/target_n. When
+    fewer than target_n feasible names exist (MASTER_SPEC section 8: "if fewer than 30
+    feasible names exist, hold residual cash"), weights are never scaled up beyond that
+    1/target_n nominal to fill the *unfilled slots* -- that shortfall is reported as
+    cash instead. Separately and unconditionally (MASTER_SPEC section 8: "redistribute
+    remaining target across eligible A/B names under the sector limit, else cash"), a
+    bucket C name's capped excess always redistributes across the selected A/B names
+    when any exist -- regardless of whether the book is fully populated -- and only
+    falls back to cash when the selected book has no A/B names to receive it.
+
     Returns:
-      positions: DataFrame(security_id, target_weight, entry_as_of)
+      positions: DataFrame(security_id, target_weight, entry_as_of, cash_weight) --
+        cash_weight is the fraction of the book left uninvested (0 when fully deployed),
+        repeated on every row for convenience.
       deltas: DataFrame(security_id, weight_delta, side)
     """
-    target_n = 30
-    sector_cap = 6
-    buffer_rank = 60
-    bucket_c_cap = 0.02
+    portfolio_cfg = getattr(cfg, "portfolio", None) if cfg is not None else None
+    target_n = int(getattr(portfolio_cfg, "n_holdings", 30))
+    sector_cap = int(getattr(portfolio_cfg, "sector_cap_names", 6))
+    buffer_rank = int(getattr(portfolio_cfg, "buffer_rank", 60))
+    bucket_c_cap = float(getattr(portfolio_cfg, "bucket_c_max_weight", 0.02))
 
     prev_map: dict[int, dict] = {}
     if previous is not None and not previous.empty:
@@ -129,30 +146,49 @@ def rebalance(
     K = len(selected)
 
     if K > 0:
-        nom_weight = 1.0 / target_n if rule == "top30_buffer" else 1.0 / K
+        if rule == "top30_buffer":
+            nom_weight = 1.0 / target_n
+            # An infeasible book (K < target_n) must not scale AB weights up to
+            # consume the target_n slots that have no feasible name at all -- that
+            # shortfall becomes cash. This is independent of bucket C redistribution
+            # below: MASTER_SPEC section 8's "redistribute remaining target across
+            # eligible A/B names ... else cash" is unconditional on book fullness.
+        else:
+            nom_weight = 1.0 / K
 
         c_sids = [s for s in selected if buckets.get(s) == "C"]
         ab_sids = [s for s in selected if buckets.get(s) in ("A", "B")]
 
         c_weight = min(nom_weight, bucket_c_cap)
-        total_c_weight = len(c_sids) * c_weight
-        rem_weight = max(0.0, 1.0 - total_c_weight)
+        freed_from_c = max(0.0, nom_weight - c_weight) * len(c_sids)
 
-        ab_weight = (rem_weight / len(ab_sids)) if ab_sids else 0.0
+        # Bucket C's capped excess always redistributes to the selected A/B names
+        # when any exist, whether or not the book is fully populated -- only the
+        # "no eligible A/B names to receive it" case falls back to cash.
+        if ab_sids:
+            ab_weight = nom_weight + (freed_from_c / len(ab_sids))
+        else:
+            ab_weight = nom_weight
 
+        assigned_total = 0.0
         for sid in selected:
-            if sid in c_sids:
-                w = c_weight
-            else:
-                w = ab_weight
+            w = c_weight if sid in c_sids else ab_weight
+            assigned_total += w
             positions_list.append({
                 "security_id": sid,
                 "target_weight": float(w),
                 "entry_as_of": entry_dates.get(sid, ""),
             })
 
+        cash_weight = max(0.0, 1.0 - assigned_total)
+    else:
+        cash_weight = 1.0
+
+    for row in positions_list:
+        row["cash_weight"] = float(cash_weight)
+
     positions = pd.DataFrame(
-        positions_list, columns=["security_id", "target_weight", "entry_as_of"]
+        positions_list, columns=["security_id", "target_weight", "entry_as_of", "cash_weight"]
     )
 
     # 3. Compute weight deltas vs previous holdings

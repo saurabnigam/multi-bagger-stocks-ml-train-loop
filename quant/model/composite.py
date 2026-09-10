@@ -170,9 +170,18 @@ def compose(
     neutral_res = transform(comp_series, groups_aligned, direction=1, cfg=cfg)
     comp_neutral = neutral_res["z"]
 
-    # If small group standardisation returned NaN, keep unneutralized composite if valid
-    # to avoid dropping scores in small unit tests
-    comp_neutral = comp_neutral.combine_first(comp_series)
+    # A name that passed coverage but whose sector group is too small or constant for
+    # standardisation (MASTER_SPEC 5.2: >=5 finite observations, >1 distinct value)
+    # cannot be neutralized. It must NOT fall back to the un-neutralized composite --
+    # doing so would silently mix a raw, non-comparable score into production ranking.
+    # Such names are unscored with reason "neutralisation"; the raw composite is kept
+    # for diagnostics but composite_neutral/final stay NaN.
+    failed_neutral = (scored_series == 1) & comp_neutral.isna() & comp_series.notna()
+    for sid in failed_neutral[failed_neutral].index:
+        scored_flags[sid] = 0
+        exclusion_reasons[sid] = "neutralisation"
+    scored_series = pd.Series(scored_flags, index=idx, dtype=int)
+
     comp_neutral = comp_neutral.where(scored_series == 1, np.nan)
 
     # Sector tilt and final score

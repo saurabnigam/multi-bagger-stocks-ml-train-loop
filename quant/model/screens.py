@@ -8,8 +8,13 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
+from quant.portfolio.costs import bucket as liquidity_bucket_for
+
 if TYPE_CHECKING:
     from quant.types import Draft, RunContext
+
+# MASTER_SPEC section 6.1: "unknown sector" covers these exact spellings.
+UNKNOWN_SECTOR_VALUES = {"UNCLASSIFIED", "UNKNOWN", "", "None", "nan"}
 
 
 def apply(
@@ -18,67 +23,84 @@ def apply(
     scores: pd.DataFrame,
     model_id: str,
 ) -> pd.DataFrame:
-    """Apply eligibility screens: EQ series, known sector, ADV63 >= 20M INR, >= 54 positive sessions.
+    """Apply eligibility screens: EQ series, known sector, ADV >= cfg threshold, and a
+    minimum count of positive-volume sessions in the trailing window (MASTER_SPEC 6.1).
 
-    Scored but screened-out names remain in scores table with scored=1 and eligible=0.
-    Re-computes rank, decile, quintile over eligible names only.
+    Thresholds come from `cfg.screens` (min_adv_inr, min_traded_sessions, adv_window);
+    liquidity buckets come from `quant.portfolio.costs.bucket`, the same A/B/C/D
+    thresholds used for cost modelling.
+
+    Missing evidence is never a silent pass. A security whose ADV cannot be determined
+    from `draft.members` or the price store is ineligible with reason `adv_missing` and
+    bucket D. A security whose positive-volume session count cannot be determined is
+    ineligible with reason `thin_trading` -- there is no default-to-passing fallback for
+    either quantity.
+
+    Scored but screened-out names remain in the scores table with scored=1, eligible=0.
+    Re-computes rank, decile, quintile over eligible names only, using
+    `min(q, 1 + floor((rank_ascending - 1) * q / n))`.
     """
     out = scores.copy()
     members = draft.members
     groups = draft.groups
     idx = out.index
 
-    # 1. Retrieve ADV and positive-volume session counts
-    min_adv = 20_000_000.0
-    if ctx and ctx.cfg and hasattr(ctx.cfg, "gates") and hasattr(ctx.cfg.gates, "min_adv_inr"):
-        min_adv = float(ctx.cfg.gates.min_adv_inr)
+    screens_cfg = getattr(ctx.cfg, "screens", None) if (ctx is not None and ctx.cfg is not None) else None
+    min_adv = float(getattr(screens_cfg, "min_adv_inr", 20_000_000.0))
+    min_sessions = int(getattr(screens_cfg, "min_traded_sessions", 54))
+    adv_window = int(getattr(screens_cfg, "adv_window", 63))
 
+    adv_col = f"adv_{adv_window}_inr"
+    sessions_col = f"pos_sessions_{adv_window}"
+
+    # 1. Retrieve ADV and positive-volume session counts. Both stay NaN unless a real
+    # source (the members frame or the price store) actually reports them -- no
+    # default-to-passing value is ever substituted for missing evidence.
     adv_series = pd.Series(np.nan, index=idx, dtype=float)
-    pos_sessions = pd.Series(63, index=idx, dtype=int)
+    pos_sessions = pd.Series(np.nan, index=idx, dtype=float)
 
-    # Check members columns first
     if members is not None:
-        if "adv_63_inr" in members.columns:
+        if adv_col in members.columns:
+            adv_series = members[adv_col].reindex(idx).astype(float)
+        elif "adv_63_inr" in members.columns:
             adv_series = members["adv_63_inr"].reindex(idx).astype(float)
         elif "adv" in members.columns:
             adv_series = members["adv"].reindex(idx).astype(float)
 
-        if "pos_sessions_63" in members.columns:
-            pos_sessions = members["pos_sessions_63"].reindex(idx).fillna(63).astype(int)
+        if sessions_col in members.columns:
+            pos_sessions = members[sessions_col].reindex(idx).astype(float)
+        elif "pos_sessions_63" in members.columns:
+            pos_sessions = members["pos_sessions_63"].reindex(idx).astype(float)
         elif "pos_sessions" in members.columns:
-            pos_sessions = members["pos_sessions"].reindex(idx).fillna(63).astype(int)
+            pos_sessions = members["pos_sessions"].reindex(idx).astype(float)
 
-    # If missing and ctx.store is available, query store
+    # If still missing and a price store is attached, query it directly -- the only
+    # other legitimate source. Anything still missing after this stays missing.
     missing_adv = adv_series.isna()
-    if missing_adv.any() and ctx is not None and getattr(ctx, "store", None) is not None:
-        sids_to_fetch = [int(s) for s in idx[missing_adv]]
+    missing_sessions = pos_sessions.isna()
+    if (missing_adv.any() or missing_sessions.any()) and ctx is not None and getattr(ctx, "store", None) is not None:
+        sids_to_fetch = [int(s) for s in idx[missing_adv | missing_sessions]]
         adv_df = ctx.store.adv_inr(
             sids_to_fetch,
             as_of=draft.as_of,
             vintage_at=draft.knowledge_cutoff,
-            window=63,
+            window=adv_window,
         )
-        if not adv_df.empty and "adv_63_inr" in adv_df.columns:
-            adv_series = adv_series.combine_first(adv_df["adv_63_inr"])
-            if "n_days_63" in adv_df.columns:
-                pos_sessions = pos_sessions.combine_first(adv_df["n_days_63"])
+        store_adv_col = f"adv_{adv_window}_inr"
+        store_sessions_col = f"pos_sessions_{adv_window}"
+        if not adv_df.empty:
+            if store_adv_col in adv_df.columns:
+                adv_series = adv_series.combine_first(adv_df[store_adv_col])
+            if store_sessions_col in adv_df.columns:
+                pos_sessions = pos_sessions.combine_first(adv_df[store_sessions_col])
 
-    # If still missing, default to passing (50M) for offline test fixtures without store
-    adv_series = adv_series.fillna(50_000_000.0)
-
-    # 2. Determine liquidity buckets
-    # A >= 500M, B >= 100M, C >= 20M, else D
-    liquidity_bucket = pd.Series(None, index=idx, dtype=object)
-    for sid in idx:
-        adv = adv_series.loc[sid]
-        if adv >= 500_000_000.0:
-            liquidity_bucket.loc[sid] = "A"
-        elif adv >= 100_000_000.0:
-            liquidity_bucket.loc[sid] = "B"
-        elif adv >= 20_000_000.0:
-            liquidity_bucket.loc[sid] = "C"
-        else:
-            liquidity_bucket.loc[sid] = "D"
+    # 2. Determine liquidity buckets from the shared cost-model thresholds (A/B/C/D).
+    # `costs.bucket` already treats a missing/non-finite ADV as bucket D.
+    liq_bucket = pd.Series(
+        [liquidity_bucket_for(adv_series.loc[sid], ctx.cfg if ctx is not None else None) for sid in idx],
+        index=idx,
+        dtype=object,
+    )
 
     # 3. Apply eligibility rules
     series_col = members["series"].reindex(idx) if (members is not None and "series" in members.columns) else pd.Series("EQ", index=idx)
@@ -102,22 +124,35 @@ def apply(
             continue
 
         # Check known sector
-        sec_val = str(sector_col.loc[sid]) if pd.notna(sector_col.loc[sid]) else "UNKNOWN"
-        if sec_val in ("UNKNOWN", "", "None", "nan"):
+        sec_raw = sector_col.loc[sid]
+        sec_val = str(sec_raw) if pd.notna(sec_raw) else "UNKNOWN"
+        if sec_val in UNKNOWN_SECTOR_VALUES:
             eligible.loc[sid] = 0
             exclusion_reason.loc[sid] = "unknown_sector"
             continue
 
-        # Check ADV63 >= 20M INR
-        adv_val = float(adv_series.loc[sid])
-        if adv_val < min_adv:
+        # A missing ADV is ineligible -- never a silent pass.
+        adv_val = adv_series.loc[sid]
+        if pd.isna(adv_val):
+            eligible.loc[sid] = 0
+            exclusion_reason.loc[sid] = "adv_missing"
+            continue
+
+        # Check ADV >= cfg.screens.min_adv_inr
+        if float(adv_val) < min_adv:
             eligible.loc[sid] = 0
             exclusion_reason.loc[sid] = "illiquid"
             continue
 
-        # Check positive-volume sessions >= 54 of last 63
-        n_pos = int(pos_sessions.loc[sid])
-        if n_pos < 54:
+        # A missing positive-volume session count is ineligible -- never a silent pass.
+        n_pos_raw = pos_sessions.loc[sid]
+        if pd.isna(n_pos_raw):
+            eligible.loc[sid] = 0
+            exclusion_reason.loc[sid] = "thin_trading"
+            continue
+
+        # Check positive-volume sessions >= cfg.screens.min_traded_sessions
+        if int(n_pos_raw) < min_sessions:
             eligible.loc[sid] = 0
             exclusion_reason.loc[sid] = "thin_trading"
             continue
@@ -128,7 +163,7 @@ def apply(
 
     out["eligible"] = eligible
     out["exclusion_reason"] = exclusion_reason
-    out["liquidity_bucket"] = liquidity_bucket
+    out["liquidity_bucket"] = liq_bucket
 
     # 4. Re-rank eligible names
     mask_elig = (out["scored"] == 1) & (out["eligible"] == 1) & out["final"].notna()

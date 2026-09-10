@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-import sys
 
 from quant.cli import register
 from quant.config import load
@@ -19,9 +18,25 @@ def cmd_migrate_legacy(args: argparse.Namespace) -> int:
     cfg = load(args.config if hasattr(args, "config") and args.config else None)
     db_path = Path(args.db_path) if hasattr(args, "db_path") and args.db_path else cfg.paths.db
     legacy_db = Path(args.legacy_db) if hasattr(args, "legacy_db") and args.legacy_db else cfg.paths.legacy_db
+    cfg = cfg.with_paths(db=db_path)
+    dry_run = getattr(args, "dry_run", False)
 
-    conn = connect(db_path)
-    apply_schema(conn, kind="state")
+    if dry_run:
+        # INTERFACES.md C10: "dry_run never writes to either DB, filesystem or Git." A
+        # RunContext must NOT be opened here: RunContext.__enter__ unconditionally connects
+        # to the target state DB and INSERTs a `runs` row (and __exit__ UPDATEs/COMMITs it),
+        # which would itself be a write. legacy.run()'s dry_run branch only hashes the
+        # legacy source file and never dereferences `ctx`, so no RunContext, no state-DB
+        # connection, and no schema bootstrap are needed for a dry run at all.
+        res = run_migration(None, legacy_db_path=legacy_db, dry_run=True)
+        print(f"Migration result: {res.status}, counts={res.counts}, details={res.details}")
+        return 0
+
+    # RunContext.__enter__ inserts the run's `runs` row immediately, so the schema (and its
+    # journal triggers) must already exist on the target file before it opens its connection.
+    bootstrap_conn = connect(db_path)
+    apply_schema(bootstrap_conn, kind="state")
+    bootstrap_conn.close()
 
     clock = SystemClock()
     actor = Actor(
@@ -29,38 +44,13 @@ def cmd_migrate_legacy(args: argparse.Namespace) -> int:
         name=getattr(args, "by", "system:migration"),
     )
 
-    ctx = RunContext(
-        as_of="2026-09-03",
-        kind="migration",
-        track="legacy",
-        cfg=cfg.with_paths(db=db_path),
-        clock=clock,
-        actor=actor,
-    )
-    ctx.conn = conn
-
-    try:
-        # Check if runs row exists for migration
-        r = conn.execute("SELECT run_id FROM runs WHERE kind = 'migration' ORDER BY rowid DESC LIMIT 1").fetchone()
-        if not r:
-            with conn:
-                conn.execute(
-                    """
-                    INSERT INTO runs (run_id, as_of, kind, track, attempt, started_at, status, git_sha, code_sha256, config_sha256, registry_sha256)
-                    VALUES (1, '2026-09-03', 'migration', 'legacy', 1, ?, 'ok', 'sha1', 'c_sha', 'cfg_sha', 'reg_sha')
-                    """,
-                    (clock.iso(),),
-                )
-        dry_run = getattr(args, "dry_run", False)
-        res = run_migration(ctx, legacy_db_path=legacy_db, dry_run=dry_run)
+    with RunContext(as_of="2026-09-03", kind="migration", track="legacy", cfg=cfg, clock=clock, actor=actor) as ctx:
+        res = run_migration(ctx, legacy_db_path=legacy_db, dry_run=False)
         print(f"Migration result: {res.status}, counts={res.counts}, details={res.details}")
 
-        if not dry_run:
-            df = reconcile(conn, legacy_db_path=legacy_db)
-            print(df.to_string(index=False))
-        return 0
-    finally:
-        conn.close()
+        df = reconcile(ctx.conn, legacy_db_path=legacy_db)
+        print(df.to_string(index=False))
+    return 0
 
 
 register("db", "migrate-legacy", cmd_migrate_legacy, "Migrate legacy database into V2 schema")

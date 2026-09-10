@@ -75,7 +75,7 @@ def test_decision_vectors_test_each_criterion_independently(test_db, cfg):
         for i, dt in enumerate(dates):
             test_db.execute(
                 "INSERT INTO evaluations (eval_id, computed_run_id, computed_at, subject_kind, subject_id, subject_version, as_of, horizon_m, scope, track, metric, value, n, n_eff, status, method, window_start, window_end, evidence_hash, revision) "
-                "VALUES (?, 1, '2026-09-01T00:00:00Z', 'factor', 'mom_12_1', '1', ?, 3, 'full', 'live', 'oriented_ic', 0.04, 100, 33.3, 'ok', 'spearman', '', '', ?, 1)",
+                "VALUES (?, 1, '2026-09-01T00:00:00Z', 'factor', 'mom_12_1', '1', ?, 3, 'eligible', 'live', 'oriented_ic', 0.04, 100, 33.3, 'ok', 'spearman', '', '', ?, 1)",
                 (100 + i, dt, f"ev_{i}"),
             )
 
@@ -115,7 +115,7 @@ def test_positive_oriented_ic_good_for_both_raw_directions(test_db, golden_cases
             dt = f"2026-{i:02d}-28"
             test_db.execute(
                 "INSERT INTO evaluations (eval_id, computed_run_id, computed_at, subject_kind, subject_id, subject_version, as_of, horizon_m, scope, track, metric, value, n, n_eff, status, method, window_start, window_end, evidence_hash, revision) "
-                "VALUES (?, 1, '2026-09-01T00:00:00Z', 'factor', 'vol_252', '1', ?, 3, 'full', 'live', 'oriented_ic', 0.035, 100, 33.3, 'ok', 'spearman', '', '', ?, 1)",
+                "VALUES (?, 1, '2026-09-01T00:00:00Z', 'factor', 'vol_252', '1', ?, 3, 'eligible', 'live', 'oriented_ic', 0.035, 100, 33.3, 'ok', 'spearman', '', '', ?, 1)",
                 (200 + i, dt, f"ev_vol_{i}"),
             )
 
@@ -143,7 +143,7 @@ def test_unavailable_cost_and_ablation_is_unmet(test_db, cfg):
         for i in range(1, 13):
             test_db.execute(
                 "INSERT INTO evaluations (eval_id, computed_run_id, computed_at, subject_kind, subject_id, subject_version, as_of, horizon_m, scope, track, metric, value, n, n_eff, status, method, window_start, window_end, evidence_hash, revision) "
-                "VALUES (?, 1, '2026-09-01T00:00:00Z', 'factor', 'roce', '1', ?, 3, 'full', 'live', 'oriented_ic', 0.05, 100, 33.3, 'ok', 'spearman', '', '', ?, 1)",
+                "VALUES (?, 1, '2026-09-01T00:00:00Z', 'factor', 'roce', '1', ?, 3, 'eligible', 'live', 'oriented_ic', 0.05, 100, 33.3, 'ok', 'spearman', '', '', ?, 1)",
                 (300 + i, f"2026-{i:02d}-28", f"ev_roce_{i}"),
             )
 
@@ -176,7 +176,7 @@ def test_factor_look_consumed_once_even_when_ancillary_fail(test_db, cfg):
         for i in range(1, 13):
             test_db.execute(
                 "INSERT INTO evaluations (eval_id, computed_run_id, computed_at, subject_kind, subject_id, subject_version, as_of, horizon_m, scope, track, metric, value, n, n_eff, status, method, window_start, window_end, evidence_hash, revision) "
-                "VALUES (?, 1, '2026-09-01T00:00:00Z', 'factor', 'accruals', '1', ?, 3, 'full', 'live', 'oriented_ic', 0.04, 100, 33.3, 'ok', 'spearman', '', '', ?, 1)",
+                "VALUES (?, 1, '2026-09-01T00:00:00Z', 'factor', 'accruals', '1', ?, 3, 'eligible', 'live', 'oriented_ic', 0.04, 100, 33.3, 'ok', 'spearman', '', '', ?, 1)",
                 (400 + i, f"2026-{i:02d}-28", f"ev_acc_{i}"),
             )
 

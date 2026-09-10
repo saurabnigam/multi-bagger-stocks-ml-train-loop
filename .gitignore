@@ -6,3 +6,20 @@ __pycache__/
 *.metadata.json
 .coverage
 .pytest_cache/
+
+# State-DB write-ahead/shared-memory files (transient SQLite journal state; the
+# committed artifact is quant.db itself, never these). Do NOT add quant.db or
+# data/ledger here - MASTER_SPEC commits both as the reproducibility record.
+quant.db-wal
+quant.db-shm
+*.db-wal
+*.db-shm
+
+# Local prices cache, source archive and run logs/locks: large or
+# machine-specific, and reproducible from data/ledger + a fresh capture.
+data/prices_daily.sqlite*
+data/archive/
+data/logs/
+data/.locks/
+.cache/
+*.lock

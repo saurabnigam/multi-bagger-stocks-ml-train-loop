@@ -37,9 +37,17 @@ ALLOWED_STATEMENTS = {
 
 class FactorInputs:
     """Restricted container providing point-in-time data for factor calculation.
-    
+
     Exposes no database connection, network client or label frames.
     All accesses are strictly capped at as_of date and knowledge_cutoff timestamp.
+
+    G6 unit-bound masking (MASTER_SPEC section 4.6) happens here, at read time, not by
+    rewriting stored rows: `attribute()` masks trailing_pe with abs(PE) >= 1000,
+    mcap_inr <= 0, dividend_rate_inr < 0 and ev_inr <= 0 to NaN; `holdings()` masks
+    values outside [0, 1] to NaN. `ttm()` and `fundamental()` are unaffected -- their
+    values are validated by each factor's own formula-specific denominator checks, not
+    by G6. `self.members` is always a pandas Index of security_id ints; every series
+    returned here is reindexed against it with an explicit float dtype.
     """
 
     def __init__(
@@ -97,7 +105,14 @@ class FactorInputs:
         return self._price_store.volume(sids, start=start, end=self.as_of, vintage_at=self.cutoff)
 
     def attribute(self, field: str) -> pd.Series:
-        """Point-in-time cross-sectional security attribute."""
+        """Point-in-time cross-sectional security attribute.
+
+        G6 unit-bound masking (MASTER_SPEC section 4.6) is applied here, at read time,
+        rather than by rewriting stored rows: trailing_pe with abs(PE) >= 1000,
+        mcap_inr <= 0, dividend_rate_inr < 0, and ev_inr <= 0 are invalid raw inputs and
+        are masked to NaN before this series ever reaches a factor calculation.
+        Indexed by `self.members` (a pandas Index of security_id ints).
+        """
         attr_map = {
             "market_cap_inr": "mcap_inr",
             "mcap_inr": "mcap_inr",
@@ -130,7 +145,18 @@ class FactorInputs:
         """
         rows = self._query(query, (self.cutoff,))
         res = {r[0]: float(r[1]) if r[1] is not None else np.nan for r in rows}
-        return pd.Series(res).reindex(self.members)
+        series = pd.Series(res, dtype=float).reindex(self.members)
+
+        if col == "trailing_pe":
+            series = series.where(series.abs() < 1000.0, other=np.nan)
+        elif col == "mcap_inr":
+            series = series.where(series > 0.0, other=np.nan)
+        elif col == "dividend_rate_inr":
+            series = series.where(series >= 0.0, other=np.nan)
+        elif col == "ev_inr":
+            series = series.where(series > 0.0, other=np.nan)
+
+        return series
 
     def fundamental(self, statement: str, field: str, freq: str, n_periods: int) -> pd.DataFrame:
         """Point-in-time fundamental statement series."""
@@ -204,14 +230,22 @@ class FactorInputs:
         return pd.Series(np.nan, index=self.members)
 
     def holdings(self, lag_runs: int = 0) -> pd.Series:
-        """Point-in-time institutional holdings share."""
+        """Point-in-time institutional holdings share.
+
+        G6 unit-bound masking (MASTER_SPEC section 4.6) is applied here, at read time: a
+        holdings fraction outside [0, 1] is invalid and is masked to NaN before this
+        series ever reaches a factor calculation. Indexed by `self.members` (a pandas
+        Index of security_id ints), regardless of which source (an injected holdings
+        function or the state query) produced the raw value.
+        """
         if lag_runs < 0:
             raise LookaheadError(f"Negative lag_runs ({lag_runs}) requests future holdings")
 
         sids = [int(x) for x in self.members]
         if self._holdings_fn:
             ser = self._holdings_fn(lag_runs, sids)
-            return ser.reindex(self.members)
+            ser = ser.reindex(self.members).astype(float)
+            return ser.where((ser >= 0.0) & (ser <= 1.0), other=np.nan)
 
         query = """
         WITH ranked AS (
@@ -226,7 +260,8 @@ class FactorInputs:
         """
         rows = self._query(query, (self.cutoff, lag_runs + 1))
         res = {r[0]: float(r[1]) if r[1] is not None else np.nan for r in rows}
-        return pd.Series(res).reindex(self.members)
+        ser = pd.Series(res, dtype=float).reindex(self.members)
+        return ser.where((ser >= 0.0) & (ser <= 1.0), other=np.nan)
 
     def adv_inr(self) -> pd.Series:
         """Average daily turnover in INR over trailing 63 trading days."""

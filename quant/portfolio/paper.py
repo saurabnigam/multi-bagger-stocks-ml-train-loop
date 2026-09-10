@@ -6,14 +6,13 @@ import calendar
 import datetime
 import hashlib
 import json
-from pathlib import Path
 import sqlite3
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
 from quant.data.calendar import Calendar
-from quant.db.core import connect
+from quant.data.prices import PriceStore
 from quant.portfolio.construct import rebalance
 from quant.portfolio.costs import bucket, cost_bps_one_way
 from quant.types import Result
@@ -43,25 +42,47 @@ def _get_calendar(ctx: RunContext) -> Calendar:
     return Calendar(sessions_df)
 
 
-def _discover_prices_conn(conn: sqlite3.Connection, cfg: Any = None) -> sqlite3.Connection | None:
-    if cfg and hasattr(cfg, "paths") and hasattr(cfg.paths, "prices_db"):
-        try:
-            return connect(cfg.paths.prices_db, readonly=True)
-        except Exception:
-            pass
+def _price_store(ctx: RunContext | None = None, *, conn: sqlite3.Connection | None = None, cfg: Any = None) -> PriceStore | None:
+    """The PriceStore for reads: ``ctx.store`` when present, else one opened at
+    ``cfg.paths.prices_db``.
 
+    Never guesses at a sibling database filename. When neither a live store
+    nor a usable config path exists, callers must treat prices as unavailable
+    (orders stay pending, returns are not computed) instead of fabricating data.
+    """
+    store = getattr(ctx, "store", None) if ctx is not None else None
+    if store is not None:
+        return store
+    if cfg is None and ctx is not None:
+        cfg = getattr(ctx, "cfg", None)
+    if cfg is None or not hasattr(cfg, "paths") or not hasattr(cfg.paths, "prices_db"):
+        return None
+    state_conn = conn if conn is not None else (getattr(ctx, "conn", None) if ctx is not None else None)
     try:
-        db_rows = conn.execute("PRAGMA database_list").fetchall()
-        for d_row in db_rows:
-            if d_row["name"] == "main" and d_row["file"]:
-                main_file = Path(d_row["file"])
-                for cand_name in ("test_prices.db", "prices.db", "prices_daily.sqlite"):
-                    cand_p = main_file.parent / cand_name
-                    if cand_p.exists():
-                        return connect(cand_p, readonly=True)
+        return PriceStore(cfg.paths.prices_db, state_conn=state_conn)
     except Exception:
-        pass
-    return None
+        return None
+
+
+def _effective_vintage(ctx: RunContext | None, boundary_iso: str) -> str:
+    """Vintage for a price read: the later of the clock's current time and
+    ``boundary_iso``.
+
+    In production the clock is always at or after any ``through``/month-end it
+    is asked to process, so this is simply ``ctx.clock.iso()``. The max() only
+    guards a frozen/absent clock (tests; CLI handlers, which pass ``clock=None``)
+    from excluding prices that are already known as of the requested boundary.
+    """
+    clock = getattr(ctx, "clock", None) if ctx is not None else None
+    clock_iso = None
+    if clock is not None:
+        try:
+            clock_iso = clock.iso()
+        except Exception:
+            clock_iso = None
+    if not clock_iso:
+        return boundary_iso
+    return max(clock_iso, boundary_iso)
 
 
 def plan(ctx: RunContext, cohort_id: str) -> Result:
@@ -202,6 +223,7 @@ def plan(ctx: RunContext, cohort_id: str) -> Result:
             entry_exec_at=entry_exec_at,
             exit_exec_at=exit_exec_at,
             sorted_candidates=[(r["security_id"], r["liquidity_bucket"]) for r in score_rows],
+            cfg=ctx.cfg,
         )
 
     # 2b. Factor attribution books
@@ -242,6 +264,7 @@ def plan(ctx: RunContext, cohort_id: str) -> Result:
             entry_exec_at=entry_exec_at,
             exit_exec_at=exit_exec_at,
             sorted_candidates=[(r["security_id"], r["liquidity_bucket"]) for r in fv_rows],
+            cfg=ctx.cfg,
         )
 
     return Result(status="ok", counts={"orders_planned": orders_planned})
@@ -259,12 +282,17 @@ def _plan_attribution_pair(
     entry_exec_at: str,
     exit_exec_at: str,
     sorted_candidates: list[tuple[int, str]],
+    cfg: Any = None,
 ) -> int:
     """Helper to plan TOP_Q20 and MATCHED_EW attribution books."""
     orders_planned = 0
     k = len(sorted_candidates)
     if k == 0:
         return 0
+
+    bucket_c_max_weight = 0.02
+    if cfg is not None and hasattr(cfg, "portfolio") and hasattr(cfg.portfolio, "bucket_c_max_weight"):
+        bucket_c_max_weight = float(cfg.portfolio.bucket_c_max_weight)
 
     # TOP_Q20: highest quintile (top 20%)
     n_q20 = max(1, k // 5)
@@ -289,7 +317,7 @@ def _plan_attribution_pair(
         nom_w = 1.0 / n_cand
         c_sids = [s for s, b in candidates if b == "C"]
         ab_sids = [s for s, b in candidates if b in ("A", "B")]
-        c_weight = min(nom_w, 0.02)
+        c_weight = min(nom_w, bucket_c_max_weight)
         total_c = len(c_sids) * c_weight
         rem_w = max(0.0, 1.0 - total_c)
         ab_weight = (rem_w / len(ab_sids)) if ab_sids else 0.0
@@ -346,265 +374,305 @@ def settle(ctx: RunContext, through: str) -> Result:
     if not pending_orders:
         return Result(status="ok", counts={"fills": 0})
 
-    p_conn = _discover_prices_conn(conn, getattr(ctx, "cfg", None))
-    fills = 0
+    store = _price_store(ctx, conn=conn, cfg=getattr(ctx, "cfg", None))
+    if store is None:
+        return Result(
+            status="ok",
+            counts={"fills": 0},
+            details={"message": "Price store unavailable; orders stay pending, returns not computed"},
+        )
 
+    vintage_at = _effective_vintage(ctx, through_iso)
     try:
-        for order in pending_orders:
-            order_id = order["order_id"]
-            portfolio_id = order["portfolio_id"]
-            cohort_id = order["cohort_id"]
-            security_id = int(order["security_id"])
-            purpose = order["purpose"]
-            side = str(order["side"]).lower()
-            target_weight = float(order["target_weight"])
-            bucket_name = str(order["liquidity_bucket"])
-            exec_at = order["earliest_exec_at"]
-            exec_date = exec_at[:10]
+        manifest_sha = store.manifest_hash(vintage_at)[0]
+    except Exception:
+        manifest_sha = ""
 
-            # 1. Exit guard: Never settle an exit for an unfilled/cancelled entry
-            if purpose == "exit":
-                entry_order = conn.execute(
-                    "SELECT status FROM portfolio_orders "
-                    "WHERE portfolio_id = ? AND cohort_id = ? AND security_id = ? AND purpose = 'entry'",
-                    (portfolio_id, cohort_id, security_id),
-                ).fetchone()
+    # Batch the exact-session close lookup: one store call per distinct
+    # execution date across all pending orders, never per order.
+    sids_by_date: dict[str, set[int]] = {}
+    for o in pending_orders:
+        sids_by_date.setdefault(o["earliest_exec_at"][:10], set()).add(int(o["security_id"]))
+    price_cache: dict[str, pd.DataFrame] = {}
+    for exec_date, sids in sids_by_date.items():
+        try:
+            price_cache[exec_date] = store.close_raw(sorted(sids), start=exec_date, end=exec_date, vintage_at=vintage_at)
+        except Exception:
+            price_cache[exec_date] = pd.DataFrame()
 
-                if not entry_order or entry_order["status"] != "filled":
-                    if entry_order and entry_order["status"] == "cancelled":
-                        conn.execute(
-                            "UPDATE portfolio_orders SET status = 'cancelled' WHERE order_id = ?",
-                            (order_id,),
-                        )
-                    continue
+    def _close_on_exact_session(exec_date: str, security_id: int) -> float | None:
+        """A close for the exact session only -- never falls back to a nearby
+        date, so an order whose execution close is unavailable stays pending
+        rather than filling against a moved date."""
+        df = price_cache.get(exec_date)
+        if df is None or df.empty or security_id not in df.columns:
+            return None
+        col = df[security_id].dropna()
+        return float(col.iloc[-1]) if not col.empty else None
 
-            # 2. Look up price on exec_date
-            price_row = None
-            if p_conn is not None:
-                try:
-                    price_row = p_conn.execute(
-                        "SELECT close_raw, dividend_raw, split_ratio, source_sha256 "
-                        "FROM prices_daily "
-                        "WHERE security_id = ? AND date = ? "
-                        "ORDER BY observed_at DESC LIMIT 1",
-                        (security_id, exec_date),
-                    ).fetchone()
-                except Exception:
-                    price_row = None
+    fills = 0
+    for order in pending_orders:
+        order_id = order["order_id"]
+        portfolio_id = order["portfolio_id"]
+        cohort_id = order["cohort_id"]
+        security_id = int(order["security_id"])
+        purpose = order["purpose"]
+        side = str(order["side"]).lower()
+        target_weight = float(order["target_weight"])
+        bucket_name = str(order["liquidity_bucket"])
+        exec_at = order["earliest_exec_at"]
+        exec_date = exec_at[:10]
 
-            if price_row is None:
-                try:
-                    price_row = conn.execute(
-                        "SELECT close_raw, dividend_raw, split_ratio, price_manifest_sha "
-                        "FROM prices_monthly "
-                        "WHERE security_id = ? AND month_end = ? LIMIT 1",
-                        (security_id, exec_date),
-                    ).fetchone()
-                except Exception:
-                    price_row = None
+        # 1. Exit guard: Never settle an exit for an unfilled/cancelled entry
+        if purpose == "exit":
+            entry_order = conn.execute(
+                "SELECT status FROM portfolio_orders "
+                "WHERE portfolio_id = ? AND cohort_id = ? AND security_id = ? AND purpose = 'entry'",
+                (portfolio_id, cohort_id, security_id),
+            ).fetchone()
 
-            if price_row is None:
-                # Missing price leaves order pending
+            if not entry_order or entry_order["status"] != "filled":
+                if entry_order and entry_order["status"] == "cancelled":
+                    conn.execute(
+                        "UPDATE portfolio_orders SET status = 'cancelled' WHERE order_id = ?",
+                        (order_id,),
+                    )
                 continue
 
-            fill_price = float(price_row["close_raw"])
-            if fill_price <= 0:
-                continue
+        # 2. Fills only when a close exists for the exact earliest_exec_at
+        # session; an unavailable close leaves the order pending (never move
+        # the date backward, never synthesize a fill).
+        fill_price = _close_on_exact_session(exec_date, security_id)
+        if fill_price is None or fill_price <= 0:
+            continue
 
-            manifest_sha = str(
-                price_row["source_sha256"]
-                if "source_sha256" in price_row.keys()
-                else (price_row["price_manifest_sha"] if "price_manifest_sha" in price_row.keys() else "sha")
-            )
+        cost_bps = cost_bps_one_way(bucket_name, ctx.cfg, stress=False)
 
-            cost_bps = cost_bps_one_way(bucket_name, ctx.cfg, stress=False)
-
-            # Determine weight delta
-            if purpose in ("entry", "rebalance") and side == "buy":
-                weight_delta = target_weight
-            elif purpose == "exit" or side == "sell":
-                prev_trade = conn.execute(
-                    "SELECT weight_delta FROM portfolio_trades "
-                    "WHERE portfolio_id = ? AND security_id = ? AND side IN ('buy', 'BUY')",
-                    (portfolio_id, security_id),
-                ).fetchone()
-                if prev_trade:
-                    weight_delta = -abs(float(prev_trade["weight_delta"]))
-                else:
-                    weight_delta = -target_weight if target_weight != 0 else -0.05
+        # Determine weight delta
+        if purpose in ("entry", "rebalance") and side == "buy":
+            weight_delta = target_weight
+        elif purpose == "exit" or side == "sell":
+            prev_trade = conn.execute(
+                "SELECT weight_delta FROM portfolio_trades "
+                "WHERE portfolio_id = ? AND security_id = ? AND side IN ('buy', 'BUY')",
+                (portfolio_id, security_id),
+            ).fetchone()
+            if prev_trade:
+                weight_delta = -abs(float(prev_trade["weight_delta"]))
             else:
-                weight_delta = target_weight
+                weight_delta = -target_weight if target_weight != 0 else -0.05
+        else:
+            weight_delta = target_weight
 
-            conn.execute(
-                "INSERT INTO portfolio_trades "
-                "(order_id, portfolio_id, cohort_id, exec_at, security_id, side, weight_delta, fill_price, cost_bps, liquidity_bucket, price_manifest_sha) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    order_id,
-                    portfolio_id,
-                    cohort_id,
-                    exec_at,
-                    security_id,
-                    side,
-                    weight_delta,
-                    fill_price,
-                    cost_bps,
-                    bucket_name,
-                    manifest_sha,
-                ),
-            )
+        conn.execute(
+            "INSERT INTO portfolio_trades "
+            "(order_id, portfolio_id, cohort_id, exec_at, security_id, side, weight_delta, fill_price, cost_bps, liquidity_bucket, price_manifest_sha) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                order_id,
+                portfolio_id,
+                cohort_id,
+                exec_at,
+                security_id,
+                side,
+                weight_delta,
+                fill_price,
+                cost_bps,
+                bucket_name,
+                manifest_sha,
+            ),
+        )
 
-            conn.execute(
-                "UPDATE portfolio_orders SET status = 'filled' WHERE order_id = ?",
-                (order_id,),
-            )
-            fills += 1
-
-    finally:
-        if p_conn is not None:
-            p_conn.close()
+        conn.execute(
+            "UPDATE portfolio_orders SET status = 'filled' WHERE order_id = ?",
+            (order_id,),
+        )
+        fills += 1
 
     return Result(status="ok", counts={"fills": fills})
 
 
 def roll_forward(ctx: RunContext, through: str, portfolio_id: str | None = None) -> Result:
-    """Derive NAV and monthly returns across actual fill and corporate action dates.
+    """Derive NAV and monthly returns across actual sessions and dated fills.
 
-    Produces no pre-inception returns.
+    Month boundaries are sessions (the last price-store session on or before
+    each calendar month end), never bare calendar dates -- a calendar
+    month-start/end is usually not a session, which silently zeroed every
+    return under the old implementation. Each period's per-position return is
+    the TRI ratio between its start and end session (one ``tri()`` call per
+    portfolio-month); positions drift with those returns between fills
+    ((1+r_i)/(1+r_portfolio)), and a rebalance's recorded ``weight_delta`` is
+    applied on top of the drifted weight. Produces no pre-inception returns.
     """
     conn = ctx.conn
     if conn is None:
         return Result(status="ok", counts={"returns_updated": 0})
-
-    cal = _get_calendar(ctx)
 
     p_query = "SELECT portfolio_id, inception, rule FROM portfolios"
     params: list[Any] = []
     if portfolio_id:
         p_query += " WHERE portfolio_id = ?"
         params.append(portfolio_id)
-
     portfolios = conn.execute(p_query, params).fetchall()
+
+    store = _price_store(ctx, conn=conn, cfg=getattr(ctx, "cfg", None))
+    if store is None:
+        return Result(
+            status="ok",
+            counts={"returns_updated": 0},
+            details={"message": "Price store unavailable; returns not computed"},
+        )
+
+    through_date = through[:10]
+    boundary_iso = through if "T" in through else f"{through}T23:59:59.999999Z"
+    vintage_at = _effective_vintage(ctx, boundary_iso)
+    history_start = "2015-01-01"
+    if ctx.cfg is not None and hasattr(ctx.cfg, "yahoo") and hasattr(ctx.cfg.yahoo, "history_start"):
+        history_start = str(ctx.cfg.yahoo.history_start)
+
     returns_updated = 0
 
-    p_conn = _discover_prices_conn(conn, getattr(ctx, "cfg", None))
+    for port in portfolios:
+        pid = port["portfolio_id"]
+        inception = port["inception"]
+        if not inception:
+            continue
 
-    try:
-        for port in portfolios:
-            pid = port["portfolio_id"]
-            inception = port["inception"]
-            if not inception:
-                continue
+        first_trade = conn.execute(
+            "SELECT min(exec_at) as min_exec FROM portfolio_trades WHERE portfolio_id = ?",
+            (pid,),
+        ).fetchone()
+        if not first_trade or not first_trade["min_exec"]:
+            continue
+        inception_session = first_trade["min_exec"][:10]
+        if inception_session > through_date:
+            continue
 
-            first_trade = conn.execute(
-                "SELECT min(exec_at) as min_exec FROM portfolio_trades WHERE portfolio_id = ?",
-                (pid,),
+        try:
+            sessions_in_range = store.session_dates(inception_session, through_date, min_securities=1)
+        except Exception:
+            sessions_in_range = []
+        month_end_sessions: list[str] = []
+        if sessions_in_range:
+            s_df = pd.DataFrame({"date": sessions_in_range})
+            s_df["month"] = s_df["date"].str[:7]
+            month_end_sessions = sorted(s_df.groupby("month")["date"].max().tolist())
+
+        # points[0] is the inception session itself; every later point is a
+        # month-end session strictly after it. Fewer than 2 points means the
+        # first period's endpoint session has not completed yet.
+        points = [inception_session] + [m for m in month_end_sessions if m > inception_session]
+        if len(points) < 2:
+            continue
+
+        all_trades = conn.execute(
+            "SELECT security_id, exec_at, weight_delta, cost_bps, liquidity_bucket "
+            "FROM portfolio_trades WHERE portfolio_id = ? ORDER BY exec_at ASC",
+            (pid,),
+        ).fetchall()
+
+        current_weights: dict[int, float] = {}
+        entry_dates: dict[int, str] = {}
+        bucket_by_sid: dict[int, str] = {}
+        lower_bound_exclusive: str | None = None
+
+        for idx in range(1, len(points)):
+            period_start, period_end = points[idx - 1], points[idx]
+
+            if idx == 1:
+                period_trades = [t for t in all_trades if t["exec_at"][:10] <= period_end]
+            else:
+                period_trades = [
+                    t for t in all_trades
+                    if lower_bound_exclusive < t["exec_at"][:10] <= period_end
+                ]
+            lower_bound_exclusive = period_end
+
+            turnover = 0.5 * sum(abs(float(t["weight_delta"])) for t in period_trades)
+            cost = sum(abs(float(t["weight_delta"])) * (float(t["cost_bps"]) / 10000.0) for t in period_trades)
+            cost_stress = sum(
+                abs(float(t["weight_delta"])) * (float(t["cost_bps"]) * 1.5 / 10000.0) for t in period_trades
+            )
+
+            # This period's trades apply on top of the weights carried from
+            # the previous period's drifted end-state -- the result is what
+            # was actually held while this period's return accrued.
+            held_weights = dict(current_weights)
+            for t in period_trades:
+                sid = int(t["security_id"])
+                held_weights[sid] = held_weights.get(sid, 0.0) + float(t["weight_delta"])
+                bucket_by_sid[sid] = t["liquidity_bucket"]
+                if held_weights[sid] > 1e-9:
+                    entry_dates.setdefault(sid, t["exec_at"][:10])
+            held_weights = {sid: w for sid, w in held_weights.items() if abs(w) > 1e-9}
+
+            sids = sorted(held_weights.keys())
+            r_by_sid: dict[int, float] = {}
+            if sids:
+                try:
+                    tri_df = store.tri(sids, start=history_start, end=period_end, vintage_at=vintage_at)
+                except Exception:
+                    tri_df = None
+                if (
+                    tri_df is not None
+                    and not tri_df.empty
+                    and period_start in tri_df.index
+                    and period_end in tri_df.index
+                ):
+                    row_s, row_e = tri_df.loc[period_start], tri_df.loc[period_end]
+                    for sid in sids:
+                        v0, v1 = row_s.get(sid), row_e.get(sid)
+                        if pd.notna(v0) and pd.notna(v1) and float(v0) > 0:
+                            r_by_sid[sid] = float(v1) / float(v0) - 1.0
+
+            ret_gross = sum(held_weights[sid] * r_by_sid.get(sid, 0.0) for sid in sids)
+
+            # Positions drift with returns between fills.
+            denom = 1.0 + ret_gross
+            current_weights = {
+                sid: (held_weights[sid] * (1.0 + r_by_sid.get(sid, 0.0)) / denom) if denom != 0 else held_weights[sid]
+                for sid in sids
+            }
+
+            ret_net = ret_gross - cost
+            ret_net_stress = ret_gross - cost_stress
+            n_positions = sum(1 for w in current_weights.values() if abs(w) > 1e-5)
+
+            evidence_str = f"{pid}:{period_end}:{ret_gross:.10f}:{ret_net:.10f}:{cost:.10f}"
+            ev_hash = hashlib.sha256(evidence_str.encode()).hexdigest()[:16]
+
+            existing = conn.execute(
+                "SELECT evidence_hash FROM portfolio_returns WHERE portfolio_id = ? AND month_end = ?",
+                (pid, period_end),
             ).fetchone()
-            if not first_trade or not first_trade["min_exec"]:
-                continue
 
-            inception_date = first_trade["min_exec"][:10]
-            month_ends = cal.month_ends(inception_date, through[:10])
-
-            for m_end in month_ends:
-                month_start = f"{m_end[:7]}-01"
-
-                m_trades = conn.execute(
-                    "SELECT weight_delta, cost_bps, liquidity_bucket FROM portfolio_trades "
-                    "WHERE portfolio_id = ? AND exec_at >= ? AND exec_at <= ?",
-                    (pid, f"{month_start}T00:00:00.000000Z", f"{m_end}T23:59:59.999999Z"),
-                ).fetchall()
-
-                turnover = 0.5 * sum(abs(float(t["weight_delta"])) for t in m_trades)
-                cost = sum(
-                    abs(float(t["weight_delta"])) * (float(t["cost_bps"]) / 10000.0)
-                    for t in m_trades
+            if not existing:
+                conn.execute(
+                    "INSERT OR IGNORE INTO portfolio_returns "
+                    "(portfolio_id, month_end, revision, evidence_hash, computed_at, ret_gross, turnover_one_way, cost, ret_net, ret_net_stress, bm_ew, bm_ew_sector, bm_cw, bm_index, n_positions, cost_model_version) "
+                    "VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, '1')",
+                    (
+                        pid,
+                        period_end,
+                        ev_hash,
+                        f"{period_end}T23:59:59.000000Z",
+                        ret_gross,
+                        turnover,
+                        cost,
+                        ret_net,
+                        ret_net_stress,
+                        n_positions,
+                    ),
                 )
-                cost_stress = sum(
-                    abs(float(t["weight_delta"])) * (float(t["cost_bps"]) * 1.5 / 10000.0)
-                    for t in m_trades
+                returns_updated += 1
+
+            for sid, w in current_weights.items():
+                conn.execute(
+                    "INSERT OR IGNORE INTO portfolio_positions "
+                    "(portfolio_id, as_of, security_id, weight, entry_as_of, rank_at_entry, liquidity_bucket) "
+                    "VALUES (?, ?, ?, ?, ?, NULL, ?)",
+                    (pid, period_end, sid, w, entry_dates.get(sid, period_start), bucket_by_sid.get(sid)),
                 )
-
-                active_trades = conn.execute(
-                    "SELECT security_id, sum(weight_delta) as net_weight, min(exec_at) as entry_dt, liquidity_bucket "
-                    "FROM portfolio_trades "
-                    "WHERE portfolio_id = ? AND exec_at <= ? "
-                    "GROUP BY security_id HAVING abs(sum(weight_delta)) > 1e-5",
-                    (pid, f"{m_end}T23:59:59.999999Z"),
-                ).fetchall()
-
-                n_positions = len(active_trades)
-
-                ret_gross = 0.0
-                for at in active_trades:
-                    sid = at["security_id"]
-                    w = float(at["net_weight"])
-
-                    p0, p1 = None, None
-                    if p_conn:
-                        try:
-                            rows = p_conn.execute(
-                                "SELECT date, close_raw, dividend_raw, split_ratio FROM prices_daily "
-                                "WHERE security_id = ? AND date IN (?, ?) ORDER BY date ASC",
-                                (sid, month_start, m_end),
-                            ).fetchall()
-                            if len(rows) == 2:
-                                p0 = float(rows[0]["close_raw"])
-                                p1 = float(rows[1]["close_raw"]) * float(rows[1]["split_ratio"]) + float(rows[1]["dividend_raw"])
-                        except Exception:
-                            pass
-
-                    if p0 and p1 and p0 > 0:
-                        stock_ret = (p1 / p0) - 1.0
-                    else:
-                        stock_ret = 0.0
-
-                    ret_gross += w * stock_ret
-
-                ret_net = ret_gross - cost
-                ret_net_stress = ret_gross - cost_stress
-
-                evidence_str = f"{pid}:{m_end}:{ret_gross:.6f}:{ret_net:.6f}:{cost:.6f}"
-                ev_hash = hashlib.sha256(evidence_str.encode()).hexdigest()[:16]
-
-                existing = conn.execute(
-                    "SELECT evidence_hash FROM portfolio_returns WHERE portfolio_id = ? AND month_end = ?",
-                    (pid, m_end),
-                ).fetchone()
-
-                if not existing:
-                    conn.execute(
-                        "INSERT OR IGNORE INTO portfolio_returns "
-                        "(portfolio_id, month_end, revision, evidence_hash, computed_at, ret_gross, turnover_one_way, cost, ret_net, ret_net_stress, bm_ew, bm_ew_sector, bm_cw, bm_index, n_positions, cost_model_version) "
-                        "VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, '1')",
-                        (
-                            pid,
-                            m_end,
-                            ev_hash,
-                            f"{m_end}T23:59:59.000000Z",
-                            ret_gross,
-                            turnover,
-                            cost,
-                            ret_net,
-                            ret_net_stress,
-                            n_positions,
-                        ),
-                    )
-                    returns_updated += 1
-
-                for at in active_trades:
-                    sid = at["security_id"]
-                    w = float(at["net_weight"])
-                    conn.execute(
-                        "INSERT OR IGNORE INTO portfolio_positions "
-                        "(portfolio_id, as_of, security_id, weight, entry_as_of, rank_at_entry, liquidity_bucket) "
-                        "VALUES (?, ?, ?, ?, ?, NULL, ?)",
-                        (pid, m_end, sid, w, at["entry_dt"][:10], at["liquidity_bucket"]),
-                    )
-
-    finally:
-        if p_conn is not None:
-            p_conn.close()
 
     return Result(status="ok", counts={"returns_updated": returns_updated})
 
@@ -621,6 +689,15 @@ def net_selection_spread(
 
     Returns dict with value, n_cost_events, status, execution_start, execution_end, evidence_refs.
     If absent simulation or unsettled orders, returns status 'unavailable' or 'pending'.
+
+    Signature matches INTERFACES.md C08 exactly (six positional parameters,
+    ``conn`` only -- no ``ctx``/``cfg``). The per-stock return is the raw
+    entry/exit fill-price ratio: this function has no PriceStore access path
+    under the contracted signature, so it cannot reflect an interim
+    corporate action between entry and exit via a TRI ratio. Threading a
+    PriceStore through here would need either a new parameter (an
+    INTERFACES.md amendment via governance) or reusing conn/some other
+    already-contracted value to reach one, neither of which exists today.
     """
     empty_res = {
         "value": None,
@@ -686,86 +763,52 @@ def net_selection_spread(
     if not trades:
         return empty_res
 
-    p_conn = _discover_prices_conn(conn)
+    exec_start = min(t["exec_at"] for t in trades)
+    exec_end = max(t["exec_at"] for t in trades)
 
-    try:
-        net_returns = {}
-        for pid in (p_top, p_ew):
-            p_trades = [t for t in trades if t["portfolio_id"] == pid]
-            entries = [t for t in p_trades if t["side"] in ("buy", "BUY")]
-            exits = [t for t in p_trades if t["side"] in ("sell", "SELL")]
+    net_returns = {}
+    for pid in (p_top, p_ew):
+        p_trades = [t for t in trades if t["portfolio_id"] == pid]
+        entries = [t for t in p_trades if t["side"] in ("buy", "BUY")]
+        exits = [t for t in p_trades if t["side"] in ("sell", "SELL")]
 
-            if not entries or not exits:
-                return empty_res
+        if not entries or not exits:
+            return empty_res
 
-            entry_map = {int(t["security_id"]): t for t in entries}
-            exit_map = {int(t["security_id"]): t for t in exits}
+        entry_map = {int(t["security_id"]): t for t in entries}
+        exit_map = {int(t["security_id"]): t for t in exits}
 
-            book_ret_gross = 0.0
-            total_costs = 0.0
+        book_ret_gross = 0.0
+        total_costs = 0.0
 
-            for sid, e_trade in entry_map.items():
-                x_trade = exit_map.get(sid)
-                if not x_trade:
-                    continue
+        for sid, e_trade in entry_map.items():
+            x_trade = exit_map.get(sid)
+            if not x_trade:
+                continue
 
-                w0 = abs(float(e_trade["weight_delta"]))
-                p0 = float(e_trade["fill_price"])
-                p1 = float(x_trade["fill_price"])
+            w0 = abs(float(e_trade["weight_delta"]))
 
-                c_entry = w0 * (float(e_trade["cost_bps"]) / 10000.0)
-                c_exit = abs(float(x_trade["weight_delta"])) * (float(x_trade["cost_bps"]) / 10000.0)
-                total_costs += (c_entry + c_exit)
+            c_entry = w0 * (float(e_trade["cost_bps"]) / 10000.0)
+            c_exit = abs(float(x_trade["weight_delta"])) * (float(x_trade["cost_bps"]) / 10000.0)
+            total_costs += (c_entry + c_exit)
 
-                split_ratio = 1.0
-                dividend_raw = 0.0
+            # Raw entry/exit fill-price ratio (no PriceStore access path
+            # under the contracted six-argument signature -- see docstring).
+            p0, p1 = float(e_trade["fill_price"]), float(x_trade["fill_price"])
+            stock_ret = (p1 / p0) - 1.0 if p0 > 0 else 0.0
 
-                if p_conn is not None:
-                    try:
-                        pr = p_conn.execute(
-                            "SELECT dividend_raw, split_ratio FROM prices_daily "
-                            "WHERE security_id = ? AND date = ? ORDER BY observed_at DESC LIMIT 1",
-                            (sid, x_trade["exec_at"][:10]),
-                        ).fetchone()
-                        if pr:
-                            split_ratio = float(pr["split_ratio"] or 1.0)
-                            dividend_raw = float(pr["dividend_raw"] or 0.0)
-                    except Exception:
-                        pass
+            book_ret_gross += w0 * stock_ret
 
-                if split_ratio == 1.0 and dividend_raw == 0.0:
-                    try:
-                        ca_row = conn.execute(
-                            "SELECT dividend_raw, split_ratio FROM prices_monthly "
-                            "WHERE security_id = ? AND month_end = ? LIMIT 1",
-                            (sid, x_trade["exec_at"][:10]),
-                        ).fetchone()
-                        if ca_row:
-                            split_ratio = float(ca_row["split_ratio"] or 1.0)
-                            dividend_raw = float(ca_row["dividend_raw"] or 0.0)
-                    except Exception:
-                        pass
+        net_returns[pid] = book_ret_gross - total_costs
 
-                economic_exit_price = (p1 + dividend_raw) * split_ratio
-                stock_ret = (economic_exit_price / p0) - 1.0 if p0 > 0 else 0.0
+    spread_val = net_returns[p_top] - net_returns[p_ew]
+    ev_refs = sorted(list({t["order_id"] for t in trades}))
 
-                book_ret_gross += w0 * stock_ret
-
-            net_returns[pid] = book_ret_gross - total_costs
-
-        spread_val = net_returns[p_top] - net_returns[p_ew]
-        exec_start = min(t["exec_at"] for t in trades)
-        exec_end = max(t["exec_at"] for t in trades)
-        ev_refs = sorted(list({t["order_id"] for t in trades}))
-
-        return {
-            "value": float(spread_val),
-            "n_cost_events": len(trades),
-            "status": "ok",
-            "execution_start": exec_start,
-            "execution_end": exec_end,
-            "evidence_refs": ev_refs,
-        }
-    finally:
-        if p_conn is not None:
-            p_conn.close()
+    return {
+        "value": float(spread_val),
+        "n_cost_events": len(trades),
+        "status": "ok",
+        "execution_start": exec_start,
+        "execution_end": exec_end,
+        "evidence_refs": ev_refs,
+    }

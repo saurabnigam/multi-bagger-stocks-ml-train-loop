@@ -104,21 +104,28 @@ def test_financial_non_applicability_excluded_from_denominator(cfg):
 
     # Stock 1: Financial Services; has 5 finite factors out of 7 applicable (71.4% >= 60%) across 3 families (value, growth, momentum)
     # Stock 2: Industrials (nonfinancial); has same 5 finite factors out of 10 applicable (50% < 60%)
-    sids = [1, 2, 3, 4, 5]
-    groups = pd.Series(["Financial Services", "Industrials", "Industrials", "Industrials", "Industrials"], index=sids)
+    # Stock 6: a second Financial Services name with a different composite value. Its
+    # sector group must have >1 distinct finite composite to be neutralized at all
+    # (MASTER_SPEC 5.2: a single-member group is trivially "constant" and returns NaN;
+    # composite.py no longer falls back to the un-neutralized value for such a group).
+    sids = [1, 2, 3, 4, 5, 6]
+    groups = pd.Series(
+        ["Financial Services", "Industrials", "Industrials", "Industrials", "Industrials", "Financial Services"],
+        index=sids,
+    )
 
     # 5 finite factors: earn_yield, book_price, eps_grow, mom12, trend200
     z_data = {
-        "roce": [np.nan, np.nan, 0.1, 0.2, 0.3],
-        "accruals": [np.nan, np.nan, 0.1, 0.2, 0.3],
-        "cash_conv": [np.nan, np.nan, 0.1, 0.2, 0.3],
-        "earn_yield": [0.5, 0.5, 0.1, 0.2, 0.3],
-        "book_price": [0.5, 0.5, 0.1, 0.2, 0.3],
-        "eps_grow": [0.5, 0.5, 0.1, 0.2, 0.3],
-        "earn_mom": [np.nan, np.nan, 0.1, 0.2, 0.3],
-        "mom12": [0.5, 0.5, 0.1, 0.2, 0.3],
-        "trend200": [0.5, 0.5, 0.1, 0.2, 0.3],
-        "vol252": [np.nan, np.nan, 0.1, 0.2, 0.3],
+        "roce": [np.nan, np.nan, 0.1, 0.2, 0.3, np.nan],
+        "accruals": [np.nan, np.nan, 0.1, 0.2, 0.3, np.nan],
+        "cash_conv": [np.nan, np.nan, 0.1, 0.2, 0.3, np.nan],
+        "earn_yield": [0.5, 0.5, 0.1, 0.2, 0.3, 0.3],
+        "book_price": [0.5, 0.5, 0.1, 0.2, 0.3, 0.3],
+        "eps_grow": [0.5, 0.5, 0.1, 0.2, 0.3, 0.3],
+        "earn_mom": [np.nan, np.nan, 0.1, 0.2, 0.3, np.nan],
+        "mom12": [0.5, 0.5, 0.1, 0.2, 0.3, 0.3],
+        "trend200": [0.5, 0.5, 0.1, 0.2, 0.3, 0.3],
+        "vol252": [np.nan, np.nan, 0.1, 0.2, 0.3, np.nan],
     }
     z_df = pd.DataFrame(z_data, index=sids)
 

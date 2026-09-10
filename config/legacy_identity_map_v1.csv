@@ -1,0 +1,502 @@
+yahoo_ticker,nse_symbol,isin,company_name,nse_sector,source,resolved
+360ONE.NS,360ONE,INE466L01038,360 ONE WAM Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+3MINDIA.NS,3MINDIA,INE470A01017,3M India Ltd.,Diversified,nifty500_constituents_2026-09-09,True
+AADHARHFC.NS,AADHARHFC,INE883F01010,Aadhar Housing Finance Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+AARTIIND.NS,AARTIIND,INE769A01020,Aarti Industries Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+AAVAS.NS,AAVAS,INE216P01012,Aavas Financiers Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+ABB.NS,ABB,INE117A01022,ABB India Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+ABBOTINDIA.NS,ABBOTINDIA,INE358A01014,Abbott India Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+ABCAPITAL.NS,ABCAPITAL,INE674K01013,Aditya Birla Capital Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+ABDL.NS,ABDL,INE552Z01027,Allied Blenders and Distillers Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+ABFRL.NS,ABFRL,INE647O01011,Aditya Birla Fashion and Retail Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+ABLBL.NS,ABLBL,INE14LE01019,Aditya Birla Lifestyle Brands Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+ABREL.NS,ABREL,INE055A01016,Aditya Birla Real Estate Ltd.,Realty,nifty500_constituents_2026-09-09,True
+ABSLAMC.NS,ABSLAMC,INE404A01024,Aditya Birla Sun Life AMC Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+ACC.NS,ACC,INE012A01025,ACC Ltd.,Construction Materials,nifty500_constituents_2026-09-09,True
+ACE.NS,ACE,INE731H01025,Action Construction Equipment Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+ACMESOLAR.NS,ACMESOLAR,INE622W01025,ACME Solar Holdings Ltd.,Power,nifty500_constituents_2026-09-09,True
+ACUTAAS.NS,ACUTAAS,INE00FF01025,Acutaas Chemicals Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+ADANIENSOL.NS,ADANIENSOL,INE931S01010,Adani Energy Solutions Ltd.,Power,nifty500_constituents_2026-09-09,True
+ADANIENT.NS,ADANIENT,INE423A01024,Adani Enterprises Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+ADANIGREEN.NS,ADANIGREEN,INE364U01010,Adani Green Energy Ltd.,Power,nifty500_constituents_2026-09-09,True
+ADANIPORTS.NS,ADANIPORTS,INE742F01042,Adani Ports and Special Economic Zone Ltd.,Services,nifty500_constituents_2026-09-09,True
+ADANIPOWER.NS,ADANIPOWER,INE814H01029,Adani Power Ltd.,Power,nifty500_constituents_2026-09-09,True
+AEGISLOG.NS,AEGISLOG,INE208C01025,Aegis Logistics Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+AEGISVOPAK.NS,AEGISVOPAK,INE0INX01018,Aegis Vopak Terminals Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+AFCONS.NS,AFCONS,INE101I01011,Afcons Infrastructure Ltd.,Construction,nifty500_constituents_2026-09-09,True
+AFFLE.NS,AFFLE,INE00WC01027,Affle 3i Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+AIAENG.NS,AIAENG,INE212H01026,AIA Engineering Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+AIIL.NS,AIIL,INE206F01022,Authum Investment & Infrastructure Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+AJANTPHARM.NS,AJANTPHARM,INE031B01049,Ajanta Pharmaceuticals Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+ALKEM.NS,ALKEM,INE540L01014,Alkem Laboratories Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+AMBER.NS,AMBER,INE371P01015,Amber Enterprises India Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+AMBUJACEM.NS,AMBUJACEM,INE079A01024,Ambuja Cements Ltd.,Construction Materials,nifty500_constituents_2026-09-09,True
+ANANDRATHI.NS,ANANDRATHI,INE463V01026,Anand Rathi Wealth Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+ANANTRAJ.NS,ANANTRAJ,INE242C01024,Anant Raj Ltd.,Realty,nifty500_constituents_2026-09-09,True
+ANGELONE.NS,ANGELONE,INE732I01021,Angel One Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+ANTHEM.NS,ANTHEM,INE0CZ201020,Anthem Biosciences Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+ANURAS.NS,ANURAS,INE930P01018,Anupam Rasayan India Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+APARINDS.NS,APARINDS,INE372A01015,Apar Industries Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+APLAPOLLO.NS,APLAPOLLO,INE702C01027,APL Apollo Tubes Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+APOLLOHOSP.NS,APOLLOHOSP,INE437A01024,Apollo Hospitals Enterprise Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+APOLLOTYRE.NS,APOLLOTYRE,INE438A01022,Apollo Tyres Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+APTUS.NS,APTUS,INE852O01025,Aptus Value Housing Finance India Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+ARE&M.NS,ARE&M,INE885A01032,Amara Raja Energy & Mobility Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+ASAHIINDIA.NS,ASAHIINDIA,INE439A01020,Asahi India Glass Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+ASHOKLEY.NS,ASHOKLEY,INE208A01029,Ashok Leyland Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+ASIANPAINT.NS,ASIANPAINT,INE021A01026,Asian Paints Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+ASTERDM.NS,ASTERDM,INE914M01019,Aster DM Quality Care Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+ASTRAL.NS,ASTRAL,INE006I01046,Astral Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+ATGL.NS,ATGL,INE399L01023,Adani Total Gas Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+ATHERENERG.NS,ATHERENERG,INE0LEZ01016,Ather Energy Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+ATUL.NS,ATUL,INE100A01010,Atul Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+AUBANK.NS,AUBANK,INE949L01017,AU Small Finance Bank Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+AUROPHARMA.NS,AUROPHARMA,INE406A01037,Aurobindo Pharma Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+AWL.NS,AWL,INE699H01024,AWL Agri Business Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+AXISBANK.NS,AXISBANK,INE238A01034,Axis Bank Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+BAJAJ-AUTO.NS,BAJAJ-AUTO,INE917I01010,Bajaj Auto Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+BAJAJFINSV.NS,BAJAJFINSV,INE918I01026,Bajaj Finserv Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+BAJAJHFL.NS,BAJAJHFL,INE377Y01014,Bajaj Housing Finance Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+BAJAJHLDNG.NS,BAJAJHLDNG,INE118A01012,Bajaj Holdings & Investment Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+BAJFINANCE.NS,BAJFINANCE,INE296A01032,Bajaj Finance Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+BALKRISIND.NS,BALKRISIND,INE787D01026,Balkrishna Industries Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+BALRAMCHIN.NS,BALRAMCHIN,INE119A01028,Balrampur Chini Mills Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+BANDHANBNK.NS,BANDHANBNK,INE545U01014,Bandhan Bank Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+BANKBARODA.NS,BANKBARODA,INE028A01039,Bank of Baroda,Financial Services,nifty500_constituents_2026-09-09,True
+BANKINDIA.NS,BANKINDIA,INE084A01016,Bank of India,Financial Services,nifty500_constituents_2026-09-09,True
+BATAINDIA.NS,BATAINDIA,INE176A01028,Bata India Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+BAYERCROP.NS,BAYERCROP,INE462A01022,Bayer Cropscience Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+BBTC.NS,BBTC,INE050A01025,Bombay Burmah Trading Corporation Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+BDL.NS,BDL,INE171Z01026,Bharat Dynamics Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+BEL.NS,BEL,INE263A01024,Bharat Electronics Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+BELRISE.NS,BELRISE,INE894V01022,Belrise Industries Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+BEML.NS,BEML,INE258A01024,BEML Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+BERGEPAINT.NS,BERGEPAINT,INE463A01038,Berger Paints India Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+BHARATFORG.NS,BHARATFORG,INE465A01025,Bharat Forge Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+BHARTIARTL.NS,BHARTIARTL,INE397D01024,Bharti Airtel Ltd.,Telecommunication,nifty500_constituents_2026-09-09,True
+BHARTIHEXA.NS,BHARTIHEXA,INE343G01021,Bharti Hexacom Ltd.,Telecommunication,nifty500_constituents_2026-09-09,True
+BHEL.NS,BHEL,INE257A01026,Bharat Heavy Electricals Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+BIKAJI.NS,BIKAJI,INE00E101023,Bikaji Foods International Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+BIOCON.NS,BIOCON,INE376G01013,Biocon Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+BLS.NS,BLS,INE153T01027,BLS International Services Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+BLUEDART.NS,BLUEDART,INE233B01017,Blue Dart Express Ltd.,Services,nifty500_constituents_2026-09-09,True
+BLUEJET.NS,BLUEJET,INE0KBH01020,Blue Jet Healthcare Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+BLUESTARCO.NS,BLUESTARCO,INE472A01039,Blue Star Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+BOSCHLTD.NS,BOSCHLTD,INE323A01026,Bosch Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+BPCL.NS,BPCL,INE029A01011,Bharat Petroleum Corporation Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+BRIGADE.NS,BRIGADE,INE791I01019,Brigade Enterprises Ltd.,Realty,nifty500_constituents_2026-09-09,True
+BRITANNIA.NS,BRITANNIA,INE216A01030,Britannia Industries Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+BSE.NS,BSE,INE118H01025,BSE Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+BSOFT.NS,BSOFT,INE836A01035,Birlasoft Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+CAMS.NS,CAMS,INE596I01020,Computer Age Management Services Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+CANBK.NS,CANBK,INE476A01022,Canara Bank,Financial Services,nifty500_constituents_2026-09-09,True
+CANFINHOME.NS,CANFINHOME,INE477A01020,Can Fin Homes Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+CANHLIFE.NS,CANHLIFE,INE01TY01017,Canara HSBC Life Insurance Company Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+CAPLIPOINT.NS,CAPLIPOINT,INE475E01026,Caplin Point Laboratories Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+CARBORUNIV.NS,CARBORUNIV,INE120A01034,Carborundum Universal Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+CARTRADE.NS,CARTRADE,INE290S01011,Cartrade Tech Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+CASTROLIND.NS,CASTROLIND,INE172A01027,Castrol India Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+CCL.NS,CCL,INE421D01022,CCL Products (I) Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+CDSL.NS,CDSL,INE736A01011,Central Depository Services (India) Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+CEATLTD.NS,CEATLTD,INE482A01020,Ceat Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+CEMPRO.NS,CEMPRO,INE686A01026,Cemindia Projects Ltd.,Construction,nifty500_constituents_2026-09-09,True
+CENTRALBK.NS,CENTRALBK,INE483A01010,Central Bank of India,Financial Services,nifty500_constituents_2026-09-09,True
+CESC.NS,CESC,INE486A01021,CESC Ltd.,Power,nifty500_constituents_2026-09-09,True
+CGCL.NS,CGCL,INE180C01042,Capri Global Capital Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+CGPOWER.NS,CGPOWER,INE067A01029,CG Power and Industrial Solutions Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+CHALET.NS,CHALET,INE427F01016,Chalet Hotels Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+CHAMBLFERT.NS,CHAMBLFERT,INE085A01013,Chambal Fertilizers & Chemicals Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+CHENNPETRO.NS,CHENNPETRO,INE178A01016,Chennai Petroleum Corporation Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+CHOICEIN.NS,CHOICEIN,INE102B01014,Choice International Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+CHOLAFIN.NS,CHOLAFIN,INE121A01024,Cholamandalam Investment and Finance Company Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+CHOLAHLDNG.NS,CHOLAHLDNG,INE149A01033,Cholamandalam Financial Holdings Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+CIEINDIA.NS,CIEINDIA,INE536H01010,CIE Automotive India Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+CIPLA.NS,CIPLA,INE059A01026,Cipla Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+CLEAN.NS,CLEAN,INE227W01023,Clean Science and Technology Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+COALINDIA.NS,COALINDIA,INE522F01014,Coal India Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+COCHINSHIP.NS,COCHINSHIP,INE704P01025,Cochin Shipyard Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+COFORGE.NS,COFORGE,INE591G01025,Coforge Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+COHANCE.NS,COHANCE,INE03QK01018,Cohance Lifesciences Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+COLPAL.NS,COLPAL,INE259A01022,Colgate Palmolive (India) Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+CONCOR.NS,CONCOR,INE111A01025,Container Corporation of India Ltd.,Services,nifty500_constituents_2026-09-09,True
+CONCORDBIO.NS,CONCORDBIO,INE338H01029,Concord Biotech Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+COROMANDEL.NS,COROMANDEL,INE169A01031,Coromandel International Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+CPPLUS.NS,CPPLUS,INE819V01029,Aditya Infotech Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+CRAFTSMAN.NS,CRAFTSMAN,INE00LO01017,Craftsman Automation Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+CREDITACC.NS,CREDITACC,INE741K01010,CreditAccess Grameen Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+CRISIL.NS,CRISIL,INE007A01025,CRISIL Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+CROMPTON.NS,CROMPTON,INE299U01018,Crompton Greaves Consumer Electricals Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+CUB.NS,CUB,INE491A01021,City Union Bank Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+CUMMINSIND.NS,CUMMINSIND,INE298A01020,Cummins India Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+CYIENT.NS,CYIENT,INE136B01020,Cyient Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+DABUR.NS,DABUR,INE016A01026,Dabur India Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+DALBHARAT.NS,DALBHARAT,INE00R701025,Dalmia Bharat Ltd.,Construction Materials,nifty500_constituents_2026-09-09,True
+DATAPATTNS.NS,DATAPATTNS,INE0IX101010,Data Patterns (India) Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+DCMSHRIRAM.NS,DCMSHRIRAM,INE499A01024,DCM Shriram Ltd.,Diversified,nifty500_constituents_2026-09-09,True
+DEEPAKFERT.NS,DEEPAKFERT,INE501A01019,Deepak Fertilisers & Petrochemicals Corp. Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+DEEPAKNTR.NS,DEEPAKNTR,INE288B01029,Deepak Nitrite Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+DELHIVERY.NS,DELHIVERY,INE148O01028,Delhivery Ltd.,Services,nifty500_constituents_2026-09-09,True
+DEVYANI.NS,DEVYANI,INE872J01023,Devyani International Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+DIVISLAB.NS,DIVISLAB,INE361B01024,Divi's Laboratories Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+DIXON.NS,DIXON,INE935N01020,Dixon Technologies (India) Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+DLF.NS,DLF,INE271C01023,DLF Ltd.,Realty,nifty500_constituents_2026-09-09,True
+DMART.NS,DMART,INE192R01011,Avenue Supermarts Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+DOMS.NS,DOMS,INE321T01012,DOMS Industries Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+DRREDDY.NS,DRREDDY,INE089A01031,Dr. Reddy's Laboratories Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+DUMMYHEG.NS,DUMMYHEG,DUM545A01024,Dummy HEG Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+ECLERX.NS,ECLERX,INE738I01010,eClerx Services Ltd.,Services,nifty500_constituents_2026-09-09,True
+EICHERMOT.NS,EICHERMOT,INE066A01021,Eicher Motors Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+EIDPARRY.NS,EIDPARRY,INE126A01031,E.I.D. Parry (India) Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+EIHOTEL.NS,EIHOTEL,INE230A01023,EIH Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+ELECON.NS,ELECON,INE205B01031,Elecon Engineering Co. Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+ELGIEQUIP.NS,ELGIEQUIP,INE285A01027,Elgi Equipments Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+EMAMILTD.NS,EMAMILTD,INE548C01032,Emami Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+EMCURE.NS,EMCURE,INE168P01015,Emcure Pharmaceuticals Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+EMMVEE.NS,EMMVEE,INE1C6T01020,Emmvee Photovoltaic Power Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+ENDURANCE.NS,ENDURANCE,INE913H01037,Endurance Technologies Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+ENGINERSIN.NS,ENGINERSIN,INE510A01028,Engineers India Ltd.,Construction,nifty500_constituents_2026-09-09,True
+ENRIN.NS,ENRIN,INE1NPP01017,Siemens Energy India Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+ERIS.NS,ERIS,INE406M01024,Eris Lifesciences Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+ESCORTS.NS,ESCORTS,INE042A01014,Escorts Kubota Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+ETERNAL.NS,ETERNAL,INE758T01015,Eternal Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+EXIDEIND.NS,EXIDEIND,INE302A01020,Exide Industries Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+FACT.NS,FACT,INE188A01015,Fertilisers and Chemicals Travancore Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+FEDERALBNK.NS,FEDERALBNK,INE171A01029,Federal Bank Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+FINCABLES.NS,FINCABLES,INE235A01022,Finolex Cables Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+FIRSTCRY.NS,FIRSTCRY,INE02RE01045,Brainbees Solutions Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+FIVESTAR.NS,FIVESTAR,INE128S01021,Five-Star Business Finance Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+FLUOROCHEM.NS,FLUOROCHEM,INE09N301011,Gujarat Fluorochemicals Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+FORCEMOT.NS,FORCEMOT,INE451A01017,Force Motors Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+FORTIS.NS,FORTIS,INE061F01013,Fortis Healthcare Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+FSL.NS,FSL,INE684F01012,Firstsource Solutions Ltd.,Services,nifty500_constituents_2026-09-09,True
+GABRIEL.NS,GABRIEL,INE524A01029,Gabriel India Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+GAIL.NS,GAIL,INE129A01019,GAIL (India) Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+GALLANTT.NS,GALLANTT,INE297H01019,Gallantt Ispat Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+GESHIP.NS,GESHIP,INE017A01032,Great Eastern Shipping Co. Ltd.,Services,nifty500_constituents_2026-09-09,True
+GICRE.NS,GICRE,INE481Y01014,General Insurance Corporation of India,Financial Services,nifty500_constituents_2026-09-09,True
+GILLETTE.NS,GILLETTE,INE322A01010,Gillette India Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+GLAND.NS,GLAND,INE068V01023,Gland Pharma Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+GLAXO.NS,GLAXO,INE159A01016,Glaxosmithkline Pharmaceuticals Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+GLENMARK.NS,GLENMARK,INE935A01035,Glenmark Pharmaceuticals Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+GMDCLTD.NS,GMDCLTD,INE131A01031,Gujarat Mineral Development Corporation Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+GMRAIRPORT.NS,GMRAIRPORT,INE776C01039,GMR Airports Ltd.,Services,nifty500_constituents_2026-09-09,True
+GODFRYPHLP.NS,GODFRYPHLP,INE260B01028,Godfrey Phillips India Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+GODIGIT.NS,GODIGIT,INE03JT01014,Go Digit General Insurance Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+GODREJCP.NS,GODREJCP,INE102D01028,Godrej Consumer Products Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+GODREJIND.NS,GODREJIND,INE233A01035,Godrej Industries Ltd.,Diversified,nifty500_constituents_2026-09-09,True
+GODREJPROP.NS,GODREJPROP,INE484J01027,Godrej Properties Ltd.,Realty,nifty500_constituents_2026-09-09,True
+GPIL.NS,GPIL,INE177H01039,Godawari Power & Ispat Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+GRANULES.NS,GRANULES,INE101D01020,Granules India Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+GRAPHITE.NS,GRAPHITE,INE371A01025,Graphite India Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+GRASIM.NS,GRASIM,INE047A01021,Grasim Industries Ltd.,Construction Materials,nifty500_constituents_2026-09-09,True
+GRAVITA.NS,GRAVITA,INE024L01027,Gravita India Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+GROWW.NS,GROWW,INE0HOQ01053,Billionbrains Garage Ventures Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+GRSE.NS,GRSE,INE382Z01011,Garden Reach Shipbuilders & Engineers Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+GVT&D.NS,GVT&D,INE200A01026,GE Vernova T&D India Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+HAL.NS,HAL,INE066F01020,Hindustan Aeronautics Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+HAVELLS.NS,HAVELLS,INE176B01034,Havells India Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+HBLENGINE.NS,HBLENGINE,INE292B01021,HBL Engineering Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+HCLTECH.NS,HCLTECH,INE860A01027,HCL Technologies Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+HDBFS.NS,HDBFS,INE756I01012,HDB Financial Services Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+HDFCAMC.NS,HDFCAMC,INE127D01025,HDFC Asset Management Company Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+HDFCBANK.NS,HDFCBANK,INE040A01034,HDFC Bank Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+HDFCLIFE.NS,HDFCLIFE,INE795G01014,HDFC Life Insurance Company Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+HEG.NS,HEG,INE545A01024,HEG Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+HEROMOTOCO.NS,HEROMOTOCO,INE158A01026,Hero MotoCorp Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+HEXT.NS,HEXT,INE093A01041,Hexaware Technologies Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+HFCL.NS,HFCL,INE548A01028,HFCL Ltd.,Telecommunication,nifty500_constituents_2026-09-09,True
+HINDALCO.NS,HINDALCO,INE038A01020,Hindalco Industries Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+HINDCOPPER.NS,HINDCOPPER,INE531E01026,Hindustan Copper Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+HINDPETRO.NS,HINDPETRO,INE094A01015,Hindustan Petroleum Corporation Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+HINDUNILVR.NS,HINDUNILVR,INE030A01027,Hindustan Unilever Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+HINDZINC.NS,HINDZINC,INE267A01025,Hindustan Zinc Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+HOMEFIRST.NS,HOMEFIRST,INE481N01025,Home First Finance Company India Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+HONASA.NS,HONASA,INE0J5401028,Honasa Consumer Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+HONAUT.NS,HONAUT,INE671A01010,Honeywell Automation India Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+HSCL.NS,HSCL,INE019C01026,Himadri Speciality Chemical Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+HUDCO.NS,HUDCO,INE031A01017,Housing & Urban Development Corporation Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+HYUNDAI.NS,HYUNDAI,INE0V6F01027,Hyundai Motor India Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+ICICIAMC.NS,ICICIAMC,INE346A01027,ICICI Prudential Asset Management Company Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+ICICIBANK.NS,ICICIBANK,INE090A01021,ICICI Bank Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+ICICIGI.NS,ICICIGI,INE765G01017,ICICI Lombard General Insurance Company Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+ICICIPRULI.NS,ICICIPRULI,INE726G01019,ICICI Prudential Life Insurance Company Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+IDBI.NS,IDBI,INE008A01015,IDBI Bank Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+IDEA.NS,IDEA,INE669E01016,Vodafone Idea Ltd.,Telecommunication,nifty500_constituents_2026-09-09,True
+IDFCFIRSTB.NS,IDFCFIRSTB,INE092T01019,IDFC First Bank Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+IEX.NS,IEX,INE022Q01020,Indian Energy Exchange Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+IFCI.NS,IFCI,INE039A01010,IFCI Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+IGIL.NS,IGIL,INE0Q9301021,International Gemological Institute Ltd.,Services,nifty500_constituents_2026-09-09,True
+IGL.NS,IGL,INE203G01027,Indraprastha Gas Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+IIFL.NS,IIFL,INE530B01024,IIFL Finance Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+IKS.NS,IKS,INE115Q01022,Inventurus Knowledge Solutions Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+INDGN.NS,INDGN,INE065X01017,Indegene Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+INDHOTEL.NS,INDHOTEL,INE053A01029,Indian Hotels Co. Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+INDIACEM.NS,INDIACEM,INE383A01012,India Cements Ltd.,Construction Materials,nifty500_constituents_2026-09-09,True
+INDIAMART.NS,INDIAMART,INE933S01016,Indiamart Intermesh Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+INDIANB.NS,INDIANB,INE562A01011,Indian Bank,Financial Services,nifty500_constituents_2026-09-09,True
+INDIGO.NS,INDIGO,INE646L01027,InterGlobe Aviation Ltd.,Services,nifty500_constituents_2026-09-09,True
+INDUSINDBK.NS,INDUSINDBK,INE095A01012,IndusInd Bank Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+INDUSTOWER.NS,INDUSTOWER,INE121J01017,Indus Towers Ltd.,Telecommunication,nifty500_constituents_2026-09-09,True
+INFY.NS,INFY,INE009A01021,Infosys Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+INOXWIND.NS,INOXWIND,INE066P01011,Inox Wind Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+INTELLECT.NS,INTELLECT,INE306R01017,Intellect Design Arena Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+IOB.NS,IOB,INE565A01014,Indian Overseas Bank,Financial Services,nifty500_constituents_2026-09-09,True
+IOC.NS,IOC,INE242A01010,Indian Oil Corporation Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+IPCALAB.NS,IPCALAB,INE571A01038,Ipca Laboratories Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+IRB.NS,IRB,INE821I01022,IRB Infrastructure Developers Ltd.,Construction,nifty500_constituents_2026-09-09,True
+IRCON.NS,IRCON,INE962Y01021,IRCON International Ltd.,Construction,nifty500_constituents_2026-09-09,True
+IRCTC.NS,IRCTC,INE335Y01020,Indian Railway Catering And Tourism Corporation Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+IREDA.NS,IREDA,INE202E01016,Indian Renewable Energy Development Agency Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+IRFC.NS,IRFC,INE053F01010,Indian Railway Finance Corporation Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+ITC.NS,ITC,INE154A01025,ITC Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+ITCHOTELS.NS,ITCHOTELS,INE379A01028,ITC Hotels Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+ITI.NS,ITI,INE248A01017,ITI Ltd.,Telecommunication,nifty500_constituents_2026-09-09,True
+J&KBANK.NS,J&KBANK,INE168A01041,Jammu & Kashmir Bank Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+JAINREC.NS,JAINREC,INE0YD401026,Jain Resource Recycling Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+JBMA.NS,JBMA,INE927D01051,JBM Auto Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+JINDALSAW.NS,JINDALSAW,INE324A01032,Jindal Saw Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+JINDALSTEL.NS,JINDALSTEL,INE749A01030,Jindal Steel Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+JIOFIN.NS,JIOFIN,INE758E01017,Jio Financial Services Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+JKCEMENT.NS,JKCEMENT,INE823G01014,J.K. Cement Ltd.,Construction Materials,nifty500_constituents_2026-09-09,True
+JKTYRE.NS,JKTYRE,INE573A01042,JK Tyre & Industries Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+JMFINANCIL.NS,JMFINANCIL,INE780C01023,JM Financial Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+JPPOWER.NS,JPPOWER,INE351F01018,Jaiprakash Power Ventures Ltd.,Power,nifty500_constituents_2026-09-09,True
+JSL.NS,JSL,INE220G01021,Jindal Stainless Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+JSWCEMENT.NS,JSWCEMENT,INE718I01012,JSW Cement Ltd.,Construction Materials,nifty500_constituents_2026-09-09,True
+JSWDULUX.NS,JSWDULUX,INE133A01011,JSW Dulux Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+JSWENERGY.NS,JSWENERGY,INE121E01018,JSW Energy Ltd.,Power,nifty500_constituents_2026-09-09,True
+JSWINFRA.NS,JSWINFRA,INE880J01026,JSW Infrastructure Ltd.,Services,nifty500_constituents_2026-09-09,True
+JSWSTEEL.NS,JSWSTEEL,INE019A01038,JSW Steel Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+JUBLFOOD.NS,JUBLFOOD,INE797F01020,Jubilant Foodworks Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+JUBLINGREA.NS,JUBLINGREA,INE0BY001018,Jubilant Ingrevia Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+JUBLPHARMA.NS,JUBLPHARMA,INE700A01033,Jubilant Pharmova Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+JWL.NS,JWL,INE209L01016,Jupiter Wagons Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+JYOTICNC.NS,JYOTICNC,INE980O01024,Jyoti CNC Automation Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+KAJARIACER.NS,KAJARIACER,INE217B01036,Kajaria Ceramics Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+KALYANKJIL.NS,KALYANKJIL,INE303R01014,Kalyan Jewellers India Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+KARURVYSYA.NS,KARURVYSYA,INE036D01028,Karur Vysya Bank Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+KAYNES.NS,KAYNES,INE918Z01012,Kaynes Technology India Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+KEC.NS,KEC,INE389H01022,Kec International Ltd.,Construction,nifty500_constituents_2026-09-09,True
+KEI.NS,KEI,INE878B01027,KEI Industries Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+KFINTECH.NS,KFINTECH,INE138Y01010,Kfin Technologies Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+KIMS.NS,KIMS,INE967H01025,Krishna Institute of Medical Sciences Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+KIRLOSENG.NS,KIRLOSENG,INE146L01010,Kirloskar Oil Eng Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+KOTAKBANK.NS,KOTAKBANK,INE237A01036,Kotak Mahindra Bank Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+KPIL.NS,KPIL,INE220B01022,Kalpataru Projects International Ltd.,Construction,nifty500_constituents_2026-09-09,True
+KPITTECH.NS,KPITTECH,INE04I401011,KPIT Technologies Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+KPRMILL.NS,KPRMILL,INE930H01031,K.P.R. Mill Ltd.,Textiles,nifty500_constituents_2026-09-09,True
+LALPATHLAB.NS,LALPATHLAB,INE600L01024,Dr. Lal Path Labs Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+LATENTVIEW.NS,LATENTVIEW,INE0I7C01011,Latent View Analytics Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+LAURUSLABS.NS,LAURUSLABS,INE947Q01028,Laurus Labs Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+LEMONTREE.NS,LEMONTREE,INE970X01018,Lemon Tree Hotels Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+LENSKART.NS,LENSKART,INE956O01016,Lenskart Solutions Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+LGEINDIA.NS,LGEINDIA,INE324D01010,LG Electronics India Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+LICHSGFIN.NS,LICHSGFIN,INE115A01026,LIC Housing Finance Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+LICI.NS,LICI,INE0J1Y01017,Life Insurance Corporation of India,Financial Services,nifty500_constituents_2026-09-09,True
+LINDEINDIA.NS,LINDEINDIA,INE473A01011,Linde India Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+LLOYDSME.NS,LLOYDSME,INE281B01032,Lloyds Metals And Energy Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+LODHA.NS,LODHA,INE670K01029,Lodha Developers Ltd.,Realty,nifty500_constituents_2026-09-09,True
+LT.NS,LT,INE018A01030,Larsen & Toubro Ltd.,Construction,nifty500_constituents_2026-09-09,True
+LTF.NS,LTF,INE498L01015,L&T Finance Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+LTFOODS.NS,LTFOODS,INE818H01020,LT Foods Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+LTM.NS,LTM,INE214T01019,LTM Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+LTTS.NS,LTTS,INE010V01017,L&T Technology Services Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+LUPIN.NS,LUPIN,INE326A01037,Lupin Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+M&M.NS,M&M,INE101A01026,Mahindra & Mahindra Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+M&MFIN.NS,M&MFIN,INE774D01024,Mahindra & Mahindra Financial Services Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+MAHABANK.NS,MAHABANK,INE457A01014,Bank of Maharashtra,Financial Services,nifty500_constituents_2026-09-09,True
+MANAPPURAM.NS,MANAPPURAM,INE522D01027,Manappuram Finance Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+MANKIND.NS,MANKIND,INE634S01028,Mankind Pharma Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+MAPMYINDIA.NS,MAPMYINDIA,INE0BV301023,C.E. Info Systems Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+MARICO.NS,MARICO,INE196A01026,Marico Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+MARUTI.NS,MARUTI,INE585B01010,Maruti Suzuki India Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+MAXHEALTH.NS,MAXHEALTH,INE027H01010,Max Healthcare Institute Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+MAZDOCK.NS,MAZDOCK,INE249Z01020,Mazagoan Dock Shipbuilders Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+MCX.NS,MCX,INE745G01043,Multi Commodity Exchange of India Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+MEDANTA.NS,MEDANTA,INE474Q01031,Global Health Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+MEESHO.NS,MEESHO,INE0VDM01015,Meesho Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+MFSL.NS,MFSL,INE180A01020,Max Financial Services Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+MGL.NS,MGL,INE002S01010,Mahanagar Gas Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+MINDACORP.NS,MINDACORP,INE842C01021,Minda Corporation Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+MMTC.NS,MMTC,INE123F01029,MMTC Ltd.,Services,nifty500_constituents_2026-09-09,True
+MOTHERSON.NS,MOTHERSON,INE775A01035,Samvardhana Motherson International Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+MOTILALOFS.NS,MOTILALOFS,INE338I01027,Motilal Oswal Financial Services Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+MPHASIS.NS,MPHASIS,INE356A01018,MphasiS Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+MRF.NS,MRF,INE883A01011,MRF Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+MRPL.NS,MRPL,INE103A01014,Mangalore Refinery & Petrochemicals Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+MSUMI.NS,MSUMI,INE0FS801015,Motherson Sumi Wiring India Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+MUTHOOTFIN.NS,MUTHOOTFIN,INE414G01012,Muthoot Finance Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+NAM-INDIA.NS,NAM-INDIA,INE298J01013,Nippon Life India Asset Management Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+NATCOPHARM.NS,NATCOPHARM,INE987B01026,NATCO Pharma Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+NATIONALUM.NS,NATIONALUM,INE139A01034,National Aluminium Co. Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+NAUKRI.NS,NAUKRI,INE663F01032,Info Edge (India) Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+NAVA.NS,NAVA,INE725A01030,Nava Ltd.,Power,nifty500_constituents_2026-09-09,True
+NAVINFLUOR.NS,NAVINFLUOR,INE048G01026,Navin Fluorine International Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+NBCC.NS,NBCC,INE095N01031,NBCC (India) Ltd.,Construction,nifty500_constituents_2026-09-09,True
+NCC.NS,NCC,INE868B01028,NCC Ltd.,Construction,nifty500_constituents_2026-09-09,True
+NESTLEIND.NS,NESTLEIND,INE239A01024,Nestle India Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+NETWEB.NS,NETWEB,INE0NT901020,Netweb Technologies India Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+NEULANDLAB.NS,NEULANDLAB,INE794A01010,Neuland Laboratories Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+NEWGEN.NS,NEWGEN,INE619B01017,Newgen Software Technologies Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+NH.NS,NH,INE410P01011,Narayana Hrudayalaya Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+NHPC.NS,NHPC,INE848E01016,NHPC Ltd.,Power,nifty500_constituents_2026-09-09,True
+NIACL.NS,NIACL,INE470Y01017,The New India Assurance Company Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+NIVABUPA.NS,NIVABUPA,INE995S01015,Niva Bupa Health Insurance Company Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+NLCINDIA.NS,NLCINDIA,INE589A01014,NLC India Ltd.,Power,nifty500_constituents_2026-09-09,True
+NMDC.NS,NMDC,INE584A01023,NMDC Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+NSLNISP.NS,NSLNISP,INE0NNS01018,NMDC Steel Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+NTPC.NS,NTPC,INE733E01010,NTPC Ltd.,Power,nifty500_constituents_2026-09-09,True
+NTPCGREEN.NS,NTPCGREEN,INE0ONG01011,NTPC Green Energy Ltd.,Power,nifty500_constituents_2026-09-09,True
+NUVAMA.NS,NUVAMA,INE531F01023,Nuvama Wealth Management Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+NUVOCO.NS,NUVOCO,INE118D01016,Nuvoco Vistas Corporation Ltd.,Construction Materials,nifty500_constituents_2026-09-09,True
+NYKAA.NS,NYKAA,INE388Y01029,FSN E-Commerce Ventures Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+OBEROIRLTY.NS,OBEROIRLTY,INE093I01010,Oberoi Realty Ltd.,Realty,nifty500_constituents_2026-09-09,True
+OFSS.NS,OFSS,INE881D01027,Oracle Financial Services Software Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+OIL.NS,OIL,INE274J01014,Oil India Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+OLAELEC.NS,OLAELEC,INE0LXG01040,Ola Electric Mobility Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+OLECTRA.NS,OLECTRA,INE260D01016,Olectra Greentech Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+ONESOURCE.NS,ONESOURCE,INE013P01021,Onesource Specialty Pharma Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+ONGC.NS,ONGC,INE213A01029,Oil & Natural Gas Corporation Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+PAGEIND.NS,PAGEIND,INE761H01022,Page Industries Ltd.,Textiles,nifty500_constituents_2026-09-09,True
+PARADEEP.NS,PARADEEP,INE088F01024,Paradeep Phosphates Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+PATANJALI.NS,PATANJALI,INE619A01035,Patanjali Foods Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+PAYTM.NS,PAYTM,INE982J01020,One 97 Communications Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+PCBL.NS,PCBL,INE602A01031,PCBL Chemical Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+PERSISTENT.NS,PERSISTENT,INE262H01021,Persistent Systems Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+PETRONET.NS,PETRONET,INE347G01014,Petronet LNG Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+PFC.NS,PFC,INE134E01011,Power Finance Corporation Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+PFIZER.NS,PFIZER,INE182A01018,Pfizer Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+PFOCUS.NS,PFOCUS,INE367G01038,Prime Focus Ltd.,Media Entertainment & Publication,nifty500_constituents_2026-09-09,True
+PGEL.NS,PGEL,INE457L01029,PG Electroplast Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+PHOENIXLTD.NS,PHOENIXLTD,INE211B01039,Phoenix Mills Ltd.,Realty,nifty500_constituents_2026-09-09,True
+PIDILITIND.NS,PIDILITIND,INE318A01026,Pidilite Industries Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+PIIND.NS,PIIND,INE603J01030,PI Industries Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+PINELABS.NS,PINELABS,INE15B701018,Pine Labs Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+PIRAMALFIN.NS,PIRAMALFIN,INE202B01038,Piramal Finance Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+PNB.NS,PNB,INE160A01022,Punjab National Bank,Financial Services,nifty500_constituents_2026-09-09,True
+PNBHOUSING.NS,PNBHOUSING,INE572E01012,PNB Housing Finance Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+POLICYBZR.NS,POLICYBZR,INE417T01026,PB Fintech Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+POLYCAB.NS,POLYCAB,INE455K01017,Polycab India Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+POLYMED.NS,POLYMED,INE205C01021,Poly Medicure Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+POONAWALLA.NS,POONAWALLA,INE511C01022,Poonawalla Fincorp Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+POWERGRID.NS,POWERGRID,INE752E01010,Power Grid Corporation of India Ltd.,Power,nifty500_constituents_2026-09-09,True
+POWERINDIA.NS,POWERINDIA,INE07Y701011,Hitachi Energy India Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+PPLPHARMA.NS,PPLPHARMA,INE0DK501011,Piramal Pharma Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+PREMIERENE.NS,PREMIERENE,INE0BS701011,Premier Energies Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+PRESTIGE.NS,PRESTIGE,INE811K01011,Prestige Estates Projects Ltd.,Realty,nifty500_constituents_2026-09-09,True
+PTCIL.NS,PTCIL,INE596F01018,PTC Industries Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+PVRINOX.NS,PVRINOX,INE191H01014,PVR INOX Ltd.,Media Entertainment & Publication,nifty500_constituents_2026-09-09,True
+PWL.NS,PWL,INE0LP301011,Physicswallah Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+RADICO.NS,RADICO,INE944F01028,Radico Khaitan Ltd,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+RAILTEL.NS,RAILTEL,INE0DD101019,Railtel Corporation Of India Ltd.,Telecommunication,nifty500_constituents_2026-09-09,True
+RAINBOW.NS,RAINBOW,INE961O01016,Rainbow Childrens Medicare Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+RAMCOCEM.NS,RAMCOCEM,INE331A01037,The Ramco Cements Ltd.,Construction Materials,nifty500_constituents_2026-09-09,True
+RBLBANK.NS,RBLBANK,INE976G01028,RBL Bank Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+RECLTD.NS,RECLTD,INE020B01018,REC Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+REDINGTON.NS,REDINGTON,INE891D01026,Redington Ltd.,Services,nifty500_constituents_2026-09-09,True
+RELIANCE.NS,RELIANCE,INE002A01018,Reliance Industries Ltd.,Oil Gas & Consumable Fuels,nifty500_constituents_2026-09-09,True
+RHIM.NS,RHIM,INE743M01012,RHI MAGNESITA INDIA LTD.,Capital Goods,nifty500_constituents_2026-09-09,True
+RITES.NS,RITES,INE320J01015,RITES Ltd.,Construction,nifty500_constituents_2026-09-09,True
+RKFORGE.NS,RKFORGE,INE399G01023,Ramkrishna Forgings Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+RPOWER.NS,RPOWER,INE614G01033,Reliance Power Ltd.,Power,nifty500_constituents_2026-09-09,True
+RRKABEL.NS,RRKABEL,INE777K01022,R R Kabel Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+RVNL.NS,RVNL,INE415G01027,Rail Vikas Nigam Ltd.,Construction,nifty500_constituents_2026-09-09,True
+SAGILITY.NS,SAGILITY,INE0W2G01015,Sagility Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+SAIL.NS,SAIL,INE114A01011,Steel Authority of India Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+SAILIFE.NS,SAILIFE,INE570L01029,Sai Life Sciences Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+SAMMAANCAP.NS,SAMMAANCAP,INE148I01020,Sammaan Capital Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+SAPPHIRE.NS,SAPPHIRE,INE806T01020,Sapphire Foods India Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+SARDAEN.NS,SARDAEN,INE385C01021,Sarda Energy and Minerals Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+SAREGAMA.NS,SAREGAMA,INE979A01025,Saregama India Ltd,Media Entertainment & Publication,nifty500_constituents_2026-09-09,True
+SBFC.NS,SBFC,INE423Y01016,SBFC Finance Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+SBICARD.NS,SBICARD,INE018E01016,SBI Cards and Payment Services Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+SBILIFE.NS,SBILIFE,INE123W01016,SBI Life Insurance Company Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+SBIN.NS,SBIN,INE062A01020,State Bank of India,Financial Services,nifty500_constituents_2026-09-09,True
+SCHAEFFLER.NS,SCHAEFFLER,INE513A01022,Schaeffler India Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+SCHNEIDER.NS,SCHNEIDER,INE839M01018,Schneider Electric Infrastructure Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+SCI.NS,SCI,INE109A01011,Shipping Corporation of India Ltd.,Services,nifty500_constituents_2026-09-09,True
+SHREECEM.NS,SHREECEM,INE070A01015,Shree Cement Ltd.,Construction Materials,nifty500_constituents_2026-09-09,True
+SHRIRAMFIN.NS,SHRIRAMFIN,INE721A01047,Shriram Finance Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+SHYAMMETL.NS,SHYAMMETL,INE810G01011,Shyam Metalics and Energy Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+SIEMENS.NS,SIEMENS,INE003A01024,Siemens Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+SIGNATURE.NS,SIGNATURE,INE903U01023,Signatureglobal (India) Ltd.,Realty,nifty500_constituents_2026-09-09,True
+SJVN.NS,SJVN,INE002L01015,SJVN Ltd.,Power,nifty500_constituents_2026-09-09,True
+SOBHA.NS,SOBHA,INE671H01015,Sobha Ltd.,Realty,nifty500_constituents_2026-09-09,True
+SOLARINDS.NS,SOLARINDS,INE343H01029,Solar Industries India Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+SONACOMS.NS,SONACOMS,INE073K01018,Sona BLW Precision Forgings Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+SONATSOFTW.NS,SONATSOFTW,INE269A01021,Sonata Software Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+SPLPETRO.NS,SPLPETRO,INE663A01033,Supreme Petrochem Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+SRF.NS,SRF,INE647A01010,SRF Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+STARHEALTH.NS,STARHEALTH,INE575P01011,Star Health and Allied Insurance Company Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+SUMICHEM.NS,SUMICHEM,INE258G01013,Sumitomo Chemical India Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+SUNDARMFIN.NS,SUNDARMFIN,INE660A01013,Sundaram Finance Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+SUNPHARMA.NS,SUNPHARMA,INE044A01036,Sun Pharmaceutical Industries Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+SUNTV.NS,SUNTV,INE424H01027,Sun TV Network Ltd.,Media Entertainment & Publication,nifty500_constituents_2026-09-09,True
+SUPREMEIND.NS,SUPREMEIND,INE195A01028,Supreme Industries Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+SUZLON.NS,SUZLON,INE040H01021,Suzlon Energy Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+SWANCORP.NS,SWANCORP,INE665A01038,Swan Corp Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+SWIGGY.NS,SWIGGY,INE00H001014,Swiggy Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+SYNGENE.NS,SYNGENE,INE398R01022,Syngene International Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+SYRMA.NS,SYRMA,INE0DYJ01015,Syrma SGS Technology Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+TARIL.NS,TARIL,INE763I01026,Transformers And Rectifiers (India) Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+TATACAP.NS,TATACAP,INE976I01016,Tata Capital Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+TATACHEM.NS,TATACHEM,INE092A01019,Tata Chemicals Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+TATACOMM.NS,TATACOMM,INE151A01013,Tata Communications Ltd.,Telecommunication,nifty500_constituents_2026-09-09,True
+TATACONSUM.NS,TATACONSUM,INE192A01025,Tata Consumer Products Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+TATAELXSI.NS,TATAELXSI,INE670A01012,Tata Elxsi Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+TATAINVEST.NS,TATAINVEST,INE672A01026,Tata Investment Corporation Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+TATAPOWER.NS,TATAPOWER,INE245A01021,Tata Power Co. Ltd.,Power,nifty500_constituents_2026-09-09,True
+TATASTEEL.NS,TATASTEEL,INE081A01020,Tata Steel Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+TATATECH.NS,TATATECH,INE142M01025,Tata Technologies Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+TBOTEK.NS,TBOTEK,INE673O01025,TBO Tek Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+TCS.NS,TCS,INE467B01029,Tata Consultancy Services Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+TECHM.NS,TECHM,INE669C01036,Tech Mahindra Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+TECHNOE.NS,TECHNOE,INE285K01026,Techno Electric & Engineering Company Ltd.,Construction,nifty500_constituents_2026-09-09,True
+TEGA.NS,TEGA,INE011K01018,Tega Industries Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+TEJASNET.NS,TEJASNET,INE010J01012,Tejas Networks Ltd.,Telecommunication,nifty500_constituents_2026-09-09,True
+TENNIND.NS,TENNIND,INE19RI01016,Tenneco Clean Air India Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+THELEELA.NS,THELEELA,INE0AQ201015,Leela Palaces Hotels & Resorts Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+THERMAX.NS,THERMAX,INE152A01029,Thermax Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+TIINDIA.NS,TIINDIA,INE974X01010,Tube Investments of India Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+TIMKEN.NS,TIMKEN,INE325A01013,Timken India Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+TITAGARH.NS,TITAGARH,INE615H01020,Titagarh Rail Systems Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+TITAN.NS,TITAN,INE280A01028,Titan Company Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+TMCV.NS,TMCV,INE1TAE01010,Tata Motors Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+TMPV.NS,TMPV,INE155A01022,Tata Motors Passenger Vehicles Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+TORNTPHARM.NS,TORNTPHARM,INE685A01028,Torrent Pharmaceuticals Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+TORNTPOWER.NS,TORNTPOWER,INE813H01021,Torrent Power Ltd.,Power,nifty500_constituents_2026-09-09,True
+TRAVELFOOD.NS,TRAVELFOOD,INE103V01028,Travel Food Services Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+TRENT.NS,TRENT,INE849A01020,Trent Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+TRIDENT.NS,TRIDENT,INE064C01022,Trident Ltd.,Textiles,nifty500_constituents_2026-09-09,True
+TRITURBINE.NS,TRITURBINE,INE152M01016,Triveni Turbine Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+TTML.NS,TTML,INE517B01013,Tata Teleservices (Maharashtra) Ltd.,Telecommunication,nifty500_constituents_2026-09-09,True
+TVSMOTOR.NS,TVSMOTOR,INE494B01023,TVS Motor Company Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+UBL.NS,UBL,INE686F01025,United Breweries Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+UCOBANK.NS,UCOBANK,INE691A01018,UCO Bank,Financial Services,nifty500_constituents_2026-09-09,True
+ULTRACEMCO.NS,ULTRACEMCO,INE481G01011,UltraTech Cement Ltd.,Construction Materials,nifty500_constituents_2026-09-09,True
+UNIONBANK.NS,UNIONBANK,INE692A01016,Union Bank of India,Financial Services,nifty500_constituents_2026-09-09,True
+UNITDSPR.NS,UNITDSPR,INE854D01024,United Spirits Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+UNOMINDA.NS,UNOMINDA,INE405E01023,UNO Minda Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+UPL.NS,UPL,INE628A01036,UPL Ltd.,Chemicals,nifty500_constituents_2026-09-09,True
+URBANCO.NS,URBANCO,INE0CAZ01013,Urban Company Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+USHAMART.NS,USHAMART,INE228A01035,Usha Martin Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+UTIAMC.NS,UTIAMC,INE094J01016,UTI Asset Management Company Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+VBL.NS,VBL,INE200M01039,Varun Beverages Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
+VEDL.NS,VEDL,INE205A01025,Vedanta Ltd.,Metals & Mining,nifty500_constituents_2026-09-09,True
+VIJAYA.NS,VIJAYA,INE043W01024,Vijaya Diagnostic Centre Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+VMM.NS,VMM,INE01EA01019,Vishal Mega Mart Ltd.,Consumer Services,nifty500_constituents_2026-09-09,True
+VOLTAS.NS,VOLTAS,INE226A01021,Voltas Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+VTL.NS,VTL,INE825A01020,Vardhman Textiles Ltd.,Textiles,nifty500_constituents_2026-09-09,True
+WAAREEENER.NS,WAAREEENER,INE377N01017,Waaree Energies Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+WELCORP.NS,WELCORP,INE191B01025,Welspun Corp Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+WELSPUNLIV.NS,WELSPUNLIV,INE192B01031,Welspun Living Ltd.,Textiles,nifty500_constituents_2026-09-09,True
+WHIRLPOOL.NS,WHIRLPOOL,INE716A01013,Whirlpool of India Ltd.,Consumer Durables,nifty500_constituents_2026-09-09,True
+WIPRO.NS,WIPRO,INE075A01022,Wipro Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+WOCKPHARMA.NS,WOCKPHARMA,INE049B01025,Wockhardt Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+YESBANK.NS,YESBANK,INE528G01035,Yes Bank Ltd.,Financial Services,nifty500_constituents_2026-09-09,True
+ZEEL.NS,ZEEL,INE256A01028,Zee Entertainment Enterprises Ltd.,Media Entertainment & Publication,nifty500_constituents_2026-09-09,True
+ZENSARTECH.NS,ZENSARTECH,INE520A01027,Zensar Technolgies Ltd.,Information Technology,nifty500_constituents_2026-09-09,True
+ZENTEC.NS,ZENTEC,INE251B01027,Zen Technologies Ltd.,Capital Goods,nifty500_constituents_2026-09-09,True
+ZFCVINDIA.NS,ZFCVINDIA,INE342J01019,ZF Commercial Vehicle Control Systems India Ltd.,Automobile and Auto Components,nifty500_constituents_2026-09-09,True
+ZYDUSLIFE.NS,ZYDUSLIFE,INE010B01027,Zydus Lifesciences Ltd.,Healthcare,nifty500_constituents_2026-09-09,True
+ZYDUSWELL.NS,ZYDUSWELL,INE768C01028,Zydus Wellness Ltd.,Fast Moving Consumer Goods,nifty500_constituents_2026-09-09,True
