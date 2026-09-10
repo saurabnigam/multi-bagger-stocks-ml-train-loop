@@ -30,6 +30,29 @@ class ConfigNamespace:
                 res[k] = v
         return res
 
+    def items(self):
+        attrs = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
+        return attrs.items()
+
+    def keys(self):
+        return [k for k in self.__dict__.keys() if not k.startswith("_")]
+
+    def values(self):
+        return [v for k, v in self.__dict__.items() if not k.startswith("_")]
+
+    def __iter__(self):
+        return iter(self.keys())
+
+    def __getitem__(self, key: str) -> Any:
+        if key in self.__dict__ and not key.startswith("_"):
+            return self.__dict__[key]
+        raise KeyError(key)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        if key in self.__dict__ and not key.startswith("_"):
+            return self.__dict__[key]
+        return default
+
     def __repr__(self) -> str:
         attrs = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
         return f"ConfigNamespace({attrs})"

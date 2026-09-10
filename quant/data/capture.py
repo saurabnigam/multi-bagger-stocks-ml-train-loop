@@ -48,14 +48,19 @@ def run(ctx: RunContext, client: YahooClient) -> Result:
     # 4. Ingest attributes
     attributes_capture(ctx, bundles)
 
-    # 5. Raw price window batch download & archive
-    tickers = list(set(ticker_map.values()))
-    start = getattr(ctx.cfg.yahoo, "history_start", "2015-01-01")
-    end = ctx.as_of
-    client.download_batch(tickers, start=start, end=end)
+    # 5. Price windows: downloaded in batches, archived with their vintage, normalised
+    #    to the raw quoted basis and reconciled into the versioned price store.
+    from quant.data.prices import PriceStore
+    store = getattr(ctx, "store", None) or PriceStore(ctx.cfg.paths.prices_db, state_conn=ctx.conn)
+    price_res = store.update(ctx, client, list(ticker_map.keys()), through=ctx.as_of)
 
     return Result(
         status="ok",
-        counts={"securities": len(sids), "bundles": len(bundles)},
-        details={"capture_id": capture_id},
+        counts={
+            "securities": len(sids),
+            "bundles": len(bundles),
+            "price_rows": int(price_res.counts.get("rows", 0)),
+            "price_quarantined": int(price_res.counts.get("quarantined", 0)),
+        },
+        details={"capture_id": capture_id, "price_capture": price_res.details},
     )

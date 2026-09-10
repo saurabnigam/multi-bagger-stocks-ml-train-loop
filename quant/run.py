@@ -85,17 +85,8 @@ class RunContext:
                 ),
             )
             self.run_id = cur.lastrowid
-
-            # Journal run initiation to ledger_events
-            cur_run = self.conn.execute("SELECT * FROM runs WHERE run_id = ?", (self.run_id,))
-            run_dict = dict(cur_run.fetchone())
-            key_json = json.dumps({"run_id": self.run_id}, sort_keys=True, default=str, separators=(",", ":"))
-            after_json = json.dumps(run_dict, sort_keys=True, default=str, separators=(",", ":"))
-            self.conn.execute(
-                "INSERT INTO ledger_events (run_id, recorded_at, table_name, operation, key_json, before_sha256, after_json) "
-                "VALUES (?, ?, 'runs', 'insert', ?, '', ?)",
-                (self.run_id, started_at, key_json, after_json),
-            )
+            if hasattr(self.conn, "set_run_context"):
+                self.conn.set_run_context(self.run_id, self.clock.iso)
 
         # Begin staging savepoint
         self.conn.execute("SAVEPOINT staging")

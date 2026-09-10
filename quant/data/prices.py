@@ -171,6 +171,43 @@ class PriceStore:
             details={"message": f"Ingested {len(norm_df)} price rows"},
         )
 
+    def latest_date(self, security_ids: List[int]) -> Optional[str]:
+        if not security_ids:
+            return None
+        placeholders = ",".join("?" for _ in security_ids)
+        with self.conn() as p_conn:
+            row = p_conn.execute(
+                f"SELECT min(md) FROM (SELECT max(date) AS md FROM prices_daily "
+                f"WHERE security_id IN ({placeholders}) GROUP BY security_id)",
+                [int(s) for s in security_ids],
+            ).fetchone()
+        return row[0] if row and row[0] else None
+
+    def update(self, ctx: RunContext, client: Any, security_ids: List[int], through: str) -> Result:
+        from quant.data.identity import yahoo_ticker
+
+        ticker_map: Dict[int, str] = {}
+        for sid in security_ids:
+            t = yahoo_ticker(ctx.conn, int(sid), through)
+            if t:
+                ticker_map[int(sid)] = t
+        if not ticker_map:
+            return Result(status="ok", counts={"securities": 0, "rows": 0}, details={})
+
+        history_start = str(getattr(getattr(ctx, "cfg", None), "yahoo", None) and getattr(ctx.cfg.yahoo, "history_start", "2015-01-01") or "2015-01-01")
+        lookback_months = int(getattr(getattr(ctx, "cfg", None), "yahoo", None) and getattr(ctx.cfg.yahoo, "lookback_months", 13) or 13)
+        latest = self.latest_date(list(ticker_map.keys()))
+        window_start = (pd.Timestamp(through) - pd.DateOffset(months=lookback_months)).strftime("%Y-%m-%d")
+        start = history_start if latest is None else min(window_start, latest)
+        end_excl = (pd.Timestamp(through) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+
+        tickers = sorted(set(ticker_map.values()))
+        raw = client.download_batch(tickers, start=start, end=end_excl)
+        if raw is None or raw.empty:
+            return Result(status="ok", counts={"securities": 0, "rows": 0}, details={"message": "Download returned no rows"})
+
+        return Result(status="ok", counts={"securities": len(ticker_map), "rows": len(raw)}, details={})
+
     def reconcile(
         self,
         ctx: RunContext,

@@ -17,29 +17,24 @@ def register(group: str, name: str, handler: Callable, help_text: str) -> None:
 
 
 def _init_default_commands():
-    try:
-        import quant.commands.universe
-        import quant.commands.prices
-        import quant.commands.data
-        import quant.commands.factors
-        import quant.commands.model
-        import quant.commands.evaluate
-        import quant.commands.portfolio
-        import quant.commands.kb
-        import quant.commands.migrate
-        import quant.commands.run
-    except ImportError:
-        pass
+    """Import every command module. A missing module is an error, never a silent no-op."""
+    import importlib
 
-    if "db" not in _COMMAND_REGISTRY:
-        register("db", "init", lambda args: 0, "Initialize database schema")
-        register("db", "verify", lambda args: 0, "Verify database ledger")
-    if "data" not in _COMMAND_REGISTRY:
-        register("data", "capture", lambda args: 0, "Capture vendor data")
-    if "run" not in _COMMAND_REGISTRY:
-        register("run", "monthly", lambda args: 0, "Execute monthly run pipeline")
-    if "status" not in _COMMAND_REGISTRY:
-        register("status", "show", lambda args: 0, "Show quant engine status")
+    for mod in (
+        "quant.commands.db",
+        "quant.commands.status",
+        "quant.commands.universe",
+        "quant.commands.prices",
+        "quant.commands.data",
+        "quant.commands.factors",
+        "quant.commands.model",
+        "quant.commands.evaluate",
+        "quant.commands.portfolio",
+        "quant.commands.kb",
+        "quant.commands.migrate",
+        "quant.commands.run",
+    ):
+        importlib.import_module(mod)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -80,6 +75,10 @@ def main(argv: list[str] | None = None) -> int:
             cmd_p.add_argument("--skip-capture", action="store_true", help="Skip data capture phase")
             cmd_p.add_argument("--stop-after", type=str, help="Stop pipeline after given phase")
             cmd_p.add_argument("--push", action="store_true", help="Push changes to remote repository")
+            cmd_p.add_argument("--output", type=str, help="Output path (db rebuild)")
+            cmd_p.add_argument("--start", type=str, help="Start date (YYYY-MM-DD)")
+            cmd_p.add_argument("--end", type=str, help="End date (YYYY-MM-DD)")
+            cmd_p.add_argument("--phase", type=str, help="Phase selector")
 
     try:
         args = parser.parse_args(argv)

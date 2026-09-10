@@ -8,16 +8,78 @@ import pandas as pd
 from quant.errors import Blocked
 
 
+SESSION_CLOSE_UTC = "T10:00:00.000000Z"   # 15:30 IST
+
+
+def weekday_sessions(start: str, end: str) -> pd.DataFrame:
+    """Weekday fallback session table (flagged; NSE holidays are not removed)."""
+    dates = pd.bdate_range(start, end)
+    return pd.DataFrame({
+        "date": [d.strftime("%Y-%m-%d") for d in dates],
+        "close_at": [f"{d.strftime('%Y-%m-%d')}{SESSION_CLOSE_UTC}" for d in dates],
+        "source": "weekday_fallback",
+    })
+
+
 class Calendar:
     def __init__(self, sessions: pd.DataFrame, timezone: str = "Asia/Kolkata"):
         if "date" not in sessions.columns or "close_at" not in sessions.columns:
             raise ValueError("sessions DataFrame must have 'date' and 'close_at' columns")
 
-        sorted_df = sessions.sort_values("date").reset_index(drop=True)
+        sorted_df = sessions.sort_values("date").drop_duplicates("date").reset_index(drop=True)
         self._df = sorted_df
         self._dates = list(sorted_df["date"])
         self._close_ats = dict(zip(sorted_df["date"], sorted_df["close_at"]))
         self.timezone = timezone
+        self.sources: dict[str, int] = (
+            sorted_df["source"].value_counts().to_dict() if "source" in sorted_df.columns else {}
+        )
+
+    @classmethod
+    def load(cls, cfg, store=None, *, horizon_years: int = 3) -> "Calendar":
+        """Build the session calendar from, in order of authority:
+
+        1. the configured sessions file (verified sessions, if present);
+        2. empirical sessions observed in the price store (dates with closes);
+        3. a weekday fallback for the remainder, flagged ``weekday_fallback``.
+        Callers can inspect ``calendar.sources`` to report fallback usage.
+        """
+        import os
+        from datetime import date
+
+        frames = []
+        sessions_file = getattr(getattr(cfg, "calendar", None), "sessions_file", None)
+        root = getattr(cfg, "root", None)
+        if sessions_file:
+            path = sessions_file if os.path.isabs(str(sessions_file)) or root is None else os.path.join(str(root), str(sessions_file))
+            if os.path.exists(path):
+                df = pd.read_csv(path, dtype=str)
+                if "close_at" not in df.columns:
+                    df["close_at"] = df["date"] + SESSION_CLOSE_UTC
+                df["source"] = "sessions_file"
+                frames.append(df[["date", "close_at", "source"]])
+        start = str(getattr(getattr(cfg, "yahoo", None), "history_start", "2015-01-01"))
+        end = f"{date.today().year + horizon_years}-12-31"
+        if store is not None:
+            try:
+                emp = store.session_dates(start, end, min_securities=10)
+            except Exception:
+                emp = []
+            if emp:
+                frames.append(pd.DataFrame({
+                    "date": emp, "close_at": [d + SESSION_CLOSE_UTC for d in emp], "source": "price_store",
+                }))
+        known = set()
+        for f in frames:
+            known.update(f["date"].tolist())
+        fallback = weekday_sessions(start, end)
+        fallback = fallback[~fallback["date"].isin(known)]
+        # Weekdays inside the empirically observed range without closes are holidays, not sessions.
+        if store is not None and any(f["source"].iloc[0] == "price_store" for f in frames if len(f)):
+            emp_dates = sorted(d for f in frames if f["source"].iloc[0] == "price_store" for d in f["date"])
+            fallback = fallback[(fallback["date"] < emp_dates[0]) | (fallback["date"] > emp_dates[-1])]
+        frames.append(fallback)
+        return cls(pd.concat(frames, ignore_index=True))
 
     def last_session_on_or_before(self, date: str) -> str:
         idx = bisect.bisect_right(self._dates, date) - 1

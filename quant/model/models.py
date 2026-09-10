@@ -255,6 +255,13 @@ def score_all(
             mode = defn["params"].get("mode", "hierarchical")
             sleeve_weight = float(defn["params"].get("sleeve_weight", 0.0))
 
+        # Factors excluded on actual coverage (G8) do not enter this cohort's composites.
+        excluded = set(draft.source_refs.get("excluded_factors", []) or [])
+        excluded |= {e.split("@")[0] for e in excluded}
+        factor_set = [f for f in factor_set if f["factor_id"] not in excluded
+                      and f["factor_id"].split("@")[0] not in excluded]
+        if not factor_set:
+            continue
         factor_defs_df = pd.DataFrame(factor_set)
         included_families = sorted(list({f["family"] for f in factor_set}))
 
@@ -336,6 +343,50 @@ def score_all(
     draft.scores = all_scores
     draft.model_weights = all_weights
     return all_scores, all_weights
+
+
+def check_draft(draft: Draft, cfg: Any) -> CheckReport:
+    """Score/weight invariants on an unpublished draft (MASTER_SPEC 9.1 step 4)."""
+    checks: list[Check] = []
+    weights = draft.model_weights
+    if weights is not None and len(weights):
+        units_total = int(getattr(getattr(cfg, "learning", None), "weight_units", 10000))
+        floor_mult = float(getattr(getattr(cfg, "learning", None), "floor_mult", 0.5))
+        cap_mult = float(getattr(getattr(cfg, "learning", None), "cap_mult", 2.0))
+        for mid, g in weights.groupby("model_id"):
+            total = int(g["weight_units"].sum())
+            f_count = int(len(g))
+            lo = math.ceil(units_total * floor_mult / f_count)
+            hi = math.floor(units_total * cap_mult / f_count)
+            checks.append(Check(id=f"weights_sum_{mid}", status="PASS" if total == units_total else "FAIL",
+                                observed=total, expected=units_total,
+                                reason="Family weights must sum to exactly the unit total", blocking=True))
+            in_bounds = bool(((g["weight_units"] >= lo) & (g["weight_units"] <= hi)).all())
+            checks.append(Check(id=f"weights_bounds_{mid}", status="PASS" if in_bounds else "FAIL",
+                                observed=(int(g["weight_units"].min()), int(g["weight_units"].max())),
+                                expected=(lo, hi), reason="Family weights within [floor/F, cap/F]", blocking=True))
+    scores = draft.scores
+    if scores is None or len(scores) == 0:
+        checks.append(Check(id="scores_present", status="FAIL", observed=0, expected=">0",
+                            reason="Draft has no model scores", blocking=True))
+        return CheckReport(checks=checks)
+    dup = int(scores.duplicated(["cohort_id", "security_id", "model_id"]).sum())
+    checks.append(Check(id="scores_unique", status="PASS" if dup == 0 else "FAIL", observed=dup, expected=0,
+                        reason="One score row per (cohort, security, model)", blocking=True))
+    bad_elig = int(((scores["eligible"] == 1) & (scores["scored"] == 0)).sum())
+    checks.append(Check(id="eligible_subset_of_scored", status="PASS" if bad_elig == 0 else "FAIL",
+                        observed=bad_elig, expected=0, reason="Eligible names must be scored", blocking=True))
+    for mid, g in scores.groupby("model_id"):
+        ranked = g[g["rank"].notna()].sort_values("rank")
+        monotone = bool((ranked["final"].diff().dropna() <= 1e-12).all()) if len(ranked) > 1 else True
+        checks.append(Check(id=f"rank_monotone_{mid}", status="PASS" if monotone else "FAIL",
+                            observed=monotone, expected=True,
+                            reason="Eligible rank must be descending in final score", blocking=True))
+    champ = scores[scores["model_id"] == "EW_HIER_v1"]
+    n_scored = int(champ["scored"].sum()) if len(champ) else 0
+    checks.append(Check(id="champion_scored", status="PASS" if n_scored > 0 else "FAIL", observed=n_scored,
+                        expected=">0", reason="Champion must score at least one name", blocking=True))
+    return CheckReport(checks=checks)
 
 
 def check(conn: sqlite3.Connection) -> CheckReport:
