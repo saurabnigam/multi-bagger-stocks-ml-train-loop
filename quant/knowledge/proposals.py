@@ -87,7 +87,6 @@ def draft(ctx: RunContext, as_of: str) -> list[str]:
                 )
                 drafted.append(pid)
 
-    conn.commit()
     return drafted
 
 
@@ -175,7 +174,6 @@ def approve(ctx: RunContext, proposal_id: str, note: str = "") -> str:
         "UPDATE proposals SET status = 'approved', decided_on = ?, decided_by = ?, decision_id = ? WHERE proposal_id = ?",
         (timestamp, actor.name, decision_id, proposal_id),
     )
-    conn.commit()
 
     write_adr(conn, decision_id, k_dir / "decisions")
     return decision_id
@@ -245,7 +243,6 @@ def reject(ctx: RunContext, proposal_id: str, note: str = "") -> str:
         "UPDATE proposals SET status = 'rejected', decided_on = ?, decided_by = ?, decision_id = ? WHERE proposal_id = ?",
         (timestamp, actor.name, decision_id, proposal_id),
     )
-    conn.commit()
 
     write_adr(conn, decision_id, k_dir / "decisions")
     return decision_id
@@ -295,7 +292,6 @@ def ratify(ctx: RunContext, decision_id: str, note: str = "") -> Result:
         "UPDATE decisions SET status = 'approved', ratified_by = ?, ratified_on = ? WHERE decision_id = ?",
         (actor.name, timestamp, decision_id),
     )
-    conn.commit()
 
     k_dir = _get_knowledge_dir(ctx)
     write_adr(conn, decision_id, k_dir / "decisions")
@@ -412,7 +408,6 @@ def apply(ctx: RunContext, as_of: str) -> Result:
         )
         applied_count += 1
 
-    conn.commit()
     return Result(status="ok", counts={"applied": applied_count})
 
 

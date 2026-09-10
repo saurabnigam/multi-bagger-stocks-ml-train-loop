@@ -9,11 +9,11 @@ from quant.errors import Blocked, Refused
 _COMMAND_REGISTRY: dict[str, dict[str, tuple[Callable, str]]] = {}
 
 
-def register(group: str, name: str, handler: Callable, help_text: str) -> None:
+def register(group: str, name: str, handler: Callable, help: str) -> None:
     """Register a command handler under a command group."""
     if group not in _COMMAND_REGISTRY:
         _COMMAND_REGISTRY[group] = {}
-    _COMMAND_REGISTRY[group][name] = (handler, help_text)
+    _COMMAND_REGISTRY[group][name] = (handler, help)
 
 
 def _init_default_commands():

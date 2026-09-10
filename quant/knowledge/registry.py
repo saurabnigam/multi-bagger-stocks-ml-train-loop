@@ -145,7 +145,6 @@ def new_hypothesis(ctx: RunContext, fields: dict[str, Any]) -> str:
             md_path,
         ),
     )
-    conn.commit()
     return hypothesis_id
 
 

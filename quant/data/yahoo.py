@@ -201,6 +201,7 @@ class YahooClient:
                 threads=False,
                 progress=False,
                 auto_adjust=False,
+                actions=True,
             )
             if df is not None and not df.empty:
                 frames.append(df)

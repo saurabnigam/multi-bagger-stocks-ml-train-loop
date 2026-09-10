@@ -63,7 +63,6 @@ def write(conn: sqlite3.Connection, decision_id: str, output_dir: Path) -> Path:
         "UPDATE decisions SET adr_path = ? WHERE decision_id = ?",
         (str(adr_path), decision_id),
     )
-    conn.commit()
     return adr_path
 
 

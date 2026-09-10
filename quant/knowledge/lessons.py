@@ -20,15 +20,14 @@ def record(
 ) -> int:
     """Record a lesson learned into the database and mirror to lessons.md."""
     evidence_json = json.dumps(evidence_refs or [])
-    with conn:
-        cur = conn.execute(
-            """
-            INSERT INTO lessons (recorded_on, source, text, evidence_refs_json, decision_id, tags)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (recorded_on, source, text, evidence_json, decision_id, tags),
-        )
-        lesson_id = cur.lastrowid or 0
+    cur = conn.execute(
+        """
+        INSERT INTO lessons (recorded_on, source, text, evidence_refs_json, decision_id, tags)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (recorded_on, source, text, evidence_json, decision_id, tags),
+    )
+    lesson_id = cur.lastrowid or 0
 
     sync_markdown(conn, knowledge_dir)
     return lesson_id

@@ -187,10 +187,17 @@ def capture(ctx: RunContext, members: pd.DataFrame) -> Result:
             (ctx.as_of, sid, ctx.as_of)
         )
 
-        # Insert new point-in-time mapping
+        # Insert new point-in-time mapping (append-only: an existing row for the same
+        # valid_from is kept; a changed classification needs a new valid_from)
+        cur.execute(
+            "SELECT sector_group FROM sector_map WHERE security_id = ? AND valid_from = ?",
+            (sid, ctx.as_of),
+        )
+        if cur.fetchone() is not None:
+            continue
         cur.execute(
             """
-            INSERT OR REPLACE INTO sector_map (
+            INSERT INTO sector_map (
                 security_id, observed_at, valid_from, valid_to,
                 nse_sector, yahoo_sector, yahoo_industry,
                 sector_group, group_def_version, source, confidence

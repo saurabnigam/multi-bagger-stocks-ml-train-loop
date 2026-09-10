@@ -15,7 +15,7 @@ def rank_ic(score: pd.Series, label: pd.Series) -> tuple[float | None, int, str]
     """
     df = pd.DataFrame({"score": score, "label": label}).dropna()
     n = len(df)
-    if n < 2:
+    if n < 3:
         return (None, n, "insufficient")
     if (df["score"] == df["score"].iloc[0]).all() or (df["label"] == df["label"].iloc[0]).all():
         return (None, n, "constant")

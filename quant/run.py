@@ -1,21 +1,41 @@
+"""Run lifecycle (RunContext) and the monthly orchestration (MASTER_SPEC 9.1, C11).
+
+Transaction model
+-----------------
+``RunContext.__enter__`` inserts the ``runs`` row (committed immediately so a
+crash leaves a visible ``running`` attempt), registers the run on the
+connection so the journal triggers stamp every write with this run_id, and
+opens the ``staging`` savepoint. Library code never commits. The runner calls
+``ctx.checkpoint()`` at the spec's preservation points (after settlement /
+maturation / evaluation, after publication); ``ctx.rollback_staging()``
+discards the current staging work but re-inserts diagnostics registered with
+``ctx.keep_after_rollback`` (gate rows, DQ events). ``__exit__`` releases or
+rolls back the open staging work, finalizes the run row and commits.
+"""
 from __future__ import annotations
 
 import datetime
 import hashlib
 import json
+import platform
 from pathlib import Path
 import subprocess
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 import sqlite3
 
+import pandas as pd
+
 from quant.config import Config
-from quant.db.core import connect, update_control
+from quant.db import core as dbcore
+from quant.db.core import append_rows, connect, update_control
 from quant.errors import Blocked, Refused
-from quant.types import Actor, Check, Clock, Draft
+from quant.types import Actor, Check, Clock, Draft, Result
+
+STOP_POINTS = ("capture", "mature", "gates", "stage", "publish", "record")
 
 
 class RunContext:
-    """Context manager for run lifecycle, transactional staging, and execution tracking."""
+    """Context manager for run lifecycle, transactional staging and execution tracking."""
 
     def __init__(
         self,
@@ -34,108 +54,393 @@ class RunContext:
         self.actor = actor
         self.status = "ok"
         self.store = None
+        self.calendar = None
         self.checks: dict[str, Callable[[RunContext, Draft], Check]] = {}
         self.conn: sqlite3.Connection | None = None
         self.run_id: int | None = None
         self.git_sha: str = self._get_git_sha()
+        self.notes: dict[str, Any] = {}
+        self._audit: list[tuple[str, pd.DataFrame, list[str]]] = []
+        self._staging_open = False
 
     @staticmethod
     def _get_git_sha() -> str:
         try:
-            res = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
+            res = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True)
             return res.stdout.strip()
         except Exception:
             return "dev"
 
+    # ------------------------------------------------------------------ lifecycle
     def __enter__(self) -> RunContext:
         self.conn = connect(self.cfg.paths.db)
-        
-        # Determine attempt number
-        cur = self.conn.execute(
+        max_att = self.conn.execute(
             "SELECT max(attempt) FROM runs WHERE as_of = ? AND kind = ? AND track = ?",
             (self.as_of, self.kind, self.track),
-        )
-        max_att = cur.fetchone()[0]
+        ).fetchone()[0]
         attempt = (max_att or 0) + 1
 
-        started_at = self.clock.iso()
-        config_hash = self.cfg.policy_sha256
-        code_hash = config_hash  # Consistent deterministic identifier
-        registry_hash = "r"
+        registry_hash = (
+            dbcore.table_hash(self.conn, "factor_registry")
+            if dbcore._has_table(self.conn, "factor_registry")
+            else ""
+        )
+        try:
+            import importlib.metadata as md
+            yf_version = md.version("yfinance")
+        except Exception:
+            yf_version = None
 
-        with self.conn:
-            cur = self.conn.execute(
-                "INSERT INTO runs (as_of, kind, track, attempt, started_at, status, git_sha, code_sha256, config_sha256, registry_sha256) "
-                "VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)",
-                (
-                    self.as_of,
-                    self.kind,
-                    self.track,
-                    attempt,
-                    started_at,
-                    self.git_sha,
-                    code_hash,
-                    config_hash,
-                    registry_hash,
-                ),
-            )
-            self.run_id = cur.lastrowid
-            if hasattr(self.conn, "set_run_context"):
-                self.conn.set_run_context(self.run_id, self.clock.iso)
-
-        # Begin staging savepoint
+        cur = self.conn.execute(
+            "INSERT INTO runs (as_of, kind, track, attempt, started_at, status, git_sha, code_sha256, "
+            "config_sha256, registry_sha256, yfinance_version, python_version) "
+            "VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?)",
+            (
+                self.as_of, self.kind, self.track, attempt, self.clock.iso(), self.git_sha,
+                dbcore.code_sha256(), self.cfg.policy_sha256, registry_hash, yf_version,
+                platform.python_version(),
+            ),
+        )
+        self.run_id = int(cur.lastrowid)
+        if hasattr(self.conn, "set_run_context"):
+            self.conn.set_run_context(self.run_id, self.clock.iso)
         self.conn.execute("SAVEPOINT staging")
+        self._staging_open = True
         return self
+
+    def keep_after_rollback(self, table: str, rows: pd.DataFrame, keys: list[str]) -> None:
+        """Register diagnostic rows that must survive a staging rollback."""
+        self._audit.append((table, rows.copy(), list(keys)))
+
+    def _replay_audit(self) -> None:
+        for table, rows, keys in self._audit:
+            append_rows(self, table, rows, keys)
+        self._audit.clear()
+
+    def rollback_staging(self) -> None:
+        """Discard the open staging work but keep registered diagnostics."""
+        if not self._staging_open:
+            return
+        self.conn.execute("ROLLBACK TO staging")
+        self._replay_audit()
+
+    def checkpoint(self) -> None:
+        """Persist the staging work done so far and open a fresh staging savepoint."""
+        if self._staging_open:
+            self.conn.execute("RELEASE staging")
+            self._staging_open = False
+        if self.conn.in_transaction:
+            self.conn.execute("COMMIT")
+        self._audit.clear()
+        self.conn.execute("SAVEPOINT staging")
+        self._staging_open = True
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
         finished_at = self.clock.iso()
         if exc_type is not None:
-            # Rollback any uncommitted staging work
+            if self._staging_open:
+                try:
+                    self.conn.execute("ROLLBACK TO staging")
+                    self.conn.execute("RELEASE staging")
+                except Exception:
+                    pass
+                self._staging_open = False
             try:
-                self.conn.execute("ROLLBACK TO staging")
-                self.conn.execute("RELEASE staging")
+                self._replay_audit()
             except Exception:
                 pass
-
             if issubclass(exc_type, Blocked):
                 final_status = "blocked"
             elif issubclass(exc_type, Refused):
                 final_status = "refused"
             else:
                 final_status = "failed"
-            error_msg = str(exc_val)
+            self.notes["error"] = str(exc_val)
         else:
-            try:
-                self.conn.execute("RELEASE staging")
-            except Exception:
-                pass
+            if self._staging_open:
+                try:
+                    self.conn.execute("RELEASE staging")
+                except Exception:
+                    pass
+                self._staging_open = False
             final_status = self.status
-            error_msg = None
 
-        # Update run status via update_control
-        changes = {
-            "finished_at": finished_at,
-            "status": final_status,
-        }
-        if error_msg:
-            changes["notes_json"] = json.dumps({"error": error_msg})
+        if self.conn.in_transaction:
+            self.conn.execute("COMMIT")
 
-        update_control(
-            self,
-            "runs",
-            {"run_id": self.run_id},
-            changes,
-        )
-        self.conn.commit()
+        changes: dict[str, Any] = {"finished_at": finished_at, "status": final_status}
+        if self.notes:
+            changes["notes_json"] = json.dumps(self.notes, sort_keys=True, default=str)
+        update_control(self, "runs", {"run_id": self.run_id}, changes)
+        if self.conn.in_transaction:
+            self.conn.execute("COMMIT")
+        if hasattr(self.conn, "set_run_context"):
+            self.conn.set_run_context(None, None)
         self.conn.close()
-
-        # Propagate exceptions
         return False
+
+
+# ============================================================================ monthly runner
+
+def _cfg(cfg: Config, section: str, key: str, default: Any) -> Any:
+    sec = getattr(cfg, section, None)
+    return getattr(sec, key, default) if sec is not None else default
+
+
+def _print(msg: str) -> None:
+    print(msg, flush=True)
+
+
+def _load_calendar(cfg: Config, store: Any):
+    from quant.data.calendar import Calendar
+    try:
+        return Calendar.load(cfg, store=store)
+    except Exception:
+        return None
+
+
+def default_as_of(clock: Clock, cal: Any) -> str:
+    """Last completed session of the previous calendar month (IST)."""
+    from zoneinfo import ZoneInfo
+
+    now_ist = clock.now().astimezone(ZoneInfo("Asia/Kolkata"))
+    first_this_month = now_ist.replace(day=1).date()
+    last_prev_month = first_this_month - datetime.timedelta(days=1)
+    if cal is not None:
+        try:
+            return cal.last_session_on_or_before(last_prev_month.strftime("%Y-%m-%d"))
+        except Exception:
+            pass
+    return last_prev_month.strftime("%Y-%m-%d")
+
+
+def knowledge_cutoff(as_of: str) -> str:
+    """as_of 23:59:59.999999 Asia/Kolkata expressed in UTC."""
+    from zoneinfo import ZoneInfo
+
+    dt_local = datetime.datetime.fromisoformat(f"{as_of}T23:59:59.999999").replace(tzinfo=ZoneInfo("Asia/Kolkata"))
+    return dt_local.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def _definition_hash(conn: sqlite3.Connection, as_of: str, cfg: Config) -> str:
+    """Hash of the definitions that produce a cohort: factors, model versions, policy, taxonomy."""
+    factors = conn.execute(
+        "SELECT factor_id, version, code_sha256, status, direction FROM factor_registry "
+        "WHERE status IN ('active','shadow','probation') ORDER BY factor_id"
+    ).fetchall()
+    versions = conn.execute(
+        "SELECT model_id, version, factor_set_json, weights_json FROM model_versions "
+        "WHERE valid_from <= ? AND (valid_to IS NULL OR valid_to >= ?) ORDER BY model_id, version",
+        (as_of, as_of),
+    ).fetchall()
+    payload = {
+        "factors": [tuple(r) for r in factors],
+        "model_versions": [tuple(r) for r in versions],
+        "policy_sha256": cfg.policy_sha256,
+        "group_def_version": int(_cfg(cfg, "sectors", "group_def_version", 1)),
+        "code_sha256": dbcore.code_sha256(),
+    }
+    return dbcore.sha256_text(dbcore.canonical_json(payload))
+
+
+def _membership_hash(members: pd.DataFrame) -> str:
+    cols = [c for c in ("security_id", "isin", "symbol", "series", "nse_sector") if c in members.columns]
+    rows = members.sort_values("security_id")[cols].astype(str).values.tolist()
+    return dbcore.sha256_text(dbcore.canonical_json(rows))
+
+
+def build_draft(ctx: RunContext, as_of: str, cutoff: str) -> Draft:
+    """Assemble the target cohort draft strictly from pre-cutoff observations."""
+    from quant.data.universe import members_at
+    from quant.sectors import taxonomy
+
+    members = members_at(ctx.conn, cutoff, index_name="NIFTY500")
+    if members.empty:
+        raise Blocked("universe_missing", f"No admissible universe members at cutoff {cutoff}")
+    if "security_id" not in members.columns:
+        members = members.reset_index()
+    sids = sorted(int(x) for x in members["security_id"].unique())
+
+    taxonomy.capture(ctx, members)
+    groups = taxonomy.groups_at(ctx.conn, as_of, sids)
+
+    cap = ctx.conn.execute(
+        "SELECT capture_id, captured_at, sha256 FROM captures WHERE kind = 'nifty500' AND captured_at <= ? "
+        "ORDER BY captured_at DESC LIMIT 1",
+        (cutoff,),
+    ).fetchone()
+    source_refs: dict[str, Any] = {
+        "universe_capture_id": cap["capture_id"] if cap else None,
+        "universe_captured_at": cap["captured_at"] if cap else None,
+        "universe_sha256": cap["sha256"] if cap else None,
+        "knowledge_cutoff": cutoff,
+    }
+    if ctx.store is not None:
+        manifest_dir = Path(ctx.cfg.paths.data_dir) / "manifests"
+        source_refs["price_manifest_sha"] = ctx.store.manifest_write(
+            manifest_dir / f"prices_{as_of}.json", vintage_at=cutoff
+        )
+    return Draft(
+        cohort_id=f"live:{as_of}",
+        as_of=as_of,
+        track="live",
+        knowledge_cutoff=cutoff,
+        definition_hash=_definition_hash(ctx.conn, as_of, ctx.cfg),
+        members=members,
+        groups=groups,
+        source_refs=source_refs,
+        membership_hash=_membership_hash(members),
+    )
+
+
+def _g9_replay(ctx: RunContext, draft: Draft) -> Check:
+    """G9: recompute the prior live cohort's factor values from pinned inputs and compare."""
+    from quant.factors import registry as factor_registry
+
+    prior = ctx.conn.execute(
+        "SELECT cohort_id, as_of, knowledge_cutoff, definition_hash FROM cohorts "
+        "WHERE track = 'live' AND as_of < ? ORDER BY as_of DESC, published_at DESC LIMIT 1",
+        (draft.as_of,),
+    ).fetchone()
+    if prior is None:
+        return Check(id="G9", status="DEFERRED", observed=None, expected="exact_match",
+                     reason="No prior live cohort", blocking=False)
+    stored = pd.read_sql_query(
+        "SELECT security_id, factor_id, z, sector_group FROM factor_values WHERE cohort_id = ?",
+        ctx.conn, params=(prior["cohort_id"],),
+    )
+    if stored.empty:
+        return Check(id="G9", status="FAIL", observed=0, expected="stored factor rows",
+                     reason=f"Prior cohort {prior['cohort_id']} has no stored factor values", blocking=True)
+    sids = sorted(stored["security_id"].unique().tolist())
+    members = pd.DataFrame({"security_id": sids}).set_index("security_id", drop=False)
+    groups = stored.drop_duplicates("security_id").set_index("security_id")["sector_group"].reindex(sids)
+    replay_draft = Draft(
+        cohort_id=prior["cohort_id"], as_of=prior["as_of"], track="live",
+        knowledge_cutoff=prior["knowledge_cutoff"], definition_hash=prior["definition_hash"],
+        members=members, groups=groups, source_refs={"replay": True},
+    )
+    recomputed = factor_registry.compute_all(ctx, replay_draft)
+    merged = stored.merge(recomputed[["security_id", "factor_id", "z"]], on=["security_id", "factor_id"],
+                         how="left", suffixes=("_stored", "_replay"))
+    both_nan = merged["z_stored"].isna() & merged["z_replay"].isna()
+    diff = (merged["z_stored"] - merged["z_replay"]).abs()
+    mismatch = merged[~both_nan & ~(diff <= 1e-9)]
+    ok = mismatch.empty
+    return Check(
+        id="G9", status="PASS" if ok else "FAIL",
+        observed={"rows": int(len(merged)), "mismatches": int(len(mismatch))}, expected="exact_match",
+        reason=("Prior cohort reproduced from pinned inputs" if ok
+                else f"{len(mismatch)} factor values differ on replay of {prior['cohort_id']}"),
+        blocking=not ok,
+    )
+
+
+def _g10_leakage(ctx: RunContext, draft: Draft) -> Check:
+    from quant.evaluation import leakage
+
+    report = leakage.run(ctx, draft)
+    failed = [c.id for c in report.checks if c.status == "FAIL" and c.blocking]
+    deferred = [c.id for c in report.checks if c.status == "DEFERRED"]
+    if failed:
+        return Check(id="G10", status="FAIL", observed={"failed": failed, "deferred": deferred},
+                     expected="no_leakage", reason=f"Leakage checks failed: {failed}", blocking=True)
+    if len(deferred) == len(report.checks):
+        return Check(id="G10", status="DEFERRED", observed={"deferred": deferred}, expected="no_leakage",
+                     reason="No leakage evidence yet; all checks deferred", blocking=False)
+    return Check(id="G10", status="PASS", observed={"deferred": deferred}, expected="no_leakage",
+                 reason=f"Leakage checks passed ({len(report.checks) - len(deferred)} evaluated)", blocking=False)
+
+
+def _stage_and_publish(ctx: RunContext, draft: Draft, stop_after: Optional[str]) -> bool:
+    """Spec 9.1 steps 4-5. Returns True when a cohort was published."""
+    from quant.data import gates
+    from quant.data.prices import monthly_panel
+    from quant.evaluation.walkforward import family_ic_history
+    from quant.factors import registry as factor_registry
+    from quant.model import models
+
+    gates.run(ctx, draft, phase="pre", strict=True)
+    if stop_after == "gates":
+        return False
+
+    draft.factor_values = factor_registry.compute_all(ctx, draft)
+    if draft.factor_values is None or len(draft.factor_values) == 0:
+        raise Blocked("no_factor_values", "Factor computation produced no rows")
+    draft.source_refs["excluded_factors"] = gates.excluded_factors(ctx, draft)
+
+    ic_hist = pd.DataFrame()
+    try:
+        defn = models.definition_at(ctx.conn, "IC_SHRUNK_v1", draft.as_of)
+        ic_hist = family_ic_history(
+            ctx.conn,
+            {"weights_json": defn["weights"], "factor_set_json": defn["factor_set"], "horizon_m": 3},
+            draft.as_of,
+            known_at=ctx.clock.iso(),
+        )
+    except KeyError:
+        pass
+    models.score_all(ctx, draft, ic_hist)
+    if stop_after == "stage":
+        return False
+
+    gates.run(ctx, draft, phase="post", strict=True, g9_replay_cb=_g9_replay, g10_eval_cb=_g10_leakage)
+    inv = models.check_draft(draft, ctx.cfg)
+    if not inv.passed:
+        failed = [c.id for c in inv.checks if c.status == "FAIL" and c.blocking]
+        raise Blocked("SCORE_INVARIANTS", f"Draft score invariants failed: {failed}")
+
+    now_iso = ctx.clock.iso()
+    cohort_row = pd.DataFrame([{
+        "cohort_id": draft.cohort_id, "as_of": draft.as_of, "track": draft.track,
+        "knowledge_cutoff": draft.knowledge_cutoff, "definition_hash": draft.definition_hash,
+        "membership_hash": draft.membership_hash,
+        "source_refs_json": dbcore.canonical_json({k: v for k, v in draft.source_refs.items() if not k.startswith("_")}),
+        "published_at": now_iso, "generated_at": now_iso, "is_clean": 1, "run_id": ctx.run_id,
+    }])
+    append_rows(ctx, "cohorts", cohort_row, ["cohort_id"])
+    panel = monthly_panel(ctx, draft)
+    if not panel.empty:
+        append_rows(ctx, "prices_monthly", panel, ["cohort_id", "security_id"])
+    append_rows(ctx, "factor_values", draft.factor_values, ["cohort_id", "security_id", "factor_id"])
+    if draft.model_weights is not None and len(draft.model_weights):
+        append_rows(ctx, "model_weights", draft.model_weights, ["cohort_id", "model_id", "family"])
+    append_rows(ctx, "scores", draft.scores, ["cohort_id", "security_id", "model_id"])
+
+    n_scored = int(draft.scores.loc[draft.scores["model_id"] == "EW_HIER_v1", "scored"].sum()) if "scored" in draft.scores else 0
+    n_elig = int(draft.scores.loc[draft.scores["model_id"] == "EW_HIER_v1", "eligible"].sum()) if "eligible" in draft.scores else 0
+    ctx.notes.update({"n_universe": int(len(draft.members)), "n_scored": n_scored, "n_eligible": n_elig})
+    return True
+
+
+def _git(args: list[str], cwd: Path) -> tuple[int, str]:
+    res = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True)
+    return res.returncode, (res.stdout + res.stderr).strip()
+
+
+def _commit_and_push(cfg: Config, as_of: str, *, commit: bool, push: bool) -> None:
+    """Commit only intended data/report files; push only with the explicit flag."""
+    if not commit:
+        return
+    root = Path(cfg.paths.db).resolve().parent
+    intended = [cfg.paths.db, Path(cfg.paths.data_dir) / "ledger", Path(cfg.paths.data_dir) / "manifests",
+                Path(cfg.paths.knowledge_dir), Path(cfg.paths.ui_dir)]
+    rel = []
+    for p in intended:
+        p = Path(p)
+        if p.exists():
+            try:
+                rel.append(str(p.resolve().relative_to(root)))
+            except ValueError:
+                continue
+    if not rel:
+        return
+    _git(["add", "--", *rel], root)
+    code, out = _git(["commit", "-m", f"monthly run {as_of}: state, ledger, reports and UI payloads"], root)
+    _print(f"git commit: {out.splitlines()[-1] if out else code}")
+    if push and code == 0:
+        code, out = _git(["push"], root)
+        _print(f"git push (explicit --push): {out.splitlines()[-1] if out else code}")
 
 
 def monthly(
@@ -149,46 +454,48 @@ def monthly(
     dry_run: bool = False,
     commit: bool = False,
     push: bool = False,
+    client: Any = None,
 ) -> int:
-    """Execute the monthly quant pipeline in strict MASTER_SPEC 9.1 sequence."""
-    # 1. Lock and reject future dates; exit 0 immediately if that live cohort is already published.
-    now_iso = clock.iso()
-    now_date = now_iso[:10]
+    """Execute the monthly pipeline in the MASTER_SPEC 9.1 sequence.
 
-    if as_of is None:
-        now_dt = clock.now()
-        first_this_month = now_dt.replace(day=1)
-        last_prev_month = first_this_month - datetime.timedelta(days=1)
-        as_of = last_prev_month.strftime("%Y-%m-%d")
-
-    if as_of > now_date:
-        print(f"Rejected future date: as_of={as_of} > now={now_date}")
-        return 2  # Blocked
-
-    # Governance authority precheck
+    Returns 0 success/previously done, 1 implementation/source error,
+    2 blocked publication, 3 governance refusal.
+    """
+    if stop_after is not None and stop_after not in STOP_POINTS:
+        _print(f"Unknown --stop-after {stop_after!r}; expected one of {STOP_POINTS}")
+        return 1
     if actor.kind == "llm" and actor.name.startswith("human:"):
-        print("Governance refusal: LLM cannot impersonate human actor.")
+        _print("Governance refusal: an LLM actor cannot claim a human identity.")
         return 3
 
-    # Check if live cohort for as_of is already published
-    conn_pre = connect(cfg.paths.db)
+    # 1. Resolve the target, reject future/incomplete cutoffs, exit 0 if already published.
+    pre_conn = connect(cfg.paths.db)
     try:
-        cur_pre = conn_pre.cursor()
-        pub_row = cur_pre.execute(
-            "SELECT cohort_id FROM cohorts WHERE as_of = ? AND track = 'live'",
-            (as_of,),
+        dbcore.apply_schema(pre_conn, kind="state")
+        from quant.data.prices import PriceStore
+        pre_store = PriceStore(cfg.paths.prices_db, state_conn=pre_conn) if not dry_run else None
+        cal = _load_calendar(cfg, pre_store)
+        if as_of is None:
+            as_of = default_as_of(clock, cal)
+        cutoff = knowledge_cutoff(as_of)
+        now_iso = clock.iso()
+        if as_of > now_iso[:10] or now_iso <= cutoff:
+            _print(f"Rejected: as_of={as_of} cutoff {cutoff} has not completed at {now_iso}")
+            return 2
+        published = pre_conn.execute(
+            "SELECT cohort_id FROM cohorts WHERE as_of = ? AND track = 'live'", (as_of,)
         ).fetchone()
-        if pub_row:
-            print(f"Live cohort for {as_of} already published ({pub_row[0]}); exiting 0.")
+        if published:
+            _print(f"Live cohort for {as_of} already published ({published[0]}); nothing to do.")
             return 0
     finally:
-        conn_pre.close()
+        pre_conn.close()
 
     if dry_run:
-        print(f"Dry-run planning for as_of={as_of} completed without writes.")
+        _print(f"Dry run: would run monthly for as_of={as_of} (cutoff {cutoff}); no writes, network or git.")
         return 0
 
-    # Acquire lock file to prevent concurrent runs
+    # Lock against concurrent runs
     lock_path = Path(str(cfg.paths.db) + ".lock")
     lock_file = None
     try:
@@ -197,152 +504,103 @@ def monthly(
         try:
             fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except (BlockingIOError, OSError):
-            print(f"Another monthly run is currently running (lock {lock_path} active).")
+            _print(f"Another monthly run holds {lock_path}.")
+            lock_file.close()
             return 1
-    except Exception:
+    except ImportError:
         lock_file = None
 
-    ctx = RunContext(
-        as_of=as_of,
-        kind="monthly",
-        track="live",
-        cfg=cfg,
-        clock=clock,
-        actor=actor,
-    )
-
+    blocked_reason: Optional[str] = None
+    published = False
     try:
-        with ctx:
-            # 2 & 3. Settle pending orders, mature old labels, evaluate prior cohorts
-            try:
-                from quant.portfolio import paper
-                paper.settle(ctx, through=as_of)
-                paper.roll_forward(ctx, through=as_of)
-            except Exception as e:
-                print(f"Order settlement notice: {e}")
+        with RunContext(as_of=as_of, kind="monthly", track="live", cfg=cfg, clock=clock, actor=actor) as ctx:
+            from quant.data.prices import PriceStore
+            ctx.store = PriceStore(cfg.paths.prices_db, state_conn=ctx.conn)
+            ctx.calendar = _load_calendar(cfg, ctx.store)
 
-            try:
-                from quant.evaluation import labels
-                labels.mature(ctx, through=as_of)
-            except Exception as e:
-                print(f"Label maturation notice: {e}")
+            # 2. Authorized expiry/reversion effects, then captures for the next cutoff.
+            from quant.knowledge import proposals
+            proposals.apply(ctx, as_of=as_of)
+            ctx.checkpoint()
 
-            try:
-                from quant.evaluation import evaluate
-                evaluate.run(ctx, through=as_of, track="live")
-            except Exception as e:
-                print(f"Evaluation notice: {e}")
-
-            ctx.conn.commit()
-
-            if stop_after in ("settle", "labels", "evaluate"):
+            if not skip_capture:
+                from quant.data import capture as data_capture, universe
+                if client is None:
+                    import time
+                    from quant.data.yahoo import YahooClient
+                    client = YahooClient(cfg=cfg, clock=clock, sleep=time.sleep)
+                try:
+                    universe.capture(ctx)
+                    data_capture.run(ctx, client)
+                except Exception as exc:  # a failed capture must not stop settlement/labels
+                    ctx.rollback_staging()
+                    from quant.data.gates import record_event
+                    record_event(ctx, code="CAPTURE_FAILED", severity="WARN", detail={"error": str(exc)})
+                    ctx.notes["capture_error"] = str(exc)
+                    _print(f"Capture failed and was recorded: {exc}")
+                ctx.checkpoint()
+            if stop_after == "capture":
                 return 0
 
-            # 4 & 5. Pre-compute gates, staging, fitting, scoring, post-compute gates, publication
-            ctx.conn.execute("SAVEPOINT cohort_pub")
-            scoring_failed = False
+            # 3. Settle orders, mature labels, evaluate prior cohorts; preserve regardless of scoring.
+            from quant.evaluation import curves, evaluate, labels
+            from quant.portfolio import paper
+            paper.settle(ctx, through=as_of)
+            paper.roll_forward(ctx, through=as_of)
+            labels.mature(ctx, through=as_of)
+            evaluate.run(ctx, through=as_of, track="live")
+            curves.update(ctx, through=as_of)
+            ctx.checkpoint()
+            if stop_after == "mature":
+                return 0
 
+            # 4-5. Gates, staging, scoring, publication (atomic).
             try:
-                if not skip_capture:
-                    try:
-                        from quant.data import universe
-                        universe.capture(ctx)
-                    except Exception as e:
-                        print(f"Capture notice: {e}")
-
-                from quant.data.universe import members_at
-                cutoff = f"{as_of}T18:29:59.999999Z"
-                members_df = members_at(ctx.conn, cutoff, index_name="NIFTY500")
-                min_rows = int(getattr(getattr(cfg, "universe", None), "min_rows", 480))
-
-                if members_df.empty or len(members_df) < min_rows:
-                    print(f"Coldstart or insufficient universe: {len(members_df)} < {min_rows}. Blocking publication.")
-                    scoring_failed = True
-                    ctx.conn.execute("ROLLBACK TO cohort_pub")
-                    ctx.conn.execute("RELEASE cohort_pub")
-                    ctx.status = "blocked"
-                else:
-                    cohort_id = f"live:{as_of}"
-                    draft = Draft(
-                        cohort_id=cohort_id,
-                        as_of=as_of,
-                        track="live",
-                        knowledge_cutoff=cutoff,
-                        definition_hash="live_def_hash",
-                        membership_hash="live_mem_hash",
-                    )
-                    from quant.data.gates import run_gates
-                    run_gates(ctx, draft, phase="pre", strict=True)
-
-                    from quant.model.models import score_all
-                    score_all(ctx, cohort_id=cohort_id)
-
-                    run_gates(ctx, draft, phase="post", strict=True)
-
-                    def_hash = hashlib.sha256(f"cohort:{as_of}".encode("utf-8")).hexdigest()
-                    mem_hash = hashlib.sha256(f"members:{as_of}".encode("utf-8")).hexdigest()
-                    pub_iso = clock.iso()
-
-                    ctx.conn.execute(
-                        """
-                        INSERT INTO cohorts (
-                            cohort_id, as_of, track, knowledge_cutoff, definition_hash,
-                            membership_hash, source_refs_json, published_at, generated_at,
-                            is_clean, run_id
-                        ) VALUES (?, ?, 'live', ?, ?, ?, '[]', ?, ?, 1, ?)
-                        """,
-                        (cohort_id, as_of, cutoff, def_hash, mem_hash, pub_iso, pub_iso, ctx.run_id),
-                    )
-                    ctx.conn.execute("RELEASE cohort_pub")
-
-                    # 6. Future paper orders from published scores
-                    try:
-                        paper.plan(ctx, cohort_id=cohort_id)
-                    except Exception as e:
-                        print(f"Paper planning notice: {e}")
-
-            except Exception as e:
-                scoring_failed = True
-                print(f"Scoring/gates error: {e}")
-                try:
-                    ctx.conn.execute("ROLLBACK TO cohort_pub")
-                    ctx.conn.execute("RELEASE cohort_pub")
-                except Exception:
-                    pass
+                draft = build_draft(ctx, as_of, cutoff)
+                published = _stage_and_publish(ctx, draft, stop_after)
+                if published:
+                    ctx.checkpoint()
+                elif stop_after in ("gates", "stage"):
+                    ctx.rollback_staging()
+                    ctx.checkpoint()
+                    return 0
+            except Blocked as exc:
+                ctx.rollback_staging()
+                ctx.checkpoint()
+                blocked_reason = f"{exc.code}: {exc.detail}"
                 ctx.status = "blocked"
+                ctx.notes["blocked"] = blocked_reason
+                _print(f"Publication blocked: {blocked_reason}")
+            if stop_after == "publish":
+                return 0 if published else 2
 
-            # 7. Criteria review & draft proposals
-            try:
-                from quant.knowledge import proposals
-                proposals.draft(ctx, as_of=as_of)
-            except Exception as e:
-                print(f"Proposals notice: {e}")
+            # 6. Future paper orders, portfolio returns.
+            if published:
+                paper.plan(ctx, cohort_id=draft.cohort_id)
+                paper.roll_forward(ctx, through=as_of)
+                ctx.checkpoint()
 
-            # 8. Reports & UI export from persisted state
+            # 7. Criteria review; draft proposals only.
+            proposals.draft(ctx, as_of=as_of)
+
+            # 8. Report and UI from persisted state.
+            from quant import ui_export
+            from quant.knowledge import report
             try:
-                from quant.knowledge import report
                 report.render(ctx.conn, as_of=as_of, cfg=cfg)
-            except Exception as e:
-                print(f"Report notice: {e}")
-
-            try:
-                from quant import ui_export
-                ui_export.export(ctx.conn, cfg)
-            except Exception as e:
-                print(f"UI export notice: {e}")
-
-            ctx.conn.commit()
-
-            if scoring_failed:
-                return 2
-
-            return 0
-    except Blocked:
+            except Exception as exc:
+                ctx.notes["report_error"] = str(exc)
+                _print(f"Report rendering failed: {exc}")
+            ui_export.export(ctx.conn, cfg)
+            ctx.checkpoint()
+    except Blocked as exc:
+        _print(f"Blocked: {exc}")
         return 2
-    except Refused:
+    except Refused as exc:
+        _print(f"Refused: {exc}")
         return 3
     except Exception as exc:
-        print(f"Runner exception: {exc}")
+        _print(f"Runner error: {exc!r}")
         return 1
     finally:
         if lock_file:
@@ -354,3 +612,21 @@ def monthly(
             except Exception:
                 pass
 
+    # 8 (cont.). Export ledger, verify rebuild, checkpoint/VACUUM outside any transaction.
+    from quant.db import ledger
+    post_conn = connect(cfg.paths.db)
+    try:
+        ledger_dir = Path(cfg.paths.data_dir) / "ledger"
+        ledger.export(post_conn, ledger_dir)
+        verify_report = ledger.verify(post_conn, ledger_dir)
+        if not verify_report.passed:
+            failed = [c.id for c in verify_report.checks if c.status == "FAIL"]
+            _print(f"Ledger verification FAILED for: {failed}")
+            return 1
+        post_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        post_conn.execute("VACUUM")
+    finally:
+        post_conn.close()
+
+    _commit_and_push(cfg, as_of, commit=commit, push=push)
+    return 2 if blocked_reason else 0

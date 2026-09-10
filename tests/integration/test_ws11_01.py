@@ -140,9 +140,9 @@ def test_step_order_settle_mature_evaluate_before_fit(test_env, monkeypatch):
         order_of_steps.append("evaluate")
         return orig_eval_run(ctx, through, track)
 
-    def mock_score_all(ctx, cohort_id):
+    def mock_score_all(ctx, draft, family_ic_history):
         order_of_steps.append("score_all")
-        return orig_score_all(ctx, cohort_id)
+        return orig_score_all(ctx, draft, family_ic_history)
 
     monkeypatch.setattr(paper_mod, "settle", mock_settle)
     monkeypatch.setattr(labels_mod, "mature", mock_mature)

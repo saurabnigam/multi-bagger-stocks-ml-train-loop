@@ -104,7 +104,8 @@ def capture(ctx: Any) -> Result:
 
     captured_date = meta["captured_at"][:10]
 
-    with ctx.conn:
+    ctx.conn.execute("SAVEPOINT quant_universe_capture")
+    try:
         ctx.conn.execute(
             "INSERT OR IGNORE INTO captures (capture_id, captured_at, kind, archive_path, sha256, source_version, run_id) "
             "VALUES (?, ?, 'nifty500', ?, ?, 'nifty_v1', ?)",
@@ -142,6 +143,11 @@ def capture(ctx: Any) -> Result:
                 "VALUES (?, ?, ?, 'NIFTY500', ?, ?, ?, 'nse_csv', ?)",
                 (captured_date, meta["captured_at"], sec_id, r["symbol"], r["nse_sector"], r["series"], meta["sha256"]),
             )
+        ctx.conn.execute("RELEASE quant_universe_capture")
+    except Exception:
+        ctx.conn.execute("ROLLBACK TO quant_universe_capture")
+        ctx.conn.execute("RELEASE quant_universe_capture")
+        raise
 
     return Result(
         status="ok",

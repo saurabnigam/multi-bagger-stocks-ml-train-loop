@@ -16,7 +16,8 @@ def upsert_security(
     obs_date = observed_at[:10]
     yahoo_t = f"{symbol}.NS"
 
-    with conn:
+    conn.execute("SAVEPOINT quant_upsert_security")
+    try:
         cur = conn.execute("SELECT security_id, name, last_seen FROM securities WHERE isin = ?", (isin,))
         row = cur.fetchone()
         if row:
@@ -48,6 +49,7 @@ def upsert_security(
                     "VALUES (?, ?, ?, ?, 'upsert')",
                     (sec_id, symbol, yahoo_t, obs_date),
                 )
+            conn.execute("RELEASE quant_upsert_security")
             return sec_id
         else:
             cur_ins = conn.execute(
@@ -60,7 +62,12 @@ def upsert_security(
                 "VALUES (?, ?, ?, ?, 'upsert')",
                 (sec_id, symbol, yahoo_t, obs_date),
             )
+            conn.execute("RELEASE quant_upsert_security")
             return sec_id
+    except Exception:
+        conn.execute("ROLLBACK TO quant_upsert_security")
+        conn.execute("RELEASE quant_upsert_security")
+        raise
 
 
 def resolve_security_id(

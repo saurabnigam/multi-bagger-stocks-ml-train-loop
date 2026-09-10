@@ -7,7 +7,7 @@ from pathlib import Path
 from quant.cli import register
 from quant.config import load as load_config
 from quant.db import ledger
-from quant.db.core import apply_schema, connect
+from quant.db.core import apply_schema, connect, install_journal_triggers
 
 
 def _cfg(args: argparse.Namespace):
@@ -23,12 +23,13 @@ def _ledger_dir(cfg) -> Path:
 
 
 def cmd_db_init(args: argparse.Namespace) -> int:
-    """Create the state schema (idempotent)."""
+    """Create the state schema (idempotent) and install journal triggers."""
     cfg = _cfg(args)
     conn = connect(cfg.paths.db)
     try:
         apply_schema(conn, kind="state")
-        print(f"Schema applied at {cfg.paths.db}.")
+        n = install_journal_triggers(conn)
+        print(f"Schema applied at {cfg.paths.db}; {n} journal triggers installed.")
     finally:
         conn.close()
     return 0

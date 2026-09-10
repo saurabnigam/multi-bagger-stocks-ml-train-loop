@@ -325,8 +325,7 @@ def factor(conn: sqlite3.Connection, factor_id: str, as_of: str, cfg: Config) ->
             "WHERE hypothesis_id = ?",
             (n_months, t_stat, threshold_t, total_trials, h_row["hypothesis_id"]),
         )
-        conn.commit()
-
+    
     eligible = all(c.status == "PASS" for c in checks if c.blocking)
     return CriteriaCheck(
         subject_id=factor_id,

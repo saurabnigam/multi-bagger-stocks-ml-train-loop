@@ -244,7 +244,6 @@ def plan(ctx: RunContext, cohort_id: str) -> Result:
             sorted_candidates=[(r["security_id"], r["liquidity_bucket"]) for r in fv_rows],
         )
 
-    conn.commit()
     return Result(status="ok", counts={"orders_planned": orders_planned})
 
 
@@ -461,7 +460,6 @@ def settle(ctx: RunContext, through: str) -> Result:
             )
             fills += 1
 
-        conn.commit()
     finally:
         if p_conn is not None:
             p_conn.close()
@@ -604,7 +602,6 @@ def roll_forward(ctx: RunContext, through: str, portfolio_id: str | None = None)
                         (pid, m_end, sid, w, at["entry_dt"][:10], at["liquidity_bucket"]),
                     )
 
-        conn.commit()
     finally:
         if p_conn is not None:
             p_conn.close()

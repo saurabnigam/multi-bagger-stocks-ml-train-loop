@@ -32,6 +32,10 @@ class Clock(ABC):
         dt = self.now()
         return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
+    def now_iso(self) -> str:
+        """Alias for iso()."""
+        return self.iso()
+
 
 class SystemClock(Clock):
     def now(self) -> datetime:
@@ -138,9 +142,10 @@ class Draft:
     track: str
     knowledge_cutoff: str
     definition_hash: str
-    members: Any  # pd.DataFrame
-    groups: Any  # pd.Series
-    source_refs: dict
-    factor_values: Any  # pd.DataFrame
-    model_weights: Any  # pd.DataFrame
-    scores: Any  # pd.DataFrame
+    members: Any = None  # pd.DataFrame indexed by security_id
+    groups: Any = None  # pd.Series security_id -> sector_group
+    source_refs: dict = field(default_factory=dict)
+    factor_values: Any = None  # pd.DataFrame (staging rows)
+    model_weights: Any = None  # pd.DataFrame
+    scores: Any = None  # pd.DataFrame
+    membership_hash: str = ""

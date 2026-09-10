@@ -182,5 +182,4 @@ def seed(ctx: RunContext, spec_sha256: str) -> Result:
         if cur.rowcount > 0:
             hypotheses_seeded += 1
 
-    conn.commit()
     return Result(status="ok", counts={"hypotheses_seeded": hypotheses_seeded})

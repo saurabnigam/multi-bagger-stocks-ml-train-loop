@@ -202,7 +202,7 @@ def run(ctx: RunContext, legacy_db_path: Path, *, dry_run: bool = False) -> Resu
         for leg_date, as_of, is_full, sup_by, def_list in LEGACY_SNAPSHOT_SPECS:
             v2_conn.execute(
                 """
-                INSERT OR REPLACE INTO legacy_snapshot_map (
+                INSERT OR IGNORE INTO legacy_snapshot_map (
                     legacy_date, as_of, is_full, superseded_by, defects_json, migrated_at
                 ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
@@ -497,7 +497,6 @@ def run(ctx: RunContext, legacy_db_path: Path, *, dry_run: bool = False) -> Resu
         from quant.knowledge import adr
         adr.write(v2_conn, "D-0000-migration", dec_dir)
 
-        v2_conn.commit()
         return Result(
             status="ok",
             counts={
