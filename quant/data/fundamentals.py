@@ -12,6 +12,13 @@ from quant.run import RunContext
 from quant.types import Result
 
 
+def _naive_day(ts: pd.Timestamp) -> pd.Timestamp:
+    """Vendor timestamps arrive tz-aware; compare calendar days in UTC without a tz."""
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert("UTC").tz_localize(None)
+    return ts.normalize()
+
+
 def available_from(
     period_end: str,
     freq: str,
@@ -31,9 +38,13 @@ def available_from(
 
     est_date = None
     if earnings_dates is not None and not earnings_dates.empty:
-        # Check if any earnings date falls after period_end
-        dt_end = pd.to_datetime(period_end)
-        idx_dates = pd.to_datetime(earnings_dates.index)
+        # Only events with a reported EPS are publication evidence; scheduled (future)
+        # dates in the vendor table are estimates and must not set availability.
+        ed = earnings_dates
+        if "Reported EPS" in ed.columns:
+            ed = ed[ed["Reported EPS"].notna()]
+        dt_end = _naive_day(pd.Timestamp(period_end))
+        idx_dates = [_naive_day(d) for d in pd.to_datetime(ed.index, errors="coerce") if pd.notna(d)]
         after_dates = [d for d in idx_dates if d > dt_end and (d - dt_end).days <= 90]
         if after_dates:
             rep_date = min(after_dates).strftime("%Y-%m-%d")
