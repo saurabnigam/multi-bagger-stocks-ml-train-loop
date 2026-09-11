@@ -35,7 +35,7 @@ def read(conn: sqlite3.Connection, cfg: Config) -> dict[str, Any]:
     last_pub = None
     if "cohorts" in tables:
         pub_row = cur.execute(
-            "SELECT cohort_id, as_of, track, published_at FROM cohorts ORDER BY published_at DESC LIMIT 1"
+            "SELECT cohort_id, as_of, track, published_at FROM cohorts ORDER BY as_of DESC, published_at DESC, cohort_id DESC LIMIT 1"
         ).fetchone()
         last_pub = dict(pub_row) if pub_row else None
 
