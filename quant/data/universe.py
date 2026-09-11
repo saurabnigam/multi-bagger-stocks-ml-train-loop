@@ -31,7 +31,11 @@ def fetch_list(name: str, cfg: Config, clock: Clock) -> tuple[bytes, dict[str, A
     base_url = cfg.indexes.base_url.rstrip("/")
     url = f"{base_url}/{filename.lstrip('/')}"
 
-    resp = requests.get(url, timeout=30)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "*/*",
+    }
+    resp = requests.get(url, headers=headers, timeout=30)
     resp.raise_for_status()
     content = resp.content
 

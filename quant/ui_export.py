@@ -40,16 +40,42 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
 
     scores_rows = []
     if cohort_id:
+        models_in_cohort = [
+            r[0]
+            for r in cur.execute(
+                "SELECT DISTINCT model_id FROM scores WHERE cohort_id = ?", (cohort_id,)
+            ).fetchall()
+        ]
+        primary_model = None
+        for candidate_role in ("champion", "legacy"):
+            if not models_in_cohort:
+                break
+            placeholders = ",".join("?" for _ in models_in_cohort)
+            row = cur.execute(
+                f"SELECT model_id FROM models WHERE role = ? AND model_id IN ({placeholders}) AND model_id NOT LIKE '%_BASE' LIMIT 1",
+                (candidate_role, *models_in_cohort),
+            ).fetchone()
+            if row:
+                primary_model = row[0]
+                break
+        if not primary_model:
+            for preferred in ("EW_HIER_v1", "LEGACY_V18"):
+                if preferred in models_in_cohort:
+                    primary_model = preferred
+                    break
+        if not primary_model and models_in_cohort:
+            primary_model = models_in_cohort[0]
+
         scores_rows = cur.execute(
             """
             SELECT s.*, sec.isin, sec.name as company_name, sh.nse_symbol, sh.yahoo_ticker
             FROM scores s
             JOIN securities sec ON s.security_id = sec.security_id
             LEFT JOIN symbol_history sh ON s.security_id = sh.security_id AND sh.valid_to IS NULL
-            WHERE s.cohort_id = ?
+            WHERE s.cohort_id = ? AND s.model_id = ?
             ORDER BY s.final DESC
             """,
-            (cohort_id,),
+            (cohort_id, primary_model),
         ).fetchall()
 
     stocks = []

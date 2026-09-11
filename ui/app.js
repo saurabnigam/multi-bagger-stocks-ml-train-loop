@@ -107,9 +107,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 badge = '<span class="badge-unavailable" style="background:#fff8e6; color:#d97d00;">TURNAROUND</span>';
             }
 
+            const subTitle = (stock.company_name && stock.company_name !== stock.ticker)
+                ? stock.company_name
+                : (stock.sector_group || stock.nse_symbol || '');
+
             li.innerHTML = `
                 <div class="stock-ticker">${stock.ticker} ${badge}</div>
-                <div class="stock-name">${stock.company_name || stock.nse_symbol || stock.ticker}</div>
+                ${subTitle ? `<div class="stock-name">${subTitle}</div>` : ''}
             `;
             li.addEventListener('click', () => loadStock(stock));
             stockListEl.appendChild(li);
@@ -167,12 +171,15 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
 
+        const titleText = (stock.company_name && stock.company_name !== stock.ticker) ? stock.company_name : stock.ticker;
+        const tickerPill = (stock.company_name && stock.company_name !== stock.ticker) ? `<span class="meta-pill">${stock.ticker}</span>` : '';
+
         detailViewEl.className = 'detail-view';
         detailViewEl.innerHTML = `
             <div class="detail-header">
-                <h1>${stock.company_name || stock.ticker}</h1>
+                <h1>${titleText}</h1>
                 <div class="detail-meta">
-                    <span class="meta-pill">${stock.ticker}</span>
+                    ${tickerPill}
                     <span class="meta-pill">${stock.isin || 'ISIN'}</span>
                     <span class="meta-pill">${stock.sector_group || 'Sector'}</span>
                     <span class="meta-pill">Decile: ${stock.decile || '--'}</span>

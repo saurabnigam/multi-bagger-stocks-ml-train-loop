@@ -19,7 +19,7 @@ window.QUANT_KB = {
       "ratified_on": null,
       "status": "applied",
       "effective_from": "2026-06-14",
-      "applied_on": "2026-09-10T08:27:20.886042Z",
+      "applied_on": "2026-09-10T08:40:55.123446Z",
       "adr_path": "/Users/saurabhnigam/Desktop/Projects/mb-review-fixes/knowledge/decisions/ADR-D-0000-migration.md",
       "supersedes": null,
       "reverted_by": null,
