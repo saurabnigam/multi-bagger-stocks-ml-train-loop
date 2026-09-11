@@ -77,7 +77,8 @@ def record_event(
         """,
         tuple(row.values()),
     )
-    _keep(ctx, "data_quality_events", pd.DataFrame([row]), ["run_id", "code", "created_at", "security_id", "field"])
+    _keep(ctx, "data_quality_events", pd.DataFrame([row]),
+          ["run_id", "code", "created_at", "security_id", "field", "detail_json"])
     return int(cur.lastrowid)
 
 
@@ -176,8 +177,10 @@ def _run_pre_gates(ctx: RunContext, draft: Draft) -> List[Check]:
 
     # G1 universe size
     min_rows = int(_cfg(ctx, "universe", "min_rows", 480))
-    checks.append(_check("G1", n_members >= min_rows, n_members, min_rows,
-                         f"Universe has {n_members} unique members (threshold {min_rows})"))
+    g1_reason = f"Universe has {n_members} unique members (threshold {min_rows})"
+    if n_members == 0 and draft.source_refs.get("universe_error"):
+        g1_reason = f"{BOOTSTRAP_PREFIX}: {draft.source_refs['universe_error']} (no admissible members at the cutoff)"
+    checks.append(_check("G1", n_members >= min_rows, n_members, min_rows, g1_reason))
 
     # G2 universe capture age
     stale_limit = int(_cfg(ctx, "universe", "stale_block_days", 62))
@@ -194,7 +197,12 @@ def _run_pre_gates(ctx: RunContext, draft: Draft) -> List[Check]:
     min_price_cov = float(_cfg(ctx, "gates", "price_coverage", 0.98))
     closes = _closes_at(ctx, draft)
     price_hint = draft.source_refs.get("has_prices")
-    if closes is not None:
+    if n_members == 0:
+        closes = None
+        cov = 0.0
+        checks.append(_check("G3", False, 0.0, min_price_cov,
+                             f"{BOOTSTRAP_PREFIX}: no members at the cutoff, so no closes can be checked"))
+    elif closes is not None:
         cov = float(closes.notna().sum()) / n_members if n_members else 0.0
         if cov == 0.0:
             checks.append(_check("G3", False, 0.0, min_price_cov,
@@ -475,7 +483,13 @@ def run(
     report = CheckReport(checks=checks)
     if strict and failed:
         ids = [c.id for c in failed]
-        if all(c.reason.startswith(BOOTSTRAP_PREFIX) for c in failed):
-            raise Blocked(BOOTSTRAP_PREFIX, "; ".join(c.reason for c in failed))
+        cold_start = phase == "pre" and not (
+            draft.source_refs.get("universe_captured_at") or draft.source_refs.get("universe_capture_date")
+        )
+        if cold_start or all(c.reason.startswith(BOOTSTRAP_PREFIX) for c in failed):
+            detail = "; ".join(c.reason for c in failed)
+            if cold_start:
+                detail = "no admissible universe capture before the cutoff; capture now and target a later month. " + detail
+            raise Blocked(BOOTSTRAP_PREFIX, detail)
         raise Blocked("GATE_FAILURE", f"Phase '{phase}' blocking gates failed: {ids}")
     return report

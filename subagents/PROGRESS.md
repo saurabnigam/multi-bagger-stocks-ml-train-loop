@@ -580,3 +580,26 @@ Remaining gaps (not fixed): decision kinds other than factor lifecycle have no s
   when the benchmark series is absent.
 Next: merge review/v2-implementation-gaps into codex/v2-implementation (stop the concurrent Antigravity agent first),
   run `python -m quant data capture` before the first live cutoff, then `run monthly` the following month.
+
+## OPS — First real bootstrap on the merged branch — 2026-09-11 — Claude Fable 5.1
+Spec: revision 2; 3e90bb1623d9d47c53bc23531a77f591feec6f55bd5bc54bc58487437dcdbb2f
+State: complete (branch codex/v2-implementation)
+What ran: `universe capture` (501 members, NSE CSV sha 7b90cc2f...); `data capture` (502 Yahoo bundles, 68 min at the
+  0.5 s throttle) -> ingest crashed on a tz-aware/naive comparison in fundamentals.available_from and the run rolled back
+  (archive intact); fixed and replayed with the new `data ingest-archive` (69,031 contracted fundamental facts, 502
+  holdings, 502 attributes; 1,142,510 daily price rows 2015-2026 into data/prices_daily.sqlite, 0 quarantined);
+  `kb bootstrap` (new command: 35 factors, 6 models, 52 hypotheses, DEC_BOOTSTRAP referencing the spec fingerprint);
+  `run monthly --as-of 2026-08-31 --skip-capture` -> exit 2 BOOTSTRAP_REQUIRED with G1-G7 rows persisted, DQ events,
+  no live cohort, report + UI written, ledger export + `db verify` 45/45.
+Fixes in this entry: tz-safe available_from using reported-EPS events only; archive replay path; cold start reported
+  through the gates instead of an early exit; kb commands run inside a journaled RunContext; status ordering;
+  fundamentals ingest restricted to the field contract (config/field_contracts_v1.json aliases) - the vendor returns
+  315 line items, factors read 20; `--commit` refuses to stage a state file above cfg.budgets.state_warn_bytes.
+Measured storage (spec 10.5 requires reporting): state db 78.9 MB (warn 50 MB), data/ledger 67.7 MB, price store
+  298 MB (git-ignored), bundle archive 16 MB. Before the field-contract fix the state db was 498 MB (ledger copy of
+  523k fundamentals rows 316 MB). Capacity issue recorded: per-row journaling of source-fact ingests roughly doubles
+  state size; proposal = journal bulk ingests as one event per capture (archive sha + row count) and rebuild those
+  tables by replaying the retained archive. Needs a spec decision (4.2/10.5); not changed here.
+Not committed: quant.db and data/ledger (above the warning level; owner decision pending on the proposal above).
+Next: nothing else can happen until the September cutoff. Run `python -m quant data capture` again in the last
+  trading week of September and after 2026-09-30 closes, then `python -m quant run monthly` in early October.

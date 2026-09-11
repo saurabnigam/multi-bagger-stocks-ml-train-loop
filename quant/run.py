@@ -254,15 +254,23 @@ def build_draft(ctx: RunContext, as_of: str, cutoff: str) -> Draft:
     from quant.data.universe import members_at
     from quant.sectors import taxonomy
 
-    members = members_at(ctx.conn, cutoff, index_name="NIFTY500")
-    if members.empty:
-        raise Blocked("universe_missing", f"No admissible universe members at cutoff {cutoff}")
+    universe_error: Optional[str] = None
+    try:
+        members = members_at(ctx.conn, cutoff, index_name="NIFTY500")
+    except Blocked as exc:
+        # No admissible or a stale universe capture: let the gates record it (G1/G2) rather
+        # than exiting before any diagnostic exists (spec 3.2 cold start, 4.6 G2).
+        universe_error = exc.code
+        members = pd.DataFrame(columns=["security_id", "isin", "symbol", "company_name", "nse_sector", "series"])
     if "security_id" not in members.columns:
         members = members.reset_index()
     sids = sorted(int(x) for x in members["security_id"].unique())
 
-    taxonomy.capture(ctx, members)
-    groups = taxonomy.groups_at(ctx.conn, as_of, sids)
+    if sids:
+        taxonomy.capture(ctx, members)
+        groups = taxonomy.groups_at(ctx.conn, as_of, sids)
+    else:
+        groups = pd.Series(dtype=object)
 
     cap = ctx.conn.execute(
         "SELECT capture_id, captured_at, sha256 FROM captures WHERE kind = 'nifty500' AND captured_at <= ? "
@@ -273,6 +281,7 @@ def build_draft(ctx: RunContext, as_of: str, cutoff: str) -> Draft:
         "universe_capture_id": cap["capture_id"] if cap else None,
         "universe_captured_at": cap["captured_at"] if cap else None,
         "universe_sha256": cap["sha256"] if cap else None,
+        "universe_error": universe_error,
         "knowledge_cutoff": cutoff,
     }
     if ctx.store is not None:
@@ -289,7 +298,7 @@ def build_draft(ctx: RunContext, as_of: str, cutoff: str) -> Draft:
         members=members,
         groups=groups,
         source_refs=source_refs,
-        membership_hash=_membership_hash(members),
+        membership_hash=_membership_hash(members) if sids else "",
     )
 
 
@@ -435,6 +444,16 @@ def _commit_and_push(cfg: Config, as_of: str, *, commit: bool, push: bool) -> No
                 continue
     if not rel:
         return
+    # MASTER_SPEC 10.5: measure growth; an oversized state file is a recorded capacity issue,
+    # never silently committed.
+    warn_bytes = int(_cfg(cfg, "budgets", "state_warn_bytes", 50_000_000))
+    db_path = Path(cfg.paths.db)
+    if db_path.exists() and db_path.stat().st_size > warn_bytes:
+        _print(f"State database {db_path} is {db_path.stat().st_size} bytes (> state_warn_bytes {warn_bytes}); "
+               "not staged. Record a capacity decision before committing it.")
+        rel = [r for r in rel if Path(root / r).resolve() != db_path.resolve()]
+        if not rel:
+            return
     _git(["add", "--", *rel], root)
     code, out = _git(["commit", "-m", f"monthly run {as_of}: state, ledger, reports and UI payloads"], root)
     _print(f"git commit: {out.splitlines()[-1] if out else code}")

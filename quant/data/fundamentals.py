@@ -82,6 +82,7 @@ def ingest(ctx: RunContext, bundles: Dict[int, RawBundle]) -> Result:
 
     cur = ctx.conn.cursor()
     inserted = 0
+    skipped = 0
 
     stmt_map = [
         ("income_stmt", "income", "A"),
@@ -116,6 +117,9 @@ def ingest(ctx: RunContext, bundles: Dict[int, RawBundle]) -> Result:
                 )
 
                 for field_name, val in df[col].items():
+                    if str(field_name) not in ingestible_fields():
+                        skipped += 1
+                        continue
                     if pd.isna(val):
                         continue
                     try:
@@ -151,8 +155,9 @@ def ingest(ctx: RunContext, bundles: Dict[int, RawBundle]) -> Result:
 
     return Result(
         status="ok",
-        counts={"rows": inserted},
-        details={"message": f"Ingested {inserted} fundamental observations"},
+        counts={"rows": inserted, "skipped_uncontracted": skipped},
+        details={"message": f"Ingested {inserted} fundamental observations; "
+                            f"{skipped} vendor line items outside the field contract left in the archive"},
     )
 
 
@@ -184,6 +189,16 @@ FIELD_ALIASES: Dict[str, List[str]] = {
     "diluted_eps": ["Diluted EPS", "Basic EPS", "EPS", "eps"],
     "eps": ["Diluted EPS", "Basic EPS", "EPS", "eps"],
 }
+
+
+def ingestible_fields() -> set:
+    """Vendor line items the state database stores (config/field_contracts_v1.json via FIELD_ALIASES).
+
+    Only fields a registered factor can read through ``_expand_fields`` are persisted; the
+    raw archive keeps every vendor line item, so widening the contract is a re-ingest, not a
+    re-download. This keeps the state file within the spec's storage budget.
+    """
+    return {alias for aliases in FIELD_ALIASES.values() for alias in aliases}
 
 
 def _expand_fields(field: str) -> List[str]:
