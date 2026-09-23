@@ -103,6 +103,10 @@ class RevGrowth3y(Factor):
 class EarnMom(Factor):
     """Quarterly earnings momentum: (TTM NI offset0 - TTM NI offset4) / abs(TTM NI offset4)."""
 
+    # Needs eight consecutive admissible fiscal quarters of net income (TTM now vs a year ago).
+    # Yahoo returns about five quarters per capture; the bitemporal store accumulates them.
+    prerequisite = {"consecutive_quarters": 8}
+
     def __init__(self):
         super().__init__(
             FactorSpec(

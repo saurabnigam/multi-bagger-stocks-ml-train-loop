@@ -362,7 +362,8 @@ def factor_coverage(ctx: RunContext, draft: Draft) -> pd.DataFrame:
     threshold, excluded. Structural non-applicability (financials for
     nonfinancial factors) is removed from the denominator.
     """
-    cols = ["factor_id", "status", "family", "is_price", "applicable", "finite", "coverage", "threshold", "excluded"]
+    cols = ["factor_id", "status", "family", "is_price", "applicable", "finite", "coverage", "threshold", "excluded",
+            "prerequisite", "prerequisite_met"]
     fv = draft.factor_values
     if fv is None or len(fv) == 0:
         return pd.DataFrame(columns=cols)
@@ -398,12 +399,52 @@ def factor_coverage(ctx: RunContext, draft: Draft) -> pd.DataFrame:
         n_fin = int(applicable["z"].notna().sum()) if n_app else 0
         cov = n_fin / n_app if n_app else 0.0
         thr = price_thr if is_price else other_thr
+        prereq, met = _prerequisite_status(ctx, draft, str(fid))
         records.append({
             "factor_id": fid, "status": meta.get("status", "active"), "family": family,
             "is_price": is_price, "applicable": n_app, "finite": n_fin, "coverage": cov,
-            "threshold": thr, "excluded": cov < thr,
+            "threshold": thr, "excluded": cov < thr, "prerequisite": prereq, "prerequisite_met": met,
         })
     return pd.DataFrame(records, columns=cols)
+
+
+def _prerequisite_status(ctx: RunContext, draft: Draft, factor_id: str) -> tuple[Optional[str], bool]:
+    """History prerequisite a factor class declares (``prerequisite`` attribute) and whether it is met.
+
+    MASTER_SPEC 4.6: DEFERRED is for evidence whose prerequisite history does not yet exist.
+    A factor whose declared history (distinct holdings capture months, consecutive fiscal
+    quarters) has not accumulated is excluded from composites but does not count against the
+    G8 exclusion allowance; once the prerequisite is met, low coverage is a real failure.
+    """
+    try:
+        from quant.factors.registry import LAUNCH_FACTOR_CLASSES
+    except Exception:
+        return None, True
+    cls = LAUNCH_FACTOR_CLASSES.get(factor_id.split("@")[0])
+    req = getattr(cls, "prerequisite", None) if cls is not None else None
+    if not req or ctx.conn is None:
+        return None, True
+    cutoff = draft.knowledge_cutoff
+    sids = _member_ids(draft)
+    if "holdings_months" in req:
+        need = int(req["holdings_months"])
+        rows = ctx.conn.execute("SELECT DISTINCT captured_at FROM holdings WHERE captured_at <= ?", (cutoff,)).fetchall()
+        months = {str(pd.Timestamp(r[0]).tz_convert("Asia/Kolkata").strftime("%Y-%m")) if pd.Timestamp(r[0]).tzinfo
+                  else str(r[0])[:7] for r in rows}
+        return f"holdings months {len(months)}/{need}", len(months) >= need
+    if "consecutive_quarters" in req and sids:
+        need = int(req["consecutive_quarters"])
+        placeholders = ",".join("?" for _ in sids)
+        rows = ctx.conn.execute(
+            f"SELECT security_id, count(DISTINCT period_end) FROM fundamentals WHERE freq = 'Q' AND statement = 'income' "
+            f"AND field IN ('Net Income', 'Net Income Common Stockholders') AND available_from <= ? AND fetched_at <= ? "
+            f"AND security_id IN ({placeholders}) GROUP BY security_id",
+            [cutoff, cutoff, *sids],
+        ).fetchall()
+        share = sum(1 for r in rows if int(r[1]) >= need) / len(sids)
+        thr = float(_cfg(ctx, "factors", "other_min_coverage", 0.70))
+        return f"members with {need} quarters {share:.0%} (need {thr:.0%})", share >= thr
+    return None, True
 
 
 def excluded_factors(ctx: RunContext, draft: Draft) -> List[str]:
@@ -426,15 +467,20 @@ def _run_post_gates(
     if cov.empty:
         checks.append(_check("G8", False, 0, max_excluded, "No computed factor values in the draft"))
     else:
-        excluded_active = sorted(cov.loc[cov["excluded"] & (cov["status"] == "active"), "factor_id"].tolist())
+        active_excl = cov[cov["excluded"] & (cov["status"] == "active")]
+        excluded_active = sorted(active_excl.loc[active_excl["prerequisite_met"].astype(bool), "factor_id"].tolist())
+        awaiting = {r["factor_id"]: r["prerequisite"] for _, r in active_excl.iterrows() if not bool(r["prerequisite_met"])}
         draft.source_refs["excluded_factors"] = sorted(cov.loc[cov["excluded"], "factor_id"].tolist())
         draft.source_refs["factor_coverage"] = {
             r["factor_id"]: round(float(r["coverage"]), 4) for _, r in cov.iterrows()
         }
         draft.source_refs["excluded_active_factors"] = excluded_active
+        draft.source_refs["awaiting_prerequisite"] = awaiting
+        reason = f"{len(excluded_active)} active factors excluded on coverage (limit {max_excluded}): {excluded_active}"
+        if awaiting:
+            reason += f"; awaiting history prerequisites (not counted, excluded from composites): {awaiting}"
         checks.append(_check(
-            "G8", len(excluded_active) <= max_excluded, len(excluded_active), max_excluded,
-            f"{len(excluded_active)} active factors excluded on coverage (limit {max_excluded}): {excluded_active}",
+            "G8", len(excluded_active) <= max_excluded, len(excluded_active), max_excluded, reason,
         ))
 
     has_prior = bool(draft.source_refs.get("has_prior_cohort")) or _prior_cohort(ctx, draft) is not None

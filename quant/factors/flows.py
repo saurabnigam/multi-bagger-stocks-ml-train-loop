@@ -11,6 +11,9 @@ from quant.factors.inputs import FactorInputs
 class InstHoldChg3m(Factor):
     """Institutional ownership change over 3 months: lag 0 - lag 3 (four monthly captures)."""
 
+    # Needs holdings captures in four distinct IST calendar months before the cutoff.
+    prerequisite = {"holdings_months": 4}
+
     def __init__(self):
         super().__init__(
             FactorSpec(

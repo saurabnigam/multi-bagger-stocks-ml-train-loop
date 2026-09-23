@@ -158,3 +158,38 @@ def test_price_gap_warning_flags_vendor_holes(tmp_path):
         assert chk.observed["members_with_gaps"] == 4 and chk.observed["worst_dates"] == {"2026-09-07": 4}
         assert ctx.conn.execute("SELECT count(*) FROM data_quality_events WHERE code = 'PRICE_GAPS'").fetchone()[0] == 1
         ctx.status = "ok"
+
+
+def test_g8_does_not_count_factors_awaiting_history(tmp_path):
+    """earn_mom (8 quarters) and inst_hold_chg_3m (4 holdings months) are uncomputable at launch.
+
+    They stay excluded from composites but do not consume the G8 allowance until their
+    declared prerequisite exists; a third, real coverage failure must still pass the gate.
+    """
+    from quant.data import gates
+    from quant.types import Draft
+
+    cfg, db = _fresh(tmp_path)
+    with RunContext(as_of="2026-09-30", kind="test", track="live", cfg=cfg,
+                    clock=FrozenClock("2026-10-01T12:00:00.000000Z"), actor=Actor(kind="system", name="t")) as ctx:
+        for fid, name in (("earn_mom@1", "earn_mom"), ("inst_hold_chg_3m@1", "inst_hold_chg_3m"), ("roce@1", "roce")):
+            ctx.conn.execute(
+                "INSERT INTO factor_registry (factor_id, name, version, family, direction, horizon_m, level, hypothesis, formula, "
+                "inputs_json, lookback_days, applies_to_financials, backfillable, min_coverage, code_sha256, module_path, status, "
+                "registered_on, status_changed_on) VALUES (?, ?, 1, 'x', 1, 3, 'stock', 'h', 'f', '[]', 0, 1, 0, 0.7, 's', 'm', "
+                "'active', '2026-01-01', '2026-01-01')", (fid, name))
+        rows = []
+        for sid in range(100):
+            rows += [{"security_id": sid, "factor_id": "earn_mom@1", "z": np.nan, "sector_group": "A"},
+                     {"security_id": sid, "factor_id": "inst_hold_chg_3m@1", "z": np.nan, "sector_group": "A"},
+                     {"security_id": sid, "factor_id": "roce@1", "z": 1.0 if sid < 50 else np.nan, "sector_group": "A"}]
+        draft = Draft(cohort_id="live:2026-09-30", as_of="2026-09-30", track="live",
+                      knowledge_cutoff="2026-09-30T18:29:59.999999Z", definition_hash="d",
+                      members=pd.DataFrame({"security_id": range(100)}), groups=pd.Series({i: "A" for i in range(100)}),
+                      source_refs={"has_prior_cohort": False}, factor_values=pd.DataFrame(rows))
+        report = gates.run(ctx, draft, phase="post", strict=False)
+        g8 = next(c for c in report.checks if c.id == "G8")
+        assert g8.status == "PASS" and g8.observed == 1                      # only roce counts
+        assert set(draft.source_refs["awaiting_prerequisite"]) == {"earn_mom@1", "inst_hold_chg_3m@1"}
+        assert set(draft.source_refs["excluded_factors"]) == {"earn_mom@1", "inst_hold_chg_3m@1", "roce@1"}
+        ctx.status = "ok"
