@@ -210,7 +210,8 @@ def _membership_hash(members_df: pd.DataFrame) -> str:
     if members_df.empty:
         return sha256_text(canonical_json([]))
     cols = [c for c in ("security_id", "isin", "symbol", "series") if c in members_df.columns]
-    rows = members_df.sort_values("security_id")[cols].astype(str).values.tolist()
+    m = members_df.reset_index(drop=True)
+    rows = m.sort_values("security_id")[cols].astype(str).values.tolist()
     return sha256_text(canonical_json(rows))
 
 

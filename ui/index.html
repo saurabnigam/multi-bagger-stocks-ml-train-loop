@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Antigravity Quant Engine V2</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=20260911_3">
     <script src="vendor/chart.umd.js"></script>
 </head>
 <body>
@@ -46,6 +46,9 @@
                             <button id="subtab-turnaround" class="subtab-btn">Turnaround</button>
                         </div>
                     </div>
+                    <div id="ai-weights-container" class="ai-weights-card">
+                        <!-- Injected by JS -->
+                    </div>
                     <ul id="stock-list" class="stock-list">
                         <!-- Populated by JS -->
                     </ul>
@@ -67,11 +70,25 @@
                 <p>Oriented Rank IC, walk-forward test of learning rule, and empirical confidence intervals.</p>
             </div>
             <div class="pane-content">
+                <div id="learning-kpis" class="kpi-grid"></div>
                 <div class="card chart-card">
-                    <canvas id="learning-chart" height="100"></canvas>
+                    <div class="table-header-bar">
+                        <h3>Multi-Period Oriented Rank IC Trajectory</h3>
+                        <span class="section-desc">Realized Rank IC across 1M, 3M, 6M, and 12M horizons with 90% confidence bands</span>
+                    </div>
+                    <div class="chart-container" style="height: 240px; position: relative;">
+                        <canvas id="learning-chart"></canvas>
+                    </div>
                 </div>
                 <div class="card table-card">
-                    <h3>Evaluations & Out-of-Sample Performance</h3>
+                    <div class="table-header-bar">
+                        <h3>Evaluations & Out-of-Sample Performance</h3>
+                        <div class="table-filter-group">
+                            <button class="filter-btn active" id="filter-eval-all">All</button>
+                            <button class="filter-btn" id="filter-eval-model">Models</button>
+                            <button class="filter-btn" id="filter-eval-factor">Factors</button>
+                        </div>
+                    </div>
                     <div id="evaluations-table-container">
                         <!-- Table injected by JS -->
                     </div>
@@ -86,16 +103,26 @@
                 <p>Simulated portfolios, pending execution orders, benchmark comparisons, and net selection spread.</p>
             </div>
             <div class="pane-content">
-                <div class="card table-card">
-                    <h3>Pending Orders (Next Session Execution)</h3>
-                    <div id="pending-orders-container">
-                        <!-- Table injected by JS -->
+                <div id="scoreboard-kpis" class="kpi-grid"></div>
+                <div class="card chart-card">
+                    <div class="table-header-bar">
+                        <h3>Top-Quintile Paper Portfolio vs Nifty 500 Equal-Weight Benchmark</h3>
+                        <span class="section-desc">Cumulative indexed return (Base 100.0) with transaction friction</span>
+                    </div>
+                    <div class="chart-container" style="height: 240px; position: relative;">
+                        <canvas id="scoreboard-chart"></canvas>
                     </div>
                 </div>
                 <div class="card table-card">
-                    <h3>Portfolio Scoreboard & Benchmark Pairs</h3>
+                    <h3>Active Paper Portfolios</h3>
                     <div id="portfolios-container">
                         <!-- Portfolios injected by JS -->
+                    </div>
+                </div>
+                <div class="card table-card">
+                    <h3>Pending Orders (Next Session Execution Queue)</h3>
+                    <div id="pending-orders-container">
+                        <!-- Table injected by JS -->
                     </div>
                 </div>
             </div>
@@ -108,7 +135,19 @@
                 <p>Pre-registered factor definitions, formulas, coverage contracts, and active model weights.</p>
             </div>
             <div class="pane-content">
+                <div id="factors-kpis" class="kpi-grid"></div>
+                <div class="card">
+                    <h3>Champion Model Family Weight Allocations</h3>
+                    <p class="section-desc">Integer basis-point weights summing to strictly 10,000 units (100.0%) across active families.</p>
+                    <div id="family-weights-container" class="weights-progress-grid">
+                        <!-- Progress bars injected by JS -->
+                    </div>
+                </div>
                 <div class="card table-card">
+                    <div class="table-header-bar">
+                        <h3>Factor Registry</h3>
+                        <input type="text" id="factor-search-input" class="search-input" placeholder="Search factor ID or name...">
+                    </div>
                     <div id="factors-container">
                         <!-- Factors injected by JS -->
                     </div>
@@ -123,7 +162,18 @@
                 <p>Industry mapping, macro sectors, and minimum group constraints for centered rank calculations.</p>
             </div>
             <div class="pane-content">
+                <div id="sectors-kpis" class="kpi-grid"></div>
+                <div class="card chart-card">
+                    <div class="table-header-bar">
+                        <h3>Sector Constituent Distribution & Average Score</h3>
+                        <span class="section-desc">Centered peer ranking across 17 sectors</span>
+                    </div>
+                    <div class="chart-container" style="height: 240px; position: relative;">
+                        <canvas id="sectors-chart"></canvas>
+                    </div>
+                </div>
                 <div class="card table-card">
+                    <h3>Sector Breakdown & Top Performers</h3>
                     <div id="sectors-container">
                         <!-- Sectors injected by JS -->
                     </div>
@@ -138,7 +188,16 @@
                 <p>Strict observation cutoffs, capture manifests, pre-compute G1-G7 and post-compute G8-G10 gate audits.</p>
             </div>
             <div class="pane-content">
+                <div id="data-kpis" class="kpi-grid"></div>
+                <div class="card">
+                    <h3>Evidence-Driven Quality Gates (G1 - G10)</h3>
+                    <p class="section-desc">Derivation from empirical capture manifests and cross-sectional matrices.</p>
+                    <div id="gates-grid-container" class="gates-grid">
+                        <!-- Gates injected by JS -->
+                    </div>
+                </div>
                 <div class="card table-card">
+                    <h3>Point-in-Time Ingestion Captures & Replay Hashes</h3>
                     <div id="data-provenance-container">
                         <!-- Provenance injected by JS -->
                     </div>
@@ -153,10 +212,18 @@
                 <p>Architecture Decision Records (ADRs), proposals, review budget, and human co-sign ratifications.</p>
             </div>
             <div class="pane-content">
-                <div class="card table-card">
-                    <h3>Decisions & Architecture Records</h3>
-                    <div id="decisions-container">
+                <div id="kb-kpis" class="kpi-grid"></div>
+                <div class="card">
+                    <h3>Architecture Decision Records (ADRs)</h3>
+                    <p class="section-desc">Ratified governance decisions, invariants, and structural commitments.</p>
+                    <div id="decisions-container" class="adr-list">
                         <!-- Decisions injected by JS -->
+                    </div>
+                </div>
+                <div class="card table-card">
+                    <h3>Hypotheses Ledger & Research Register</h3>
+                    <div id="hypotheses-container">
+                        <!-- Hypotheses injected by JS -->
                     </div>
                 </div>
             </div>
@@ -169,9 +236,19 @@
                 <p>Read-only migration of V18 active weights, attribution reconciliation, and flagged defects.</p>
             </div>
             <div class="pane-content">
+                <div id="legacy-kpis" class="kpi-grid"></div>
                 <div class="card table-card">
+                    <h3>Historical 2026 Legacy Snapshots</h3>
+                    <p class="section-desc">Preserved in quant_engine.db (SHA256 03fe228b...) and migrated read-only into V2.</p>
                     <div id="legacy-container">
                         <!-- Legacy details injected by JS -->
+                    </div>
+                </div>
+                <div class="card table-card">
+                    <h3>Red-Team Defect Log & Attribution Reconciliation</h3>
+                    <p class="section-desc">Reconciliation with red-team findings within 0.0005 tolerance.</p>
+                    <div id="defects-container">
+                        <!-- Defects injected by JS -->
                     </div>
                 </div>
             </div>
@@ -179,11 +256,11 @@
     </div>
 
     <!-- Offline local scripts -->
-    <script src="data.js"></script>
-    <script src="data_learning.js"></script>
-    <script src="data_scoreboard.js"></script>
-    <script src="data_factors.js"></script>
-    <script src="data_kb.js"></script>
-    <script src="app.js"></script>
+    <script src="data.js?v=20260911_3"></script>
+    <script src="data_learning.js?v=20260911_3"></script>
+    <script src="data_scoreboard.js?v=20260911_3"></script>
+    <script src="data_factors.js?v=20260911_3"></script>
+    <script src="data_kb.js?v=20260911_3"></script>
+    <script src="app.js?v=20260911_3"></script>
 </body>
 </html>

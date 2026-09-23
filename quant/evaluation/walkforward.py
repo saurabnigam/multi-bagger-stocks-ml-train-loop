@@ -141,5 +141,5 @@ def family_ic_history(
     if not records:
         return pd.DataFrame(columns=families)
 
-    df = pd.DataFrame(records, index=valid_dates)
+    df = pd.DataFrame(records, index=valid_dates, dtype=float)
     return df

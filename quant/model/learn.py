@@ -138,6 +138,23 @@ def fit_family_weights(
             },
         )
 
+    if ic_hist.empty:
+        target = {fam: 1.0 / F for fam in families}
+        units = allocate_units(
+            target, floor_mult=floor_mult, cap_mult=cap_mult, total=total_units
+        )
+        return units, {
+            "n_months": 0,
+            "n_eff": 0.0,
+            "alpha": 0.0,
+            "gate": "closed",
+            "means": {fam: 0.0 for fam in families},
+            "omitted_dates": {fam: [] for fam in families},
+        }
+
+    # Ensure float dtype across columns
+    ic_hist = ic_hist.astype(float)
+
     # Track omitted dates per family
     omitted_dates: dict[str, list[str]] = {}
     for fam in families:

@@ -326,8 +326,8 @@ body {
 /* Quant HUD */
 .quant-hud {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 14px;
     margin-bottom: 24px;
 }
 
@@ -336,7 +336,7 @@ body {
     backdrop-filter: blur(10px);
     border: 1px solid rgba(0, 102, 204, 0.15);
     border-radius: 12px;
-    padding: 16px;
+    padding: 14px;
     display: flex;
     flex-direction: column;
     box-shadow: 0 4px 12px rgba(0,0,0,0.03);
@@ -359,13 +359,54 @@ body {
 }
 
 .hud-value {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 700;
     color: var(--text-primary);
 }
 
 .hud-value.good {
     color: var(--success);
+}
+
+.hud-value.negative {
+    color: var(--danger);
+}
+
+.hud-sub {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+/* Quarterly Performance Table */
+.quarterly-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+.quarterly-table th {
+    text-align: left;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-bottom: 2px solid var(--border);
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.quarterly-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+}
+
+.quarterly-table tr:hover td {
+    background-color: rgba(0, 102, 204, 0.03);
 }
 
 /* Cards */
@@ -565,4 +606,293 @@ body {
     color: var(--text-primary);
     margin-bottom: 6px;
 }
+
+/* Institutional KPI Card Grid */
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.kpi-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+}
+
+.kpi-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.kpi-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.kpi-sub {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+.kpi-sub.positive { color: #1a7f37; font-weight: 600; }
+.kpi-sub.negative { color: var(--danger); font-weight: 600; }
+
+/* Sidebar AI Weights Card */
+.ai-weights-card {
+    background: #f8f9fa;
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    font-size: 12px;
+}
+
+.ai-weights-title {
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.ai-weights-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 10px;
+}
+
+.ai-weight-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-primary);
+}
+
+.ai-weight-item b {
+    color: var(--accent);
+}
+
+/* Weight Allocation Progress Bars */
+.weights-progress-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.progress-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.progress-desc {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.progress-bar-track {
+    height: 8px;
+    background: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+/* Quality Gates Grid */
+.gates-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-top: 12px;
+}
+
+.gate-card {
+    background: #fafbfc;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.gate-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.gate-id-badge {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    background: #e6f0fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.gate-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.gate-card-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.gate-card-obs {
+    font-size: 11px;
+    color: #1a7f37;
+    font-weight: 500;
+    background: #e6f9ed;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-top: 4px;
+}
+
+/* Expandable ADR Cards */
+.adr-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.adr-card {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.adr-card:hover {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-sm);
+}
+
+.adr-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.adr-card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.adr-meta-bar {
+    display: flex;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+}
+
+.adr-details {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #f0f0f5;
+    font-size: 13px;
+    line-height: 1.5;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.adr-section-title {
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    letter-spacing: 0.5px;
+}
+
+/* Table Header Bar & Search Input */
+.table-header-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.table-filter-group {
+    display: flex;
+    gap: 6px;
+}
+
+.filter-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: #ffffff;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.filter-btn.active {
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
+}
+
+.search-input {
+    padding: 6px 12px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    outline: none;
+    min-width: 220px;
+}
+
+.search-input:focus {
+    border-color: var(--accent);
+}
+
+.section-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    margin-bottom: 12px;
+}
+
 

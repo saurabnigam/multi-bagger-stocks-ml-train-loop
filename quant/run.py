@@ -245,7 +245,8 @@ def _definition_hash(conn: sqlite3.Connection, as_of: str, cfg: Config) -> str:
 
 def _membership_hash(members: pd.DataFrame) -> str:
     cols = [c for c in ("security_id", "isin", "symbol", "series", "nse_sector") if c in members.columns]
-    rows = members.sort_values("security_id")[cols].astype(str).values.tolist()
+    m = members.reset_index(drop=True)
+    rows = m.sort_values("security_id")[cols].astype(str).values.tolist()
     return dbcore.sha256_text(dbcore.canonical_json(rows))
 
 
@@ -262,8 +263,10 @@ def build_draft(ctx: RunContext, as_of: str, cutoff: str) -> Draft:
         # than exiting before any diagnostic exists (spec 3.2 cold start, 4.6 G2).
         universe_error = exc.code
         members = pd.DataFrame(columns=["security_id", "isin", "symbol", "company_name", "nse_sector", "series"])
-    if "security_id" not in members.columns:
-        members = members.reset_index()
+    if "security_id" in members.columns:
+        members = members.set_index("security_id", drop=False)
+    elif members.index.name == "security_id":
+        members["security_id"] = members.index
     sids = sorted(int(x) for x in members["security_id"].unique())
 
     if sids:
@@ -567,7 +570,8 @@ def monthly(
             paper.settle(ctx, through=as_of)
             paper.roll_forward(ctx, through=as_of)
             labels.mature(ctx, through=as_of)
-            evaluate.run(ctx, through=as_of, track="live")
+            for trk in ("live", "legacy"):
+                evaluate.run(ctx, through=as_of, track=trk)
             curves.update(ctx, through=as_of)
             ctx.checkpoint()
             if stop_after == "mature":
