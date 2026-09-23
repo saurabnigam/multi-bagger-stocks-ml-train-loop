@@ -87,6 +87,44 @@ def parse_list(content: bytes) -> pd.DataFrame:
     return renamed[["company_name", "nse_sector", "symbol", "series", "isin"]]
 
 
+def _upsert_symbol(ctx: Any, security_id: int, symbol: str, observed_date: str) -> None:
+    """Maintain one open symbol_history row per security (valid_to NULL).
+
+    Earlier releases inserted a row per capture without closing the previous one, leaving
+    several open rows with the same symbol. Redundant duplicates are closed with a
+    zero-length interval (valid_to = valid_from) so the earliest open row stays the
+    single current symbol; every change is journaled through update_control.
+    """
+    from quant.db.core import update_control
+
+    open_rows = ctx.conn.execute(
+        "SELECT nse_symbol, valid_from FROM symbol_history WHERE security_id = ? AND valid_to IS NULL "
+        "ORDER BY valid_from",
+        (security_id,),
+    ).fetchall()
+    keep = None
+    for row in open_rows:
+        if row["nse_symbol"] == symbol and keep is None:
+            keep = row
+            continue
+        if row["nse_symbol"] == symbol:
+            update_control(ctx, "symbol_history", {"security_id": security_id, "valid_from": row["valid_from"]},
+                           {"valid_to": row["valid_from"]})
+        else:
+            update_control(ctx, "symbol_history", {"security_id": security_id, "valid_from": row["valid_from"]},
+                           {"valid_to": max(observed_date, row["valid_from"])})
+    if keep is None:
+        exists = ctx.conn.execute(
+            "SELECT 1 FROM symbol_history WHERE security_id = ? AND valid_from = ?", (security_id, observed_date)
+        ).fetchone()
+        if exists is None:
+            ctx.conn.execute(
+                "INSERT INTO symbol_history (security_id, nse_symbol, yahoo_ticker, valid_from, source) "
+                "VALUES (?, ?, ?, ?, 'nifty500_csv')",
+                (security_id, symbol, f"{symbol}.NS", observed_date),
+            )
+
+
 def capture(ctx: Any) -> Result:
     raw_bytes, meta = fetch_list("nifty500", ctx.cfg, ctx.clock)
     df = parse_list(raw_bytes)
@@ -133,13 +171,9 @@ def capture(ctx: Any) -> Result:
                 )
                 sec_id = cur_ins.lastrowid
 
-            # Upsert symbol_history
-            yahoo_t = f"{r['symbol']}.NS"
-            ctx.conn.execute(
-                "INSERT OR IGNORE INTO symbol_history (security_id, nse_symbol, yahoo_ticker, valid_from, source) "
-                "VALUES (?, ?, ?, ?, 'nifty500_csv')",
-                (sec_id, r["symbol"], yahoo_t, captured_date),
-            )
+            # symbol_history keeps exactly one open row per security: an unchanged symbol is
+            # a no-op, a changed symbol closes the open row and opens a new one.
+            _upsert_symbol(ctx, int(sec_id), str(r["symbol"]), captured_date)
 
             # Insert into universe_membership
             ctx.conn.execute(

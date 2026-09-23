@@ -126,7 +126,7 @@ def test_staging_rollback_keeps_gate_rows(tmp_path):
     conn = connect(db_path, readonly=True)
     assert conn.execute("SELECT count(*) FROM securities").fetchone()[0] == 0
     gates_recorded = [r[0] for r in conn.execute("SELECT gate FROM dq_runs WHERE run_id = ? ORDER BY gate", (run_id,))]
-    assert gates_recorded == ["G1", "G2", "G3", "G4", "G5", "G6", "G7"]
+    assert gates_recorded == ["G1", "G2", "G3", "G4", "G5", "G6", "G7", "W_PRICE_GAPS"]
     assert conn.execute("SELECT status FROM runs WHERE run_id = ?", (run_id,)).fetchone()[0] == "blocked"
     conn.close()
 
@@ -168,7 +168,7 @@ def test_cold_start_monthly_reports_bootstrap_required_with_gate_rows(tmp_path):
     run = conn.execute("SELECT run_id, status, notes_json FROM runs WHERE kind = 'monthly' ORDER BY run_id DESC").fetchone()
     assert run["status"] == "blocked" and "BOOTSTRAP_REQUIRED" in (run["notes_json"] or "")
     gates = [r[0] for r in conn.execute("SELECT gate FROM dq_runs WHERE run_id = ? ORDER BY gate", (run["run_id"],))]
-    assert gates == ["G1", "G2", "G3", "G4", "G5", "G6", "G7"]
+    assert gates == ["G1", "G2", "G3", "G4", "G5", "G6", "G7", "W_PRICE_GAPS"]
     assert conn.execute("SELECT count(*) FROM data_quality_events WHERE code = 'BOOTSTRAP_REQUIRED'").fetchone()[0] >= 1
     assert conn.execute("SELECT count(*) FROM cohorts WHERE track = 'live'").fetchone()[0] == 0
     conn.close()

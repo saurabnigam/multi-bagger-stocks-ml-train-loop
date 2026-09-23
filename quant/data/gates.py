@@ -168,6 +168,43 @@ def _prior_cohort(ctx: RunContext, draft: Draft) -> Optional[Dict[str, Any]]:
     return dict(row) if row else None
 
 
+def _price_gap_check(ctx: RunContext, draft: Draft, sids: List[int]) -> Check:
+    """Share of members missing at least one bar among the trailing 63 market sessions.
+
+    A market session is a date on which at least half of the members have a close at the
+    cohort vintage. Bars before a member's first bar (new listings) are not counted as gaps.
+    Non-blocking: the finding is a warning with a DQ event naming the affected dates.
+    """
+    warn_share = float(_cfg(ctx, "gates", "missing_warn_share", 0.20))
+    store = getattr(ctx, "store", None)
+    if store is None or not sids:
+        return _check("W_PRICE_GAPS", True, None, warn_share, "Price store unavailable; gap scan skipped",
+                      deferred=True)
+    start = (pd.Timestamp(draft.as_of) - pd.Timedelta(days=120)).strftime("%Y-%m-%d")
+    closes = store.close_raw(sids, start=start, end=draft.as_of, vintage_at=draft.knowledge_cutoff)
+    if closes.empty:
+        return _check("W_PRICE_GAPS", True, None, warn_share, "No bars in the window; gap scan skipped",
+                      deferred=True)
+    coverage = closes.notna().mean(axis=1)
+    sessions = list(coverage[coverage >= 0.5].index)[-63:]
+    window = closes.loc[sessions]
+    started = window.notna().cummax()
+    gaps = window.isna() & started
+    members_with_gaps = int(gaps.any(axis=0).sum())
+    share = members_with_gaps / len(sids)
+    bad_dates = {d: int(n) for d, n in gaps.sum(axis=1).items() if n > 0}
+    worst = dict(sorted(bad_dates.items(), key=lambda kv: -kv[1])[:5])
+    draft.source_refs["price_gaps"] = {"members_with_gaps": members_with_gaps, "worst_dates": worst}
+    ok = share <= warn_share
+    if not ok:
+        record_event(ctx, code="PRICE_GAPS", severity="WARN",
+                     detail={"members_with_gaps": members_with_gaps, "share": round(share, 4), "worst_dates": worst})
+    return _check("W_PRICE_GAPS", ok, {"members_with_gaps": members_with_gaps, "worst_dates": worst}, warn_share,
+                  f"{members_with_gaps} members ({share:.1%}) miss at least one of the last {len(sessions)} "
+                  f"sessions (warning above {warn_share:.0%}); non-blocking",
+                  blocking=False)
+
+
 # --------------------------------------------------------------------------- pre-compute gates
 
 def _run_pre_gates(ctx: RunContext, draft: Draft) -> List[Check]:
@@ -220,6 +257,11 @@ def _run_pre_gates(ctx: RunContext, draft: Draft) -> List[Check]:
         cov = 0.0
         checks.append(_check("G3", False, None, min_price_cov, "Price store unavailable; close coverage cannot be computed"))
     draft.source_refs["price_coverage"] = cov
+
+    # W_PRICE_GAPS (non-blocking warning): missing bars inside the trailing 63 sessions.
+    # G3 checks only the as_of bar; a vendor hole on an earlier session (observed: 202 of 502
+    # tickers missing 2026-09-07 in the first download) silently shortens every window factor.
+    checks.append(_price_gap_check(ctx, draft, sids))
 
     # G4 duplicate closes versus prior month
     dup_limit = float(_cfg(ctx, "gates", "duplicate_price_share", 0.05))

@@ -235,4 +235,6 @@ def test_record_all_gates_before_raising_blocked(ctx):
     assert "G5" in recorded_gates
     assert "G6" in recorded_gates
     assert "G7" in recorded_gates
-    assert len(recorded_gates) == 7
+    assert len([g for g in recorded_gates if g.startswith("G")]) == 7
+    # the non-blocking trailing-window price-gap warning is recorded alongside the gates
+    assert "W_PRICE_GAPS" in recorded_gates

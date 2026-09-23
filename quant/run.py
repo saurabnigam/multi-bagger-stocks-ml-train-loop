@@ -214,6 +214,23 @@ def default_as_of(clock: Clock, cal: Any) -> str:
     return last_prev_month.strftime("%Y-%m-%d")
 
 
+def month_end_session(as_of: str, cal: Any) -> str:
+    """Last session on or before the last calendar day of as_of's month."""
+    import calendar as _calendar
+
+    y, m = int(as_of[:4]), int(as_of[5:7])
+    last_day = f"{y:04d}-{m:02d}-{_calendar.monthrange(y, m)[1]:02d}"
+    if cal is not None:
+        try:
+            return cal.last_session_on_or_before(last_day)
+        except Exception:
+            pass
+    d = datetime.date.fromisoformat(last_day)
+    while d.weekday() >= 5:
+        d -= datetime.timedelta(days=1)
+    return d.isoformat()
+
+
 def knowledge_cutoff(as_of: str) -> str:
     """as_of 23:59:59.999999 Asia/Kolkata expressed in UTC."""
     from zoneinfo import ZoneInfo
@@ -477,11 +494,18 @@ def monthly(
     commit: bool = False,
     push: bool = False,
     client: Any = None,
+    allow_mid_month: bool = False,
 ) -> int:
     """Execute the monthly pipeline in the MASTER_SPEC 9.1 sequence.
 
     Returns 0 success/previously done, 1 implementation/source error,
     2 blocked publication, 3 governance refusal.
+
+    ``as_of`` must be the last completed session of its calendar month (MASTER_SPEC 2.2):
+    label endpoints are month-ends, so a mid-month live cohort shares endpoints with the
+    month-end cohort and double-counts overlapping evidence in HAC/n_eff statistics.
+    ``allow_mid_month`` exists only for sandbox simulations and tests against a disposable
+    state database; the CLI never sets it.
     """
     if stop_after is not None and stop_after not in STOP_POINTS:
         _print(f"Unknown --stop-after {stop_after!r}; expected one of {STOP_POINTS}")
@@ -504,6 +528,11 @@ def monthly(
         if as_of > now_iso[:10] or now_iso <= cutoff:
             _print(f"Rejected: as_of={as_of} cutoff {cutoff} has not completed at {now_iso}")
             return 2
+        expected = month_end_session(as_of, cal)
+        if as_of != expected and not allow_mid_month:
+            _print(f"Refused: as_of={as_of} is not the last session of its month (expected {expected}); "
+                   "live cohorts are month-end only (MASTER_SPEC 2.2)")
+            return 1
         published = pre_conn.execute(
             "SELECT cohort_id FROM cohorts WHERE as_of = ? AND track = 'live'", (as_of,)
         ).fetchone()

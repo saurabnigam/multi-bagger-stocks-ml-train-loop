@@ -112,7 +112,9 @@ def compose(
         K = len(finite_factors)
         n_factors_used[sid] = K
 
-        present_families = {def_map[f]["family"] for f in finite_factors}
+        # Sorted, not a set: set iteration order of strings depends on PYTHONHASHSEED, which made
+        # family_scores_json and the order of float additions differ between identical runs.
+        present_families = sorted({def_map[f]["family"] for f in finite_factors})
         P = len(present_families)
 
         # Check coverage
@@ -141,7 +143,7 @@ def compose(
                 def_map[f]["status_weight"] * float(z.loc[sid, f]) for f in fam_factors
             )
             f_scores[fam] = float(val_sum / w_sum) if w_sum > 0 else 0.0
-        family_scores_json[sid] = json.dumps(f_scores)
+        family_scores_json[sid] = json.dumps(f_scores, sort_keys=True)
 
         # Compute composite
         if mode.lower() == "flat":

@@ -83,6 +83,7 @@ def ingest(ctx: RunContext, bundles: Dict[int, RawBundle]) -> Result:
     cur = ctx.conn.cursor()
     inserted = 0
     skipped = 0
+    unchanged = 0
 
     stmt_map = [
         ("income_stmt", "income", "A"),
@@ -95,6 +96,22 @@ def ingest(ctx: RunContext, bundles: Dict[int, RawBundle]) -> Result:
 
     for sid, bundle in bundles.items():
         fetched_at = bundle.fetched_at
+        # MASTER_SPEC 4.4: "An unchanged subsequent fetch need not duplicate the fact; a
+        # changed value inserts a version with its new timestamp." Latest version per fact
+        # identity observed no later than this fetch:
+        latest: Dict[tuple, float] = {}
+        for row in cur.execute(
+            """
+            SELECT statement, freq, period_end, field, value FROM (
+                SELECT statement, freq, period_end, field, value,
+                       ROW_NUMBER() OVER (PARTITION BY statement, freq, period_end, field
+                                          ORDER BY fetched_at DESC) AS rn
+                FROM fundamentals WHERE security_id = ? AND fetched_at <= ?
+            ) WHERE rn = 1
+            """,
+            (sid, fetched_at),
+        ).fetchall():
+            latest[(row[0], row[1], row[2], row[3])] = row[4]
 
         for attr, stmt_name, freq in stmt_map:
             df = bundle.statements.get(attr)
@@ -128,6 +145,10 @@ def ingest(ctx: RunContext, bundles: Dict[int, RawBundle]) -> Result:
                         continue
 
                     unit = "shares" if "shares" in str(field_name).lower() else "inr"
+                    prev = latest.get((stmt_name, freq, period_end, str(field_name)))
+                    if prev is not None and abs(float(prev) - f_val) <= 1e-9 * max(1.0, abs(f_val)):
+                        unchanged += 1
+                        continue
 
                     cur.execute(
                         """
@@ -151,11 +172,12 @@ def ingest(ctx: RunContext, bundles: Dict[int, RawBundle]) -> Result:
                             ctx.run_id,
                         )
                     )
-                    inserted += 1
+                    inserted += max(cur.rowcount, 0)
+                    latest[(stmt_name, freq, period_end, str(field_name))] = f_val
 
     return Result(
         status="ok",
-        counts={"rows": inserted, "skipped_uncontracted": skipped},
+        counts={"rows": inserted, "skipped_uncontracted": skipped, "unchanged": unchanged},
         details={"message": f"Ingested {inserted} fundamental observations; "
                             f"{skipped} vendor line items outside the field contract left in the archive"},
     )
