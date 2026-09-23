@@ -590,6 +590,15 @@ def monthly(
                     ctx.notes["capture_error"] = str(exc)
                     _print(f"Capture failed and was recorded: {exc}")
                 ctx.checkpoint()
+            # Unexplained total-return jumps become 'suspected' corporate actions; the price
+            # store truncates history at them until a decision resolves them (MASTER_SPEC 4.3).
+            from quant.data import actions as ca_actions
+            from quant.data.identity import tracked_securities
+            horizons = list(getattr(getattr(cfg, "horizons", None), "tracked_m", [1, 3, 6, 12, 24, 36]))
+            ca_res = ca_actions.detect(ctx, tracked_securities(ctx.conn, cutoff=as_of, horizons=horizons),
+                                       since=str(getattr(cfg.yahoo, "history_start", "2015-01-01")))
+            ctx.notes["suspected_actions_new"] = ca_res.counts.get("suspected", 0)
+            ctx.checkpoint()
             if stop_after == "capture":
                 return 0
 

@@ -233,7 +233,23 @@ def mature(ctx: RunContext, through: str) -> Result:
 
             # Compute returns per member
             member_returns: dict[int, dict[str, Any]] = {}
+            # MASTER_SPEC 2.3: an unresolved corporate action inside the horizon yields
+            # excluded_ca; never assume a zero (or the raw jump as a real) return.
+            unresolved_ca: dict[int, list[str]] = {}
+            if store is not None and hasattr(store, "unresolved_actions"):
+                try:
+                    unresolved_ca = store.unresolved_actions(sids, as_of, endpoint_session or end_date, vintage_at)
+                except Exception:
+                    unresolved_ca = {}
+
             for sid in sids:
+                if sid in unresolved_ca:
+                    member_returns[sid] = {
+                        "r_log": None, "r_arith": None, "status": "excluded_ca",
+                        "p_start": None, "p_end": None,
+                        "price_manifest_sha": group_store_hash.get(member_groups.get(sid, "UNKNOWN"), ""),
+                    }
+                    continue
                 p_start = store_start_tri.get(sid)
                 p_end = store_end_tri.get(sid)
                 from_store = p_start is not None and p_end is not None

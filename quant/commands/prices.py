@@ -110,6 +110,9 @@ def prices_update_cmd(args: argparse.Namespace) -> int:
         client = YahooClient(cfg=cfg, clock=clock, sleep=time.sleep)
         res = ctx.store.update(ctx, client, sids, through=through)
         print(f"Prices update [through {through}]: status={res.status} counts={res.counts}")
+        from quant.data.actions import detect
+        ca = detect(ctx, sids, since=str(getattr(cfg.yahoo, "history_start", "2015-01-01")), store=ctx.store)
+        print(f"Suspected corporate actions recorded: {ca.counts.get('suspected', 0)} {ca.details.get('new', [])[:10]}")
         ctx.checkpoint()
     return 0
 

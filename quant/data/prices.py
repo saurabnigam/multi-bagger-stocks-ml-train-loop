@@ -443,22 +443,102 @@ class PriceStore:
             return pd.DataFrame(columns=security_ids)
         return df.pivot(index="date", columns="security_id", values="volume_raw").reindex(columns=security_ids)
 
+    # ------------------------------------------------------- corporate actions
+    VALUE_TRANSFER_KINDS = ("demerger", "rights", "scheme", "manual_adj")
+
+    def corporate_actions(self, security_ids: List[int], vintage_at: str) -> Dict[int, List[Dict[str, Any]]]:
+        """Resolved view of corporate actions known at ``vintage_at`` (state DB), per security.
+
+        Per (security, ex_date): an approved value-transfer row (decision_id set; kinds
+        demerger/rights/scheme/manual_adj) yields ``{"mode": "adjust", "mult": adj_factor}``
+        (adj_factor 1.0 = reviewed and genuine); an approved split/bonus row missing from the
+        vendor's split record yields ``{"mode": "split", "mult": ratio}``; an unresolved
+        ``suspected`` row yields ``{"mode": "truncate"}`` -- history before the ex-date is not
+        used, because an unexplained jump must never be read as a real return (MASTER_SPEC 2.3,
+        4.3). Actions observed after ``vintage_at`` are invisible, so replays are stable.
+        """
+        out: Dict[int, List[Dict[str, Any]]] = {}
+        conn = self.state_conn
+        if conn is None or not security_ids:
+            return out
+        try:
+            placeholders = ",".join("?" for _ in security_ids)
+            rows = conn.execute(
+                f"SELECT security_id, ex_date, kind, ratio, adj_factor, decision_id FROM corporate_actions "
+                f"WHERE observed_at <= ? AND security_id IN ({placeholders}) ORDER BY security_id, ex_date",
+                [vintage_at, *[int(s) for s in security_ids]],
+            ).fetchall()
+        except sqlite3.Error:
+            return out
+        by_key: Dict[tuple, List[Any]] = {}
+        for r in rows:
+            by_key.setdefault((int(r[0]), str(r[1])), []).append(r)
+        for (sid, ex_date), rs in by_key.items():
+            approved_vt = [r for r in rs if r[2] in self.VALUE_TRANSFER_KINDS and r[5]]
+            approved_split = [r for r in rs if r[2] in ("split", "bonus") and r[5] and r[3]]
+            suspected = [r for r in rs if r[2] == "suspected"]
+            if approved_vt:
+                mult = float(approved_vt[-1][4] if approved_vt[-1][4] is not None else 1.0)
+                out.setdefault(sid, []).append({"ex_date": ex_date, "mode": "adjust", "mult": mult})
+            elif approved_split:
+                out.setdefault(sid, []).append({"ex_date": ex_date, "mode": "split", "mult": float(approved_split[-1][3])})
+            elif suspected:
+                out.setdefault(sid, []).append({"ex_date": ex_date, "mode": "truncate"})
+        return out
+
+    def unresolved_actions(self, security_ids: List[int], start: str, end: str, vintage_at: str) -> Dict[int, List[str]]:
+        """Ex-dates of unresolved suspected actions in (start, end] per security."""
+        res: Dict[int, List[str]] = {}
+        for sid, acts in self.corporate_actions(security_ids, vintage_at).items():
+            dates = [a["ex_date"] for a in acts if a["mode"] == "truncate" and start < a["ex_date"] <= end]
+            if dates:
+                res[sid] = dates
+        return res
+
+    @staticmethod
+    def _apply_actions_to_factors(dates: np.ndarray, factors: np.ndarray, acts: List[Dict[str, Any]],
+                                  splits: np.ndarray) -> np.ndarray:
+        """Multiply day factors by approved adjustments; return the truncation index (0 = none)."""
+        cut = 0
+        for a in acts:
+            pos = int(np.searchsorted(dates, a["ex_date"]))
+            if pos >= len(dates) or dates[pos] != a["ex_date"]:
+                continue
+            if a["mode"] == "adjust":
+                factors[pos] *= a["mult"]
+            elif a["mode"] == "split" and splits[pos] == 1.0:
+                factors[pos] *= a["mult"]          # vendor missed the split: never apply twice
+            elif a["mode"] == "truncate":
+                cut = max(cut, pos)
+        return cut
+
     def close_split(self, security_ids: List[int], start: str, end: str, vintage_at: str) -> pd.DataFrame:
-        """Return split-adjusted close rebased to end date."""
+        """Split-consistent close rebased to the end date, corporate-action aware.
+
+        Approved value transfers and vendor-missed splits rescale earlier closes; an
+        unresolved suspected action truncates the series at its ex-date.
+        """
         if not security_ids:
             return pd.DataFrame()
         security_ids = [int(x) for x in security_ids]
         df = self._versioned(security_ids, start, end, vintage_at, "close_raw, split_ratio")
         if df.empty:
             return pd.DataFrame(columns=security_ids)
+        actions = self.corporate_actions(security_ids, vintage_at)
         out_series = {}
         for sid, group in df.groupby("security_id"):
             g = group.sort_values("date").reset_index(drop=True)
-            splits = g["split_ratio"].values.astype(float)
+            splits = g["split_ratio"].values.astype(float).copy()
             closes = g["close_raw"].values.astype(float)
-            rev_cum = np.cumprod(splits[::-1])[::-1]
-            future_mult = rev_cum / splits
-            out_series[sid] = pd.Series(closes / future_mult, index=g["date"])
+            dates = g["date"].values.astype(str)
+            level = np.ones(len(g))
+            cut = self._apply_actions_to_factors(dates, level, actions.get(int(sid), []), splits)
+            rev_cum = np.cumprod((splits * level)[::-1])[::-1]
+            future_mult = rev_cum / (splits * level)
+            series = pd.Series(closes / future_mult, index=g["date"])
+            if cut:
+                series.iloc[:cut] = np.nan
+            out_series[sid] = series
         return pd.DataFrame(out_series).reindex(columns=security_ids)
 
     def tri(self, security_ids: List[int], start: str, end: str, vintage_at: str) -> pd.DataFrame:
@@ -475,17 +555,25 @@ class PriceStore:
         df = self._versioned(security_ids, start, end, vintage_at, "close_raw, dividend_raw, split_ratio")
         if df.empty:
             return pd.DataFrame(columns=security_ids)
+        actions = self.corporate_actions(security_ids, vintage_at)
         tri_series = {}
         for sid, group in df.groupby("security_id"):
             g = group.sort_values("date").reset_index(drop=True)
             closes = g["close_raw"].values.astype(float)
             divs = g["dividend_raw"].values.astype(float)
             splits = g["split_ratio"].values.astype(float)
+            dates = g["date"].values.astype(str)
             factors = np.ones(len(g))
             prev = closes[:-1]
             valid = prev > 0
             factors[1:] = np.where(valid, splits[1:] * (closes[1:] + divs[1:]) / np.where(valid, prev, 1.0), 1.0)
-            tri_series[sid] = pd.Series(100.0 * np.cumprod(factors), index=g["date"])
+            cut = self._apply_actions_to_factors(dates, factors, actions.get(int(sid), []), splits)
+            if cut:
+                factors[cut] = 1.0                 # the series restarts at the unresolved ex-date
+            levels = 100.0 * np.cumprod(factors[cut:]) / (factors[cut] if factors[cut] else 1.0)
+            series = pd.Series(np.nan, index=g["date"], dtype=float)
+            series.iloc[cut:] = levels
+            tri_series[sid] = series
         return pd.DataFrame(tri_series).reindex(columns=security_ids)
 
     def tri_at(self, security_ids: List[int], date: str, vintage_at: str, base_start: str) -> pd.Series:

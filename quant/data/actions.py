@@ -35,29 +35,70 @@ def _validate_decision(ctx: RunContext, decision_id: str) -> dict:
     return {"decision_id": d_id, "approver_kind": approver_kind, "status": status, "tier": tier}
 
 
-def detect(ctx: RunContext, security_ids: List[int], since: str) -> Result:
-    """Scan price series for unexplained jumps outside [1/1.40, 1.40]."""
-    cur = ctx.conn.cursor()
-    suspected_count = 0
+def detect(ctx: RunContext, security_ids: List[int], since: str, store=None) -> Result:
+    """Flag unexplained one-day total-return jumps as ``suspected`` corporate actions.
 
-    # In a full scan, we compare adjacent daily closes
-    # For any jump outside [1/1.40, 1.40] without an existing corporate action on ex_date,
-    # record suspected action.
-    for sid in security_ids:
-        cur.execute(
-            """
-            SELECT ex_date FROM corporate_actions
-            WHERE security_id = ? AND ex_date >= ?
-            """,
-            (sid, since),
+    A day's gross total-return factor split*(close+dividend)/prev_close outside
+    [1/jump_ratio, jump_ratio] (config [returns].jump_ratio, 1.40) with no corporate-action
+    row for that security and ex-date is recorded as kind 'suspected', source 'inferred'.
+    ``observed_at`` is the observation time of the price bar that evidences the jump (not
+    the run clock): the inference is a deterministic function of admissible data, so it is
+    admissible at any cutoff that could see that bar, and later detections do not change
+    earlier replays. The price store then truncates history at unresolved suspects until a
+    decision records a value-transfer factor (or 1.0 = genuine move) via ``add``.
+    """
+    import numpy as np
+
+    from quant.data.prices import PriceStore
+
+    jump = float(getattr(getattr(ctx.cfg, "returns", None), "jump_ratio", 1.40))
+    store = store or getattr(ctx, "store", None) or PriceStore(ctx.cfg.paths.prices_db, state_conn=ctx.conn)
+    vintage = ctx.clock.iso()
+    sids = sorted({int(x) for x in security_ids})
+    if not sids:
+        return Result(status="ok", counts={"suspected": 0, "scanned": 0}, details={"since": since})
+    known = {
+        (int(r[0]), str(r[1]))
+        for r in ctx.conn.execute("SELECT security_id, ex_date FROM corporate_actions").fetchall()
+    }
+    start = (pd.Timestamp(since) - pd.Timedelta(days=10)).strftime("%Y-%m-%d")
+    end = vintage[:10]
+    new_rows = []
+    for i in range(0, len(sids), 100):
+        chunk = sids[i:i + 100]
+        df = store._versioned(chunk, start, end, vintage, "close_raw, dividend_raw, split_ratio, observed_at")
+        for sid, g in df.groupby("security_id"):
+            g = g.sort_values("date")
+            c = g["close_raw"].to_numpy(float)
+            d = g["dividend_raw"].to_numpy(float)
+            sp = g["split_ratio"].to_numpy(float)
+            if len(c) < 2:
+                continue
+            with np.errstate(divide="ignore", invalid="ignore"):
+                f = sp[1:] * (c[1:] + d[1:]) / c[:-1]
+            bad = np.where(np.isfinite(f) & ((f > jump) | (f < 1.0 / jump)))[0] + 1
+            dates = g["date"].to_numpy(str)
+            obs = g["observed_at"].to_numpy(str)
+            for k in bad:
+                ex = dates[k]
+                if ex < since or (int(sid), ex) in known:
+                    continue
+                new_rows.append((int(sid), ex, float(f[k - 1]), obs[k]))
+                known.add((int(sid), ex))
+    for sid, ex, factor, obs in new_rows:
+        ctx.conn.execute(
+            "INSERT OR IGNORE INTO corporate_actions (security_id, ex_date, kind, ratio, amount_inr, adj_factor, "
+            "source, observed_at, decision_id, note) VALUES (?, ?, 'suspected', NULL, NULL, NULL, 'inferred', ?, NULL, ?)",
+            (sid, ex, obs, json.dumps({"gross_factor": round(factor, 6), "jump_ratio": jump})),
         )
-        known_dates = {r[0] for r in cur.fetchall()}
-
-    return Result(
-        status="ok",
-        counts={"suspected": suspected_count},
-        details={"since": since},
-    )
+    if new_rows:
+        from quant.data.gates import record_event
+        record_event(ctx, code="SUSPECTED_CORPORATE_ACTIONS", severity="WARN",
+                     detail={"count": len(new_rows),
+                             "actions": [{"security_id": s_, "ex_date": e_, "gross_factor": round(f_, 4)}
+                                         for s_, e_, f_, _ in new_rows[:50]]})
+    return Result(status="ok", counts={"suspected": len(new_rows), "scanned": len(sids)},
+                  details={"since": since, "new": [(s_, e_, round(f_, 4)) for s_, e_, f_, _ in new_rows]})
 
 
 def add(
