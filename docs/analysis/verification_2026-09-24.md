@@ -41,7 +41,10 @@ arithmetic   price factors      7 factors x 58 names   exact (max rel diff 7e-13
              liquidity (ADV63)  57 of 57 priced names  exact; bucket agrees 3 ways
 pipeline     standardisation    12,024 values          0 mismatches at 1e-9
              composite -> rank  501 of 501             exact, including tie order
-inputs       fundamentals       638 cells              609 agree; 22 differ, 7 NaN mismatches, all traced
+inputs       fundamentals       638 cells              published code: 609 agree, 29 differ
+                                                        fixed code:     629 agree; 2 deliberate split corrections
+                                                        (TATAINVEST, BEML; public restated EPS agrees with the
+                                                        engine), 7 NESTLEIND cells on FY2025 (task T8)
 ```
 
 ## 2. Verdicts on the names you asked about
@@ -159,7 +162,10 @@ keeping it buys an audit trail for a record nobody relied on at the cost of a pe
 its code or shared helpers, so defects 2–4 changed values under the same `@1` ids, and G9 is the only thing
 that notices. Proposal: hash factor source plus the helper modules it imports; a changed hash forces a
 version bump; G9 compares only factors whose hash is unchanged since the prior cohort and lists the rest
-under a recorded decision.
+under a recorded decision. This branch is itself an instance: `bc84691` changes eps_growth_3y, roe_stability_3y,
+book_to_price, roce and earnings_yield values under unchanged `@1` ids, which MASTER_SPEC 5.1 forbids as
+written. It is acceptable only together with D4 (no published cohort carries the old `@1` values); if the old
+cohort is kept, bump those five factors to `@2` before merging.
 
 **D6 — Sector re-ranking stays in the champion; a challenger drops it (Proposed, Tier 2).** `final`
 re-ranks the composite within each sector group, so a sector's best name scores by group size (96-name
@@ -198,8 +204,8 @@ corporate-action evidence for the parent.
    moves its EPS growth from -22%/yr to +1%/yr, but public restated EPS gives about +6%/yr because Yahoo's
    FY2023 figures differ from the company's.
 2. **Sample size.** Fundamentals were checked cell by cell on 58 names (638 cells), not 501. The alias and
-   share-basis defects were then measured on the whole universe, but other rare defects may remain (one
-   unexplained 0.7% mismatch: PINELABS roe_stability_3y).
+   share-basis defects were then measured on the whole universe, but rare defects outside the sample may
+   remain. Inside the sample no mismatch is unexplained after the fixes.
 3. **Secondary sources.** The web checks used aggregators (Screener, business press), not annual reports;
    Screener restates history automatically.
 4. **Correct is not predictive.** A correctly computed rank says nothing about returns. The engine has no
