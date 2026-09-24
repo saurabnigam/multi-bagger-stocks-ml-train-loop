@@ -62,6 +62,7 @@ class FactorInputs:
         fund_fn: Optional[Callable[[str, str, str, int, List[int]], pd.DataFrame]] = None,
         ttm_fn: Optional[Callable[[str, int, List[int]], Tuple[pd.Series, pd.Series]]] = None,
         holdings_fn: Optional[Callable[[int, List[int]], pd.Series]] = None,
+        fund_dates_fn: Optional[Callable[[str, str, str, int, List[int]], Tuple[pd.DataFrame, pd.DataFrame]]] = None,
     ):
         self.as_of = str(as_of)
         self.cutoff = str(cutoff)
@@ -73,6 +74,7 @@ class FactorInputs:
         self._fund_fn = fund_fn
         self._ttm_fn = ttm_fn
         self._holdings_fn = holdings_fn
+        self._fund_dates_fn = fund_dates_fn
 
     def _get_start_date(self, lookback_days: int) -> str:
         if lookback_days < 0:
@@ -158,8 +160,7 @@ class FactorInputs:
 
         return series
 
-    def fundamental(self, statement: str, field: str, freq: str, n_periods: int) -> pd.DataFrame:
-        """Point-in-time fundamental statement series."""
+    def _normalise_request(self, statement: str, freq: str) -> Tuple[str, str]:
         stmt_map = {
             "income": "income",
             "income_statement": "income",
@@ -180,19 +181,17 @@ class FactorInputs:
             freq_norm = "Q"
         elif freq_norm in ("POINT", "P"):
             freq_norm = "P"
+        return canon_stmt, freq_norm
 
-        sids = [int(x) for x in self.members]
-        if self._fund_fn:
-            df = self._fund_fn(canon_stmt, field, freq_norm, n_periods, sids)
-            return df.reindex(index=self.members)
-
-        from quant.data.fundamentals import _expand_fields
+    def _query_frames(self, canon_stmt: str, field: str, freq_norm: str, n_periods: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        from quant.data.fundamentals import _alias_rank, _expand_fields
         fields = _expand_fields(field)
         placeholders = ",".join("?" for _ in fields)
+        rank_sql, rank_params = _alias_rank(fields)
         query = f"""
         WITH ranked AS (
             SELECT security_id, period_end, value, fetched_at,
-                   ROW_NUMBER() OVER (PARTITION BY security_id, period_end ORDER BY fetched_at DESC) as rn
+                   ROW_NUMBER() OVER (PARTITION BY security_id, period_end ORDER BY fetched_at DESC, {rank_sql}) as rn
             FROM fundamentals
             WHERE statement = ?
               AND field IN ({placeholders})
@@ -205,17 +204,49 @@ class FactorInputs:
         WHERE rn = 1
         ORDER BY period_end DESC
         """
-        rows = self._query(query, (canon_stmt, *fields, freq_norm, self.cutoff, self.cutoff))
-        if not rows:
-            return pd.DataFrame(index=self.members, columns=list(range(n_periods)))
-
-        df_rows = pd.DataFrame(rows, columns=["security_id", "period_end", "value"])
+        rows = self._query(query, (*rank_params, canon_stmt, *fields, freq_norm, self.cutoff, self.cutoff))
         data = {sid: [np.nan] * n_periods for sid in self.members}
-        for sid, grp in df_rows.groupby("security_id"):
-            sorted_v = grp.sort_values("period_end", ascending=False)["value"].tolist()
-            for r, v in enumerate(sorted_v[:n_periods]):
-                data[sid][r] = v
-        return pd.DataFrame.from_dict(data, orient="index", columns=list(range(n_periods)))
+        dates = {sid: [None] * n_periods for sid in self.members}
+        if rows:
+            df_rows = pd.DataFrame(rows, columns=["security_id", "period_end", "value"])
+            for sid, grp in df_rows.groupby("security_id"):
+                if sid not in data:
+                    continue
+                grp = grp.sort_values("period_end", ascending=False).head(n_periods)
+                for r, (pe, v) in enumerate(zip(grp["period_end"], grp["value"])):
+                    data[sid][r] = v
+                    dates[sid][r] = pe
+        cols = list(range(n_periods))
+        return (pd.DataFrame.from_dict(data, orient="index", columns=cols),
+                pd.DataFrame.from_dict(dates, orient="index", columns=cols))
+
+    def fundamental(self, statement: str, field: str, freq: str, n_periods: int) -> pd.DataFrame:
+        """Point-in-time fundamental statement series."""
+        canon_stmt, freq_norm = self._normalise_request(statement, freq)
+        if self._fund_fn:
+            df = self._fund_fn(canon_stmt, field, freq_norm, n_periods, [int(x) for x in self.members])
+            return df.reindex(index=self.members)
+        return self._query_frames(canon_stmt, field, freq_norm, n_periods)[0]
+
+    def fundamental_dated(self, statement: str, field: str, freq: str, n_periods: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """``fundamental()`` plus the period_end of every value (None where unknown)."""
+        canon_stmt, freq_norm = self._normalise_request(statement, freq)
+        sids = [int(x) for x in self.members]
+        if self._fund_dates_fn:
+            vals, dates = self._fund_dates_fn(canon_stmt, field, freq_norm, n_periods, sids)
+            return vals.reindex(index=self.members), dates.reindex(index=self.members)
+        if self._fund_fn:
+            vals = self._fund_fn(canon_stmt, field, freq_norm, n_periods, sids).reindex(index=self.members)
+            return vals, pd.DataFrame(None, index=self.members, columns=list(range(n_periods)), dtype=object)
+        return self._query_frames(canon_stmt, field, freq_norm, n_periods)
+
+    def splits(self, lookback_days: int) -> Dict[int, List[tuple]]:
+        """Point-in-time split/bonus events per security: sid -> [(date, ratio)], oldest first."""
+        if self._price_store is None or not hasattr(self._price_store, "split_events"):
+            return {}
+        start = self._get_start_date(lookback_days)
+        return self._price_store.split_events([int(x) for x in self.members], start=start, end=self.as_of,
+                                              vintage_at=self.cutoff)
 
     def ttm(self, field: str, offset_quarters: int = 0) -> pd.Series:
         """Point-in-time trailing twelve month sum from quarterly statements."""
@@ -320,6 +351,10 @@ def build(ctx: RunContext, draft: Draft) -> FactorInputs:
         from quant.data.fundamentals import pit_frame
         return pit_frame(ctx.conn, draft.knowledge_cutoff, statement, field, freq, n_periods, sids)
 
+    def _fund_dates_fn(statement: str, field: str, freq: str, n_periods: int, sids: List[int]):
+        from quant.data.fundamentals import pit_frame
+        return pit_frame(ctx.conn, draft.knowledge_cutoff, statement, field, freq, n_periods, sids, with_dates=True)
+
     def _ttm_fn(field: str, offset_quarters: int, sids: List[int]) -> Tuple[pd.Series, pd.Series]:
         from quant.data.fundamentals import ttm
         return ttm(ctx.conn, draft.knowledge_cutoff, field, sids, offset_quarters=offset_quarters)
@@ -346,4 +381,5 @@ def build(ctx: RunContext, draft: Draft) -> FactorInputs:
         fund_fn=_fund_fn,
         ttm_fn=_ttm_fn,
         holdings_fn=_holdings_fn,
+        fund_dates_fn=_fund_dates_fn,
     )

@@ -33,7 +33,9 @@ class EpsGrowth3y(Factor):
         )
 
     def compute(self, inputs: FactorInputs) -> pd.Series:
-        eps_df = inputs.fundamental("income", "Diluted EPS", "A", 4)
+        eps_df, eps_dates = inputs.fundamental_dated("income", "Diluted EPS", "A", 4)
+        ni_df, ni_dates = inputs.fundamental_dated("income", "Net Income", "A", 4)
+        splits = inputs.splits(self.spec.lookback_days)
         out = pd.Series(np.nan, index=inputs.members, dtype=float)
 
         for sid in inputs.members:
@@ -50,9 +52,44 @@ class EpsGrowth3y(Factor):
 
             # Both endpoints must be strictly positive (no default growth or imputation)
             if eps_0 > 0 and eps_3 > 0 and not np.isnan(eps_0) and not np.isnan(eps_3):
+                d_0, d_3 = eps_dates.loc[sid, 0], eps_dates.loc[sid, 3]
+                ni_by_date = dict(zip(ni_dates.loc[sid].tolist(), ni_df.loc[sid].tolist())) if sid in ni_df.index else {}
+                eps_3 = eps_3 / share_basis_multiplier(
+                    eps_0, eps_3, ni_by_date.get(d_0), ni_by_date.get(d_3),
+                    [ratio for date, ratio in splits.get(int(sid), []) if d_3 is not None and date > str(d_3)],
+                )
                 out.loc[sid] = np.log(eps_0 / eps_3) / 3.0
 
         return out.reindex(inputs.members).astype(float)
+
+
+def share_basis_multiplier(eps_0: float, eps_old: float, ni_0, ni_old, splits_after: list,
+                           tolerance: float = 1.5) -> float:
+    """Factor that puts an older per-share figure on the latest figure's share basis.
+
+    Yahoo does not restate every year of its EPS history after a split or bonus issue
+    (2026-09 review: TATAINVEST 10:1, BEML 2:1 and HDFCBANK's 1:1 bonus left one endpoint on
+    the old share count, reading as -59%, -27% and -22% a year). The implied share count is
+    Net Income / EPS at each endpoint. When a split or bonus of cumulative ratio K occurred
+    after the older period end and the implied share ratio sits nearer K (older figure on
+    the pre-split basis) or 1/K (older figure restated twice, as for NEWGEN's 2024 bonus, or
+    latest figure on the pre-split basis) than 1, divide the older figure by that multiplier.
+    The ratio must also lie within a factor ``tolerance`` of the chosen multiplier: when Net
+    Income and EPS disagree with each other (AIIL FY2026: 61.61 EPS on 19.3bn net income and
+    849M shares) the implied ratio is noise and nothing is adjusted. Genuine share-count
+    changes without a split record (mergers, rights, preferential issues) are never adjusted;
+    without Net Income at both endpoints nothing is adjusted.
+    """
+    k = float(np.prod(splits_after)) if splits_after else 1.0
+    try:
+        ni_0, ni_old = float(ni_0), float(ni_old)
+    except (TypeError, ValueError):
+        return 1.0
+    if k == 1.0 or not (ni_0 > 0 and ni_old > 0 and eps_0 > 0 and eps_old > 0):
+        return 1.0
+    ratio = (ni_0 / eps_0) / (ni_old / eps_old)
+    best = min((1.0, k, 1.0 / k), key=lambda m: abs(np.log(ratio / m)))
+    return best if abs(np.log(ratio / best)) <= np.log(tolerance) else 1.0
 
 
 class RevGrowth3y(Factor):

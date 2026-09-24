@@ -232,6 +232,19 @@ def _expand_fields(field: str) -> List[str]:
     return res
 
 
+def _alias_rank(fields: List[str]) -> Tuple[str, tuple]:
+    """SQL ranking of vendor aliases by contract priority, and its parameters.
+
+    One vendor fetch usually carries several aliases for the same period (Diluted and Basic
+    EPS, EBIT and Operating Income, Cash And Cash Equivalents and Cash Financial) with the
+    same ``fetched_at`` and different values. Ordering by ``fetched_at`` alone left the choice
+    to SQLite's sort order, so a factor could read Basic EPS for one security and Diluted for
+    the next. The first alias in ``_expand_fields`` order wins a same-fetch tie.
+    """
+    case = "CASE field " + " ".join(f"WHEN ? THEN {i}" for i in range(len(fields))) + f" ELSE {len(fields)} END"
+    return case, tuple(fields)
+
+
 def pit_frame(
     conn: sqlite3.Connection,
     cutoff: str,
@@ -240,25 +253,31 @@ def pit_frame(
     freq: str,
     n_periods: int,
     security_ids: List[int],
-) -> pd.DataFrame:
+    with_dates: bool = False,
+):
     """Return point-in-time fiscal frame for securities.
-    
+
     Rows are security_ids, columns are period_rank 0..n-1 with newest admissible first.
+    With ``with_dates`` the result is ``(values, period_ends)``, two frames of the same shape.
     """
     if not security_ids or n_periods <= 0:
-        return pd.DataFrame(index=security_ids, columns=list(range(n_periods)))
+        empty = pd.DataFrame(index=security_ids, columns=list(range(n_periods)))
+        return (empty, empty.copy()) if with_dates else empty
 
     cur = conn.cursor()
     data = {sid: [np.nan] * n_periods for sid in security_ids}
+    dates = {sid: [None] * n_periods for sid in security_ids}
     fields = _expand_fields(field)
     placeholders = ",".join("?" for _ in fields)
+    rank_sql, rank_params = _alias_rank(fields)
 
     for sid in security_ids:
-        # Choose the latest fetched version for each period_end admissible at cutoff
+        # Choose the latest fetched version for each period_end admissible at cutoff;
+        # within one fetch, the highest-priority alias
         query = f"""
         WITH ranked AS (
             SELECT period_end, value, fetched_at,
-                   ROW_NUMBER() OVER (PARTITION BY period_end ORDER BY fetched_at DESC) as rn
+                   ROW_NUMBER() OVER (PARTITION BY period_end ORDER BY fetched_at DESC, {rank_sql}) as rn
             FROM fundamentals
             WHERE security_id = ?
               AND statement = ?
@@ -273,13 +292,18 @@ def pit_frame(
         ORDER BY period_end DESC
         LIMIT ?
         """
-        cur.execute(query, (sid, statement, *fields, freq, cutoff, cutoff, n_periods))
+        cur.execute(query, (*rank_params, sid, statement, *fields, freq, cutoff, cutoff, n_periods))
         rows = cur.fetchall()
         for rank, r in enumerate(rows):
             data[sid][rank] = r[1]
+            dates[sid][rank] = r[0]
 
     df = pd.DataFrame.from_dict(data, orient="index", columns=list(range(n_periods)))
     df.index.name = "security_id"
+    if with_dates:
+        dts = pd.DataFrame.from_dict(dates, orient="index", columns=list(range(n_periods)))
+        dts.index.name = "security_id"
+        return df, dts
     return df
 
 
@@ -303,12 +327,13 @@ def ttm(
     req_periods = offset_quarters + 4
     fields = _expand_fields(field)
     placeholders = ",".join("?" for _ in fields)
+    rank_sql, rank_params = _alias_rank(fields)
 
     for sid in security_ids:
         query_q = f"""
         WITH ranked AS (
-            SELECT period_end, value, fetched_at,
-                   ROW_NUMBER() OVER (PARTITION BY period_end ORDER BY fetched_at DESC) as rn
+            SELECT period_end, value, field, fetched_at,
+                   ROW_NUMBER() OVER (PARTITION BY period_end ORDER BY fetched_at DESC, {rank_sql}) as rn
             FROM fundamentals
             WHERE security_id = ?
               AND field IN ({placeholders})
@@ -316,13 +341,13 @@ def ttm(
               AND available_from <= ?
               AND fetched_at <= ?
         )
-        SELECT period_end, value
+        SELECT period_end, value, field
         FROM ranked
         WHERE rn = 1
         ORDER BY period_end DESC
         LIMIT ?
         """
-        cur.execute(query_q, (sid, *fields, cutoff, cutoff, req_periods))
+        cur.execute(query_q, (*rank_params, sid, *fields, cutoff, cutoff, req_periods))
         rows = cur.fetchall()
 
         if len(rows) < req_periods:
@@ -336,10 +361,10 @@ def ttm(
                   AND freq = 'A'
                   AND available_from <= ?
                   AND fetched_at <= ?
-                ORDER BY period_end DESC, fetched_at DESC
+                ORDER BY period_end DESC, fetched_at DESC, {rank_sql}
                 LIMIT 1
                 """
-                cur.execute(query_ann, (sid, *fields, cutoff, cutoff))
+                cur.execute(query_ann, (sid, *fields, cutoff, cutoff, *rank_params))
                 ann_row = cur.fetchone()
                 if ann_row:
                     vals[sid] = ann_row[0]
@@ -357,9 +382,11 @@ def ttm(
         sub_dates = [r[0] for r in sub_rows]
         sub_values = [r[1] for r in sub_rows]
 
-        # Verify quarters are consecutive
+        # Verify quarters are consecutive and one line item: a sum of three quarters of EBIT and
+        # one of Operating Income is neither (2026-09 review: NETWEB, URBANCO) -> annual instead
         periods = [pd.Period(pd.to_datetime(d), freq="Q") for d in sub_dates]
         is_consecutive = all(getattr(periods[i] - periods[i + 1], "n", None) == 1 for i in range(3))
+        is_consecutive = is_consecutive and len({r[2] for r in sub_rows}) == 1
 
         if is_consecutive:
             vals[sid] = float(sum(sub_values))
@@ -374,10 +401,10 @@ def ttm(
                   AND freq = 'A'
                   AND available_from <= ?
                   AND fetched_at <= ?
-                ORDER BY period_end DESC, fetched_at DESC
+                ORDER BY period_end DESC, fetched_at DESC, {rank_sql}
                 LIMIT 1
                 """
-                cur.execute(query_ann, (sid, *fields, cutoff, cutoff))
+                cur.execute(query_ann, (sid, *fields, cutoff, cutoff, *rank_params))
                 ann_row = cur.fetchone()
                 if ann_row:
                     vals[sid] = ann_row[0]

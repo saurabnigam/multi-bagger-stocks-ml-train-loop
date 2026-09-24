@@ -495,6 +495,42 @@ class PriceStore:
                 res[sid] = dates
         return res
 
+    def split_events(self, security_ids: List[int], start: str, end: str, vintage_at: str) -> Dict[int, List[tuple]]:
+        """Split and bonus events in (start, end] known at ``vintage_at``: sid -> [(date, ratio)].
+
+        The vendor's split record (latest version of each bar) plus approved splits the vendor
+        missed (corporate_actions, mode ``split``). Used to check that per-share fundamentals
+        at two dates are on the same share basis.
+        """
+        out: Dict[int, List[tuple]] = {}
+        if not security_ids:
+            return out
+        security_ids = [int(x) for x in security_ids]
+        placeholders = ",".join("?" for _ in security_ids)
+        query = f"""
+        WITH cand AS (
+            SELECT DISTINCT security_id, date FROM prices_daily
+            WHERE split_ratio != 1 AND security_id IN ({placeholders})
+              AND date > ? AND date <= ? AND observed_at <= ?
+        ), ranked AS (
+            SELECT p.security_id, p.date, p.split_ratio,
+                   ROW_NUMBER() OVER (PARTITION BY p.security_id, p.date ORDER BY p.observed_at DESC) AS rn
+            FROM prices_daily p JOIN cand USING (security_id, date)
+            WHERE p.observed_at <= ?
+        )
+        SELECT security_id, date, split_ratio FROM ranked WHERE rn = 1 AND split_ratio != 1
+        """
+        with self.conn() as p_conn:
+            rows = p_conn.execute(query, [*security_ids, start, end, vintage_at, vintage_at]).fetchall()
+        vendor = {(int(r[0]), str(r[1])) for r in rows}
+        for sid, date, ratio in rows:
+            out.setdefault(int(sid), []).append((str(date), float(ratio)))
+        for sid, acts in self.corporate_actions(security_ids, vintage_at).items():
+            for a in acts:
+                if a["mode"] == "split" and start < a["ex_date"] <= end and (sid, a["ex_date"]) not in vendor:
+                    out.setdefault(int(sid), []).append((a["ex_date"], float(a["mult"])))
+        return {sid: sorted(ev) for sid, ev in out.items()}
+
     @staticmethod
     def _apply_actions_to_factors(dates: np.ndarray, factors: np.ndarray, acts: List[Dict[str, Any]],
                                   splits: np.ndarray) -> np.ndarray:
