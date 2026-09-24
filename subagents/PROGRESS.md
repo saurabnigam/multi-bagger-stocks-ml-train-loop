@@ -603,3 +603,21 @@ Measured storage (spec 10.5 requires reporting): state db 78.9 MB (warn 50 MB), 
 Not committed: quant.db and data/ledger (above the warning level; owner decision pending on the proposal above).
 Next: nothing else can happen until the September cutoff. Run `python -m quant data capture` again in the last
   trading week of September and after 2026-09-30 closes, then `python -m quant run monthly` in early October.
+
+## VERIFY — Independent recomputation of live:2026-09-11; fixes; decisions — 2026-09-24 — Claude Opus 5.5
+Spec: revision 2
+State: complete on branch review/verify-2026-09 (worktree mb-verify); not merged; nothing pushed
+What ran: five independent verifiers (price, fundamentals, ranking, web, design; Sonnet) recomputed the cohort from
+  the raw archives without engine code, each followed by a skeptic; sandbox re-runs with every QUANT_* path
+  overridden and a frozen clock (reproduction, hash-seed determinism, idempotency, second month 2026-09-23,
+  alias-only, all fixes). Arithmetic and pipeline reproduce exactly (501/501 at 1e-9; 7 price factors x 58 names).
+Fixes: e13201d (deterministic composite, one open symbol row, month-end guard, fact dedup, W_PRICE_GAPS),
+  fe9d9c2 (suspected corporate actions quarantine price history; approved value-transfer factors), 85b9cf4 (G8
+  history prerequisites), bc84691 (alias priority, TTM never mixes line items, EPS growth on one share basis).
+  Tests 430 pass; check_spec 10/10; signoff engineering 8/8.
+Effect vs the published cohort: 311 of 488 ranks change, 73 by 10+ places (38 of those only because a sector peer
+  was fixed); top 30 unchanged; bottom-15 errors TATAINVEST, TMPV, BEML; 13/13 exclusions correct.
+Report and decisions D1-D10, tasks T1-T10: docs/analysis/verification_2026-09-24.md.
+Owner decisions needed: D4 (discard the main checkout's uncommitted old-code live:2026-09-11 before October; G9
+  would reject it), T2 (approve TMPV/VEDL/HEG demerger factors and TRENT's 1.5 vendor correction), D5 code identity,
+  D8 storage (+86 MB per cohort), D9 UI exporter (legacy multiplier narrative shown for every stock).
