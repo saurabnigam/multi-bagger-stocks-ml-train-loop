@@ -239,6 +239,21 @@ def list_suspects(
     return out
 
 
+def _observed_gross_factor(ctx: RunContext, sid: int, ex_date: str) -> Optional[float]:
+    """split * (close + dividend) / previous close on ``ex_date``, latest observed version."""
+    from quant.data.prices import PriceStore
+
+    store = getattr(ctx, "store", None) or PriceStore(ctx.cfg.paths.prices_db, state_conn=ctx.conn)
+    start = (pd.Timestamp(ex_date) - pd.Timedelta(days=15)).strftime("%Y-%m-%d")
+    df = store._versioned([int(sid)], start, ex_date, ctx.clock.iso(), "close_raw, dividend_raw, split_ratio")
+    if df.empty or str(df["date"].iloc[-1]) != ex_date or len(df) < 2:
+        return None
+    prev, cur = df.iloc[-2], df.iloc[-1]
+    if not prev["close_raw"] or prev["close_raw"] <= 0:
+        return None
+    return float(cur["split_ratio"]) * (float(cur["close_raw"]) + float(cur["dividend_raw"] or 0.0)) / float(prev["close_raw"])
+
+
 def resolve(
     ctx: RunContext,
     *,
@@ -309,12 +324,21 @@ def resolve(
         "ORDER BY observed_at DESC LIMIT 1",
         (sid, ex_date),
     ).fetchone()
-    gross_factor = 1.0
+    gross_factor = None
     if note_row and note_row[0]:
         try:
-            gross_factor = float(json.loads(note_row[0]).get("gross_factor", 1.0))
+            gross_factor = float(json.loads(note_row[0]).get("gross_factor"))
         except (ValueError, TypeError, AttributeError):
-            gross_factor = 1.0
+            gross_factor = None
+    if gross_factor is None:
+        # No suspect recorded yet (resolved ahead of detection): measure the evidenced jump
+        # from the price store rather than assuming 1.0, which would refuse every real fix.
+        gross_factor = _observed_gross_factor(ctx, sid, ex_date)
+    if gross_factor is None:
+        if not force:
+            raise Refused("no_price_evidence", f"No price bar on {ex_date} and the prior session for {canonical_isin}; "
+                                               "check the ex-date or pass --force")
+        gross_factor = 1.0
 
     combined = gross_factor * stored_factor
     lo, hi = JUMP_RATIO_BOUNDS

@@ -262,3 +262,37 @@ def test_actions_resolve_scheme_kind_stores_its_own_factor(tmp_path, monkeypatch
     assert tri.notna().all()
     assert tri.iloc[-1] / tri.iloc[0] == pytest.approx(1.0)   # economic return restored, same as demerger
     conn.close()
+
+
+def _seed_prices_only(cfg):
+    """Prices ingested but detect() never run: an operator resolves ahead of detection."""
+    dates, close = _series()
+    with RunContext(as_of="2026-09-11", kind="test", track="live", cfg=cfg,
+                     clock=FrozenClock("2026-09-14T13:58:30.000000Z"),
+                     actor=Actor(kind="human", name="owner")) as ctx:
+        ctx.conn.execute(
+            "INSERT INTO securities (security_id, isin, name, first_seen, last_seen, status) "
+            "VALUES (1, ?, 'P', '2025-01-01', '2026-09-11', 'listed')", (ISIN,))
+        ctx.conn.execute(
+            "INSERT INTO symbol_history (security_id, nse_symbol, yahoo_ticker, valid_from, source) "
+            "VALUES (1, ?, ?, '2025-01-01', 'test')", (SYMBOL, f"{SYMBOL}.NS"))
+        ctx.store = PriceStore(cfg.paths.prices_db, state_conn=ctx.conn)
+        ctx.store.ingest(ctx, pd.DataFrame({"date": dates, "close": close, "volume": 1e5}),
+                          {"security_id": 1, "close_basis": "raw", "observed_at": EVIDENCE_AT})
+        ctx.status = "ok"
+
+
+def test_actions_resolve_without_suspect_measures_the_jump_from_prices(tmp_path, monkeypatch):
+    """Integration finding: with no suspect row the plausibility check assumed a gross factor
+    of 1.0 and refused every real demerger factor; it now measures the ex-date jump."""
+    common = ["--isin", ISIN, "--ex-date", "2025-10-14", "--kind", "demerger", "--evidence", "filing",
+              "--actor-kind", "human", "--by", "human:owner"]
+    cfg, db = _world(tmp_path / "ok")
+    _seed_prices_only(cfg)
+    _env(monkeypatch, cfg)
+    assert main(["data", "actions-resolve", "--db", str(db), *common, "--factor", str(600.0 / 360.0)]) == 0
+
+    cfg2, db2 = _world(tmp_path / "bad")
+    _seed_prices_only(cfg2)
+    _env(monkeypatch, cfg2)
+    assert main(["data", "actions-resolve", "--db", str(db2), *common, "--factor", "5.0"]) == 3
