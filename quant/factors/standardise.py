@@ -15,15 +15,25 @@ def transform(
     groups: pd.Series,
     direction: int,
     cfg: Optional[Config] = None,
+    applicable: Optional[pd.Series] = None,
 ) -> pd.DataFrame:
     """Standardise raw factor values into centered, bounded [-3, 3] z-scores per sector group.
-    
+
     Formula per MASTER_SPEC §5.2:
     1. Cross-sectional winsorization at 1st/99th percentiles.
     2. Within each sector group, require >= 5 finite observations and > 1 distinct value.
     3. Average-tie rank -> v = direction * NormalPPF((rank - 0.5) / n).
     4. Centering: v - mean(v).
     5. Bounding: divide by max(1.0, max(abs(v - mean(v))) / 3.0) to strictly enforce [-3, 3].
+
+    `applicable` (task T9 / decision D10) is an optional per-security boolean series:
+    False marks a security for which this factor is structurally not applicable (e.g.
+    a nonfinancial-only factor on a Financial Services name), as opposed to one that
+    is merely missing data. Per MASTER_SPEC §5.2, "coverage denominator excludes
+    structural non-applicability" -- such securities are flagged not_applicable and
+    excluded from the group's finite-count/distinct-value denominator entirely,
+    rather than counting against it as small_group would. Omitted (the default),
+    every security is treated as applicable, which is the prior behaviour exactly.
     """
     if cfg is None:
         from quant.config import load
@@ -34,6 +44,10 @@ def transform(
     idx = raw.index
     groups_aligned = groups.reindex(idx)
     finite_mask = raw.notna() & np.isfinite(raw)
+    if applicable is None:
+        applicable_mask = pd.Series(True, index=idx)
+    else:
+        applicable_mask = applicable.reindex(idx).fillna(True).astype(bool)
 
     # 1. Winsorize cross-sectionally
     winsor = raw.astype(float).copy()
@@ -52,18 +66,30 @@ def transform(
     # 2. Sector group standardisation
     for group_name, g_sids in raw.groupby(groups_aligned).groups.items():
         g_sids = pd.Index(g_sids)
-        g_finite = g_sids[finite_mask.reindex(g_sids).fillna(False)]
+
+        # Structurally not-applicable securities never count toward the group's
+        # denominator (MASTER_SPEC §5.2) and are flagged distinctly from small_group.
+        g_not_applicable = g_sids[~applicable_mask.reindex(g_sids).fillna(True)]
+        if len(g_not_applicable) > 0:
+            z.loc[g_not_applicable] = np.nan
+            flags.loc[g_not_applicable] = "not_applicable"
+
+        g_applicable = g_sids[applicable_mask.reindex(g_sids).fillna(True)]
+        if len(g_applicable) == 0:
+            continue
+
+        g_finite = g_applicable[finite_mask.reindex(g_applicable).fillna(False)]
         n_g = len(g_finite)
 
         if n_g < min_nonnull:
-            z.loc[g_sids] = np.nan
-            flags.loc[g_sids] = "small_group"
+            z.loc[g_applicable] = np.nan
+            flags.loc[g_applicable] = "small_group"
             continue
 
         distinct_vals = winsor.loc[g_finite].nunique()
         if distinct_vals <= 1:
-            z.loc[g_sids] = np.nan
-            flags.loc[g_sids] = "constant_group"
+            z.loc[g_applicable] = np.nan
+            flags.loc[g_applicable] = "constant_group"
             continue
 
         g_vals = winsor.loc[g_finite]
@@ -78,7 +104,7 @@ def transform(
 
         z.loc[g_finite] = g_z
 
-        g_missing = g_sids[~finite_mask.reindex(g_sids).fillna(False)]
+        g_missing = g_applicable[~finite_mask.reindex(g_applicable).fillna(False)]
         if len(g_missing) > 0:
             flags.loc[g_missing] = "missing"
 

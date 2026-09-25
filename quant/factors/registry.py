@@ -238,8 +238,20 @@ def compute_all(ctx: RunContext, draft: Draft) -> pd.DataFrame:
         factor_obj = cls()
         raw = factor_obj.compute(inputs)
 
+        # Task T9 / decision D10: a nonfinancial-only factor is structurally not
+        # applicable to Financial Services names (raw is already NaN for them, per
+        # each factor's own _is_financial() mask) -- distinct from a security that
+        # is merely missing data. Tell transform() which securities are applicable
+        # so it flags not_applicable rather than folding them into small_group.
+        # Same "group != Financial Services" idiom as quant.model.composite and
+        # quant.data.gates use for the same denominator exclusion (MASTER_SPEC §5.2).
+        if factor_obj.spec.applies_to_financials:
+            applicable = None
+        else:
+            applicable = inputs.sector_group != "Financial Services"
+
         # Standardise per sector group
-        std_df = transform(raw, draft.groups, direction, ctx.cfg)
+        std_df = transform(raw, draft.groups, direction, ctx.cfg, applicable=applicable)
 
         frame = pd.DataFrame({
             "cohort_id": draft.cohort_id,
