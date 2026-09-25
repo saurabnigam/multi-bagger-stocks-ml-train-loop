@@ -621,3 +621,23 @@ Report and decisions D1-D10, tasks T1-T10: docs/analysis/verification_2026-09-24
 Owner decisions needed: D4 (discard the main checkout's uncommitted old-code live:2026-09-11 before October; G9
   would reject it), T2 (approve TMPV/VEDL/HEG demerger factors and TRENT's 1.5 vendor correction), D5 code identity,
   D8 storage (+86 MB per cohort), D9 UI exporter (legacy multiplier narrative shown for every stock).
+
+## IMPLEMENT — Report tasks T2-T9 as seven work packages; integration — 2026-09-26 — Claude Opus 5.5
+State: complete on branch review/verify-2026-09 (not merged, not pushed)
+How: seven Sonnet implementers, one worktree and branch each (wp/actions, wp/codeid, wp/portfolio,
+  wp/placeholders, wp/uiexport, wp/staleness, wp/challengers), each reviewed read-only; merged with --no-ff;
+  review findings fixed during integration (portfolio blocker: widest-window TRI truncated earlier periods at a
+  later suspected action).
+Found during integration: registry.sync (the only code-hash check) was never called by a monthly run -- now
+  called first in _stage_and_publish; the code-identity helper map missed the PriceStore methods that build each
+  series; actions-resolve assumed a gross factor of 1.0 without a suspect row; the uiexport size test used 7
+  identical factors and passed while the real payload was 4.0 MB; the Data tab showed a hard-coded all-PASS gate
+  list. All fixed with regression tests.
+Measured (sandbox, frozen clock): second monthly cohort 239 s -> 84 s; G9 0 mismatches over 12,024 values;
+  code identity re-pinned once (DEC_CODE_IDENTITY_V2); orders per cohort 29,154 -> 26,780 incl. two challengers;
+  state growth +86 -> +83 MB per cohort (journal dominates); UI payload 8.4 MB -> 1.08 MB; NESTLEIND excluded by
+  the staleness rule.
+Tests 496 pass; check_spec 10/10 (spec fingerprint now 5de559e8... because config key
+  factors.max_annual_age_days was added to the contract copy); signoff engineering 8/8.
+Owner decisions: D4 + merge (T1); corporate-action approvals (T2: TMPV 1.6708, VEDL 2.849 demerger; TRENT
+  manual_adj 1.5 on 2026-01-01; HEG after the spin-off lists); challenger registration (T6); ledger compaction (D8).

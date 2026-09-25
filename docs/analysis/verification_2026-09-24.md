@@ -147,8 +147,8 @@ and revenue growth are totals or same-date ratios).
 
 **D3 — Unexplained price jumps are quarantined until reviewed (Accepted).** Never read as a return, never
 read as zero. The suspect row carries the evidence's observation time so earlier replays are unchanged.
-Needs an operator path (task T2): today 4 names in the windows (TMPV, VEDL, HEG, TRENT) are scored on 6
-factors until a human approves a factor from the company's filing.
+Operator path built (`data actions-list` / `data actions-resolve`, human-only). Until you approve, 4 names in
+the windows (TMPV, VEDL, HEG, TRENT) are scored on 6 factors; recommended factors are in section 9.
 
 **D4 — The main checkout's `live:2026-09-11` is not a published cohort (Proposed, owner).** It is
 uncommitted, mid-month (the spec's live track is month-end), and built by pre-fix code. G9 recomputes the
@@ -158,7 +158,7 @@ publish a superseding restatement and exclude the original from every evaluation
 never committed or shared, and a mid-month cohort is not a valid live cohort under the month-end rule, so
 keeping it buys an audit trail for a record nobody relied on at the cost of a permanent G9 exception.
 
-**D5 — Replay and code identity (Proposed, Tier 1).** Today a factor's code hash covers its spec text, not
+**D5 — Replay and code identity (Implemented 2026-09-26; acknowledge).** Today a factor's code hash covers its spec text, not
 its code or shared helpers, so defects 2–4 changed values under the same `@1` ids, and G9 is the only thing
 that notices. Proposal: hash factor source plus the helper modules it imports; a changed hash forces a
 version bump; G9 compares only factors whose hash is unchanged since the prior cohort and lists the rest
@@ -167,7 +167,7 @@ book_to_price, roce and earnings_yield values under unchanged `@1` ids, which MA
 written. It is acceptable only together with D4 (no published cohort carries the old `@1` values); if the old
 cohort is kept, bump those five factors to `@2` before merging.
 
-**D6 — Sector re-ranking stays in the champion; a challenger drops it (Proposed, Tier 2).** `final`
+**D6 — Sector re-ranking stays in the champion; a challenger drops it (Built; registering it is your Tier-2 call).** `final`
 re-ranks the composite within each sector group, so a sector's best name scores by group size (96-name
 Financial Services tops out at 2.56, 10-name Telecom at 1.64), about 100 names tie exactly (broken by
 security_id), and small composite gaps become large rank gaps (MRF vs HEROMOTOCO: 0.004 composite, 16
@@ -175,18 +175,18 @@ places). Ranking by composite changes 7 of the top 30. In this verification 38 n
 because a sector peer's data was corrected. Register `EW_HIER_NR_v1` (no re-neutralisation,
 ties by composite) as a challenger under MASTER_SPEC 6.4; decide after 24 matured cohorts.
 
-**D7 — Thin-evidence names (Proposed, spec change).** A composite over 7 of 11 factors counts the same as one
+**D7 — Thin-evidence names (Built as a challenger; registering it is your call).** A composite over 7 of 11 factors counts the same as one
 over 11; 9 of the top 30 run on fewer than 9 factors. A mild shrinkage (final x sqrt(n_used / n_applicable))
 moves EMMVEE from 2 to 5 and changes 1 of the top 30, so the effect is small; test it as a challenger, low
 priority.
 
-**D8 — Storage (Proposed, Tier 1).** +86 MB per monthly cohort; 1.08 GB after 12 months, 5.2 GB after 60,
+**D8 — Storage (Books and warning implemented; ledger compaction still proposed).** +86 MB per monthly cohort; 1.08 GB after 12 months, 5.2 GB after 60,
 against a 50 MB warning. Drivers: 29k paper orders per cohort (16% in books that are never weighted) and
 the journal copying every row as JSON. The budget check only prints a message. Proposal: attribution books
 only for active and promotable factors; journal bulk ingests as one event per archive; compress closed ledger
 partitions; make the budget breach a recorded warning.
 
-**D9 — UI exporter (Proposed, high severity).** For every stock the dashboard explains the rank with legacy
+**D9 — UI exporter (Implemented 2026-09-26).** For every stock the dashboard explains the rank with legacy
 text such as "FATAL MULTIPLIER (0.0x): Death Cross" or "REJECTED: Value Trap detected"; V2 has no multipliers
 (MASTER_SPEC 6.1), so the UI tells the reader a mechanism that did not produce the rank. The ratios shown next
 to V2 ranks come from the frozen legacy database with threshold-based unit repairs; margins and growth are
@@ -194,7 +194,7 @@ computed in the exporter; the knowledge cutoff is ignored. `ui/data.js` is 7.7 M
 because the ~500 stock records are serialised 3-4 times, including about 2.4 MB of globals the app never
 reads. Proposal: export only stored V2 values for the published cohort, one stock list plus id arrays.
 
-**D10 — Index placeholders (Proposed).** NSE's `DUMMY*` rows get their own exclusion reason and count as
+**D10 — Index placeholders (Implemented 2026-09-26).** NSE's `DUMMY*` rows get their own exclusion reason and count as
 corporate-action evidence for the parent.
 
 ## 6. What could make these conclusions wrong
@@ -211,20 +211,25 @@ corporate-action evidence for the parent.
 4. **Correct is not predictive.** A correctly computed rank says nothing about returns. The engine has no
    matured live evaluation yet.
 
-## 7. Tasks
+## 7. Tasks — status after implementation (2026-09-26)
 
-| ID | Task | Owner | Priority | Effort |
-|---|---|---|---|---|
-| T1 | Decide D4: discard the main checkout's uncommitted `quant.db`/ledger changes, merge `review/verify-2026-09` | owner | P0, before Oct run | 30 min |
-| T2 | Review queue for suspected actions (`quant data actions list/approve`); approve TMPV, VEDL, HEG demerger factors and TRENT's 1.5 vendor fix from filings | owner + dev | P0 | 1 day |
-| T3 | Implement D5 (code identity over source and helpers; G9 scoped by hash) | dev | P1 | 2 days |
-| T4 | Cache TRI per run and vintage (111 of 212 s in TRI reads) | dev | P1 | 0.5 day |
-| T5 | D8 storage: drop never-weighted attribution books, bulk-ingest journal events | dev + owner decision | P1 | 2–3 days |
-| T6 | Register `EW_HIER_NR_v1` and a coverage-shrunk challenger (D6, D7) | owner (Tier 2) | P2 | 1 day |
-| T7 | UI exporter per D9: remove the legacy multiplier narrative, read V2 values only, one stock list; payload under 1.5 MB | dev | P1 | 1–2 days |
-| T8 | Latest-annual staleness rule (NESTLEIND used FY2025 silently; 1–4 names per field) | owner (spec) | P3 | 0.5 day |
-| T9 | Index placeholders (D10); correct the `small_group` flag on factors that do not apply to financials | dev | P3 | 0.5 day |
-| T10 | Run `python -m quant data capture` after the 2026-09-30 close, then `run monthly` | owner | P0, calendar | 70 min capture |
+| ID | Task | Status | What landed / what is left |
+|---|---|---|---|
+| T1 | Decide D4, merge the branch | **needs you** | Discard the main checkout's uncommitted `quant.db`, ledger and UI payloads (old-code, mid-month cohort), then merge `review/verify-2026-09` into `codex/v2-implementation` |
+| T2 | Resolve suspected corporate actions | **built; approvals need you** | `data actions-list`, `data actions-resolve` (human-only; Tier-1 decision + ADR + approved row in one run); runbook `docs/operations/corporate_actions.md`. Recommended factors in section 9 |
+| T3 | D5 code identity | done | Hash covers factor source, referenced helpers, the PriceStore/fundamentals readers each accessor uses, `standardise.transform` and `inputs.build`; checked before every cohort (it never ran before); one-time re-pin recorded as `DEC_CODE_IDENTITY_V2`; G9 compares recomputed ids only and fails on a live id missing from the replay |
+| T4 | TRI once per roll-forward | done | Second monthly cohort 239 s -> 84 s; identical results, including securities with a suspected action inside the window |
+| T5 | D8 storage | **partly done; ledger needs you** | No attribution books for never-weighted families (-16% orders); budget breach recorded as a WARN after every run. The journal still copies every row: +83 MB per cohort. Ledger compaction changes MASTER_SPEC 4.2/10.5 and needs your decision |
+| T6 | Challengers D6/D7 | **built; registration needs you** | `EW_HIER_NR_v1` (no within-sector re-ranking, ties by composite) and `EW_HIER_COV_v1` (coverage-scaled); seeded on fresh installs; existing database: `model register-challenger` with a human-approved decision; limit of 3 live challengers enforced; about 1,170 orders per cohort each |
+| T7 | UI exporter | done | No legacy database read, no multiplier narrative, V2 stored values only, knowledge cutoff respected, gates panel shows recorded results (it was a hard-coded all-PASS list); real payload 1.08 MB (was 8.4 MB) |
+| T8 | Latest-annual staleness | done | Annual values older than 487 days are not used (`factors.max_annual_age_days`); NESTLEIND is excluded for coverage on 2026-09-11 |
+| T9 | Placeholders and flags | done | `index_placeholder` exclusion (DUMMY symbol or invalid ISIN) with a DQ event naming the parent; 505 not-applicable values no longer flagged `small_group` |
+| T10 | September capture and October run | **needs you (calendar)** | After the 2026-09-30 close: `python -m quant data capture`, then `python -m quant run monthly` |
+
+Tests: 496 pass (430 before this round); spec checks 10/10; engineering sign-off 8/8. Adding the
+config key changed the spec-package fingerprint from `3e90bb16…` to `5de559e8…` (the contract copy of
+`config/quant.toml` must match it byte for byte); nothing gates on the fingerprint, but it is a spec
+package change you should acknowledge.
 
 ## 8. Confidence
 
@@ -235,6 +240,42 @@ outcome (the corrected ranking is materially right for October's cohort)        
 
 The gap is the vendor: the engine can now refuse obviously broken inputs, but it still trusts Yahoo where
 Yahoo is consistent and wrong, and 4 names wait on human review.
+
+## 9. Implementation results (sandbox, cohort 2026-09-11 and a second month 2026-09-23)
+
+What the new work changes on the real data (isolated copies, frozen clock):
+
+```
+runtime, second monthly cohort        239 s -> 84 s
+G9 replay of the first cohort         0 mismatches over 12,024 values
+code identity                         re-pinned once on the first run, no drift after
+orders per cohort                     29,154 -> 26,780 (includes the two challengers; ~24,400 without)
+state database growth per cohort      +86 MB -> +83 MB   (journal copies still dominate)
+UI payload                            8.4 MB -> 1.08 MB  (budget 1.5 MB)
+staleness rule                        NESTLEIND excluded; 248 ranks shift, mostly by one place
+```
+
+Challengers on the same cohort: `EW_HIER_NR_v1` shares 23 of the champion's top 30 and has no exact
+ties (the champion has 146 securities in ties); `EW_HIER_COV_v1` shares 29 of 30. EMMVEE ranks 2 under
+the champion, 1 without re-ranking and 6 with coverage scaling.
+
+**Recommended corporate-action factors (T2).** Use the market-implied factor, not the companies'
+cost-of-acquisition split. The cost split is a tax apportionment on net worth; applied to a total return
+it leaves a fake loss (TMPV -13%, VEDL -33%). The market factor matches how NSE indices treat a demerger
+on the ex-date (parent's previous close less its discovered ex price).
+
+```
+security  ex-date     kind         factor   source of the number
+TMPV      2025-10-14  demerger     1.6708   1 / ex-day gross factor 0.5985 (cost split would give 1.4524)
+VEDL      2026-04-30  demerger     2.849    1 / 0.3510 (cost split would give 1.9106)
+TRENT     2026-01-01  manual_adj   1.5      Yahoo applied the 1:2 bonus (record 2026-06-04) only from Jan 1
+HEG       2026-09-07  wait         -        spin-off lists late October 2026; HEG is excluded (BE series) anyway
+```
+
+Counterfactual (sandbox, approvals dated before the cutoff): TMPV stays at 468 and VEDL at 40 but on 8 and
+9 factors instead of 6; TRENT moves from 122 to 188, because its full 12-month history is weak and the
+truncation had been hiding it. Approvals made now take effect from the 2026-09-30 cohort, never
+retroactively (point-in-time).
 
 ## Mental model
 
