@@ -307,17 +307,33 @@ def pit_frame(
     return df
 
 
+def _stale_annual_cutoff(as_of: Optional[str], cutoff: str, max_annual_age_days: int) -> pd.Timestamp:
+    """Oldest admissible annual period_end (task T8, MASTER_SPEC 4.4, 5.3).
+
+    ``as_of`` is the cohort's as-of date; callers that predate this parameter (or pass
+    None) fall back to the calendar day of ``cutoff``, which is the same day for every
+    live cohort.
+    """
+    reference = as_of if as_of else str(cutoff)[:10]
+    return pd.Timestamp(reference) - pd.Timedelta(days=int(max_annual_age_days))
+
+
 def ttm(
     conn: sqlite3.Connection,
     cutoff: str,
     field: str,
     security_ids: List[int],
     offset_quarters: int = 0,
+    as_of: Optional[str] = None,
+    max_annual_age_days: int = 487,
 ) -> Tuple[pd.Series, pd.Series]:
     """Compute Trailing Twelve Months (TTM) sum over consecutive quarters.
-    
+
     offset_quarters=0 sums quarters [0..3] (or falls back to latest annual).
     offset_quarters=4 sums quarters [4..7] (requires 8 consecutive quarters).
+    A latest-annual fallback older than ``max_annual_age_days`` before ``as_of``
+    (default 487 days / ~16 months; task T8) is stale: it returns NaN flagged
+    "stale_annual" instead of the value. Quarterly TTM is unaffected.
     Returns (values_series, flags_series).
     """
     cur = conn.cursor()
@@ -328,6 +344,28 @@ def ttm(
     fields = _expand_fields(field)
     placeholders = ",".join("?" for _ in fields)
     rank_sql, rank_params = _alias_rank(fields)
+    stale_before = _stale_annual_cutoff(as_of, cutoff, max_annual_age_days)
+
+    def _annual_fallback(sid: int):
+        """Latest admissible annual value, or NaN with "stale_annual" past the age limit."""
+        query_ann = f"""
+        SELECT value, period_end FROM fundamentals
+        WHERE security_id = ?
+          AND field IN ({placeholders})
+          AND freq = 'A'
+          AND available_from <= ?
+          AND fetched_at <= ?
+        ORDER BY period_end DESC, fetched_at DESC, {rank_sql}
+        LIMIT 1
+        """
+        cur.execute(query_ann, (sid, *fields, cutoff, cutoff, *rank_params))
+        ann_row = cur.fetchone()
+        if not ann_row:
+            return np.nan, "missing_quarters"
+        value, period_end = ann_row
+        if pd.Timestamp(period_end) < stale_before:
+            return np.nan, "stale_annual"
+        return value, "ttm_from_annual"
 
     for sid in security_ids:
         query_q = f"""
@@ -353,25 +391,7 @@ def ttm(
         if len(rows) < req_periods:
             # Not enough quarters
             if offset_quarters == 0:
-                # Fallback to latest annual
-                query_ann = f"""
-                SELECT value FROM fundamentals
-                WHERE security_id = ?
-                  AND field IN ({placeholders})
-                  AND freq = 'A'
-                  AND available_from <= ?
-                  AND fetched_at <= ?
-                ORDER BY period_end DESC, fetched_at DESC, {rank_sql}
-                LIMIT 1
-                """
-                cur.execute(query_ann, (sid, *fields, cutoff, cutoff, *rank_params))
-                ann_row = cur.fetchone()
-                if ann_row:
-                    vals[sid] = ann_row[0]
-                    flags[sid] = "ttm_from_annual"
-                else:
-                    vals[sid] = np.nan
-                    flags[sid] = "missing_quarters"
+                vals[sid], flags[sid] = _annual_fallback(sid)
             else:
                 vals[sid] = np.nan
                 flags[sid] = "missing_quarters"
@@ -393,25 +413,7 @@ def ttm(
             flags[sid] = ""
         else:
             if offset_quarters == 0:
-                # Fallback to latest annual
-                query_ann = f"""
-                SELECT value FROM fundamentals
-                WHERE security_id = ?
-                  AND field IN ({placeholders})
-                  AND freq = 'A'
-                  AND available_from <= ?
-                  AND fetched_at <= ?
-                ORDER BY period_end DESC, fetched_at DESC, {rank_sql}
-                LIMIT 1
-                """
-                cur.execute(query_ann, (sid, *fields, cutoff, cutoff, *rank_params))
-                ann_row = cur.fetchone()
-                if ann_row:
-                    vals[sid] = ann_row[0]
-                    flags[sid] = "ttm_from_annual"
-                else:
-                    vals[sid] = np.nan
-                    flags[sid] = "missing_quarters"
+                vals[sid], flags[sid] = _annual_fallback(sid)
             else:
                 vals[sid] = np.nan
                 flags[sid] = "missing_quarters"
