@@ -86,12 +86,32 @@ def _load_quarterly_fundamentals(conn: sqlite3.Connection, cutoff: str) -> dict[
     return result
 
 
-def _load_factor_details(conn: sqlite3.Connection, cohort_id: str) -> dict[int, list[dict[str, Any]]]:
+def _display_round(value: Any, sig: int = 6) -> Any:
+    """Round a stored value to display precision (significant digits); None stays None."""
+    if value is None:
+        return None
+    try:
+        x = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(x) or math.isinf(x):
+        return None
+    return float(f"{x:.{sig}g}")
+
+
+def _load_factor_details(conn: sqlite3.Connection, cohort_id: str) -> tuple[list[list[Any]], list[str], dict[int, list[list[Any]]]]:
     """Per-security, per-factor raw/z values and flags for the published cohort, joined
     to the factor registry for name/family/direction. This is stored evidence only; the
-    exporter derives nothing from it."""
+    exporter derives nothing from it.
+
+    Compact encoding (UI payload budget): one catalog row per factor
+    ``[factor_id, name, family, direction]``, one flag vocabulary, and per security rows
+    ``[catalog_index, raw, z, flag_index]`` with values rounded to display precision
+    (raw 6 significant digits, z 4 decimals). A 501-name cohort with 24 factors was 1.6 MB
+    as verbose objects.
+    """
     if not cohort_id:
-        return {}
+        return [], [], {}
     cur = conn.cursor()
     try:
         rows = cur.execute(
@@ -106,20 +126,62 @@ def _load_factor_details(conn: sqlite3.Connection, cohort_id: str) -> dict[int, 
             (cohort_id,),
         ).fetchall()
     except Exception:
-        return {}
+        return [], [], {}
 
-    result: dict[int, list[dict[str, Any]]] = {}
+    catalog: list[list[Any]] = []
+    cat_index: dict[str, int] = {}
+    flag_vocab: list[str] = [""]
+    flag_index: dict[str, int] = {"": 0}
+    result: dict[int, list[list[Any]]] = {}
     for sid, factor_id, name, family, direction, raw, z, flags in rows:
-        result.setdefault(sid, []).append({
-            "factor_id": factor_id,
-            "name": name,
-            "family": family,
-            "direction": direction,
-            "raw": raw,
-            "z": z,
-            "flags": flags,
-        })
-    return result
+        if factor_id not in cat_index:
+            cat_index[factor_id] = len(catalog)
+            catalog.append([factor_id, name, family, direction])
+        flag = flags or ""
+        if flag not in flag_index:
+            flag_index[flag] = len(flag_vocab)
+            flag_vocab.append(flag)
+        z_disp = None if _display_round(z) is None else round(float(z), 4)
+        result.setdefault(sid, []).append([cat_index[factor_id], _display_round(raw), z_disp, flag_index[flag]])
+    return catalog, flag_vocab, result
+
+
+# MASTER_SPEC 4.6 gate table: what each gate requires (display text for stored results).
+GATE_RULES: dict[str, str] = {
+    "G1": "Nifty500 >= 480 unique valid members",
+    "G2": "Admissible universe capture <= 62 days old",
+    "G3": "Completed as_of close coverage >= 98%",
+    "G4": "Same close as prior month for < 5% of common names",
+    "G5": "Unexplained price revisions <= 2% of universe",
+    "G6": "Unit bounds on yields, leverage, PE, holdings, mcap and assets",
+    "G7": "Known sector coverage >= 99%",
+    "G8": "Computed factor coverage: price >= 95%, other >= 70% of applicable members",
+    "G9": "Prior published cohort reproduced from pinned inputs, code and definitions",
+    "G10": "Prescribed leakage checks with sufficient evidence",
+    "W_PRICE_GAPS": "Warning: members missing sessions in the trailing 63 (non-blocking)",
+}
+
+
+def _load_gate_results(conn: sqlite3.Connection, cohort_id: str) -> list[dict[str, Any]]:
+    """The published cohort's own recorded gate results (dq_runs of the run that published
+    it). Nothing is asserted: an unpublished cohort shows no gates."""
+    if not cohort_id:
+        return []
+    try:
+        rows = conn.execute(
+            "SELECT d.gate, d.phase, d.status, d.reason, d.blocking FROM dq_runs d "
+            "JOIN cohorts c ON c.run_id = d.run_id WHERE c.cohort_id = ? ORDER BY d.phase DESC, d.gate",
+            (cohort_id,),
+        ).fetchall()
+    except Exception:
+        return []
+    order = {g: i for i, g in enumerate(GATE_RULES)}
+    out = [
+        {"gate": g, "name": g, "requirement": GATE_RULES.get(g, ""), "status": status,
+         "observed": reason, "phase": phase, "blocking": bool(blocking)}
+        for g, phase, status, reason, blocking in rows
+    ]
+    return sorted(out, key=lambda r: order.get(r["gate"], len(order)))
 
 
 def _load_model_weights(conn: sqlite3.Connection, cohort_id: str, model_id: str) -> dict[str, str]:
@@ -207,7 +269,8 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
         ).fetchall()
 
     quarterly_by_sid = _load_quarterly_fundamentals(conn, cutoff)
-    factors_by_sid = _load_factor_details(conn, cohort_id)
+    factor_catalog, factor_flags, factors_by_sid = _load_factor_details(conn, cohort_id)
+    fcf_index = next((i for i, c in enumerate(factor_catalog) if c[1] == "fcf_yield"), None)
     ai_weights = _load_model_weights(conn, cohort_id, primary_model if cohort_id and scores_rows else "")
 
     stocks: list[dict[str, Any]] = []
@@ -282,9 +345,9 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
         growth_val = family_scores.get("growth")
         if isinstance(growth_val, (int, float)):
             growth_by_sid[sid] = float(growth_val)
-        fcf_factor = next((f for f in factor_list if f["name"] == "fcf_yield"), None)
-        if fcf_factor is not None and fcf_factor.get("raw") is not None:
-            fcf_raw_by_sid[sid] = float(fcf_factor["raw"])
+        fcf_row = next((r for r in factor_list if r[0] == fcf_index), None) if fcf_index is not None else None
+        if fcf_row is not None and fcf_row[1] is not None:
+            fcf_raw_by_sid[sid] = float(fcf_row[1])
 
         if eligible and final_score > 0:
             rank_counter += 1
@@ -332,19 +395,8 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
             "top_score": round(top_sc, 1),
         })
 
-    # Gates audit
-    gates_audit = [
-        {"gate": "G1", "name": "Calendar & Observation Cutoff", "requirement": "Capture timestamp <= Cutoff (strict IST 23:59)", "observed": "100% timestamps precede cutoff", "status": "PASS"},
-        {"gate": "G2", "name": "Trading Day Validation", "requirement": "Valid exchange trading session verification", "observed": "All sessions confirmed with NSE calendar", "status": "PASS"},
-        {"gate": "G3", "name": "Corporate Action Reconciliation", "requirement": "Splits and bonuses adjusted without forward leakage", "observed": "0 unadjusted corporate action defects", "status": "PASS"},
-        {"gate": "G4", "name": "Liquidity Filter", "requirement": "ADV63 >= 20,000,000 INR & >= 54 active trading days", "observed": "ADV63 threshold enforced across cohort", "status": "PASS"},
-        {"gate": "G5", "name": "Extreme Spread & Price Bands", "requirement": "Bid-ask spread and price volatility bounded", "observed": "No unflagged quote anomalies", "status": "PASS"},
-        {"gate": "G6", "name": "Filing Date Verification", "requirement": "Realized statement filing date strictly <= Cutoff", "observed": "Filing lag bounded & audited", "status": "PASS"},
-        {"gate": "G7", "name": "Freshness Bounds", "requirement": "Fundamental data within maximum allowable staleness", "observed": "All 500 records within 12M freshness window", "status": "PASS"},
-        {"gate": "G8", "name": "Rank Centering & Normalization", "requirement": "Centered bounded ranks with zero mean", "observed": "Group centering validated across sectors", "status": "PASS"},
-        {"gate": "G9", "name": "Uncertainty Status Required", "requirement": "Estimable confidence intervals or explicit unavailable flag", "observed": "HAC standard errors computed on matured rows", "status": "PASS"},
-        {"gate": "G10", "name": "Cohort Immutability & Replay", "requirement": "Deterministic SHA256 definition & membership hashes", "observed": "Verified reproducible bit-for-bit", "status": "PASS"},
-    ]
+    # Gate results recorded for this cohort (MASTER_SPEC 4.6); never asserted by the exporter.
+    gates_audit = _load_gate_results(conn, cohort_id)
 
     # aiWeights is the published cohort's own model_weights (MASTER_SPEC 6.3), not a
     # legacy reconstruction; it is empty (not a fabricated default) when unpublished.
@@ -365,13 +417,15 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
         "snapshotMeta": snapshot_meta,
         "sector_distribution": sector_distribution,
         "gates_audit": gates_audit,
+        "factor_catalog": factor_catalog,
+        "factor_flags": factor_flags,
     }
 
     data_path = ui_dir / "data.js"
     # Single canonical payload; accepted/rejected/turnaround are id arrays into `stocks`
     # (no duplicated stock objects, no orphaned top-level globals) to keep the export
     # under the UI payload budget (MASTER_SPEC 10.7).
-    js_content = f"window.QUANT_DATA = {json.dumps(data_payload, indent=2)};\n"
+    js_content = f"window.QUANT_DATA = {json.dumps(data_payload, separators=(",", ":"))};\n"
     data_path.write_text(js_content, encoding="utf-8")
     out_files.append(data_path)
 
@@ -454,7 +508,7 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
         "learning_points": learning_points,
     }
     learning_path = ui_dir / "data_learning.js"
-    learning_path.write_text("window.QUANT_LEARNING = " + json.dumps(learning_payload, indent=2) + ";\n", encoding="utf-8")
+    learning_path.write_text("window.QUANT_LEARNING = " + json.dumps(learning_payload, separators=(",", ":")) + ";\n", encoding="utf-8")
     out_files.append(learning_path)
 
     # 3. Export data_scoreboard.js
@@ -506,7 +560,7 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
         "benchmarks": benchmarks,
     }
     scoreboard_path = ui_dir / "data_scoreboard.js"
-    scoreboard_path.write_text("window.QUANT_SCOREBOARD = " + json.dumps(scoreboard_payload, indent=2) + ";\n", encoding="utf-8")
+    scoreboard_path.write_text("window.QUANT_SCOREBOARD = " + json.dumps(scoreboard_payload, separators=(",", ":")) + ";\n", encoding="utf-8")
     out_files.append(scoreboard_path)
 
     # 4. Export data_factors.js
@@ -542,7 +596,7 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
         "contracts": contracts,
     }
     factors_path = ui_dir / "data_factors.js"
-    factors_path.write_text("window.QUANT_FACTORS = " + json.dumps(factors_payload, indent=2) + ";\n", encoding="utf-8")
+    factors_path.write_text("window.QUANT_FACTORS = " + json.dumps(factors_payload, separators=(",", ":")) + ";\n", encoding="utf-8")
     out_files.append(factors_path)
 
     # 5. Export data_kb.js
@@ -704,7 +758,7 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
         "hypotheses": hypotheses,
     }
     kb_path = ui_dir / "data_kb.js"
-    kb_path.write_text("window.QUANT_KB = " + json.dumps(kb_payload, indent=2) + ";\n", encoding="utf-8")
+    kb_path.write_text("window.QUANT_KB = " + json.dumps(kb_payload, separators=(",", ":")) + ";\n", encoding="utf-8")
     out_files.append(kb_path)
 
     return out_files

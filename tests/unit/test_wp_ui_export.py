@@ -24,6 +24,15 @@ COHORT_ID = f"live:{AS_OF}"
 CUTOFF = "2026-09-30T18:29:59.999999Z"
 AFTER_CUTOFF = "2026-10-05T00:00:00.000000Z"
 BEFORE_CUTOFF = "2026-07-20T00:00:00.000000Z"
+RNG = __import__("numpy").random.default_rng(7)
+FACTOR_SET = tuple((name, 1, fam, 1) for name, fam in (
+    ("mom_12_1", "momentum"), ("mom_6_1", "momentum"), ("trend_200", "momentum"), ("dist_52w_high", "momentum"),
+    ("rev_1m", "momentum"), ("vol_252", "low_risk"), ("max_ret_21", "low_risk"), ("roce", "quality"),
+    ("accruals", "quality"), ("cash_conversion_3y", "quality"), ("leverage", "quality"), ("roe_stability_3y", "quality"),
+    ("earnings_yield", "value"), ("book_to_price", "value"), ("fcf_yield", "value"), ("div_yield", "value"),
+    ("eps_growth_3y", "growth"), ("rev_growth_3y", "growth"), ("earn_mom", "growth"), ("inst_hold_chg_3m", "flows"),
+    ("size", "control"), ("liq", "control"), ("beta_252", "control"), ("dc_flag", "legacy"),
+))
 
 
 @pytest.fixture
@@ -71,15 +80,7 @@ def published_cohort_db(tmp_path):
             (COHORT_ID, AS_OF),
         )
 
-        for name, version, family, direction in (
-            ("roce", 1, "quality", 1),
-            ("earnings_yield", 1, "value", 1),
-            ("fcf_yield", 1, "value", 1),
-            ("div_yield", 1, "value", 1),
-            ("book_to_price", 1, "value", 1),
-            ("eps_growth_3y", 1, "growth", 1),
-            ("mom_12_1", 1, "momentum", 1),
-        ):
+        for name, version, family, direction in FACTOR_SET:
             conn.execute(
                 "INSERT INTO factor_registry (factor_id, name, version, family, direction, "
                 "horizon_m, level, hypothesis, formula, inputs_json, lookback_days, "
@@ -94,6 +95,7 @@ def published_cohort_db(tmp_path):
         symbol_rows = []
         score_rows = []
         factor_rows = []
+        quarterly_rows = []
         n_scored = N_SECURITIES
         for i in range(1, N_SECURITIES + 1):
             sid = i
@@ -118,12 +120,24 @@ def published_cohort_db(tmp_path):
                 "hash", CUTOFF, "live", 1,
             ))
 
-            for fname in ("roce", "earnings_yield", "fcf_yield", "div_yield", "book_to_price", "eps_growth_3y", "mom_12_1"):
-                raw_val = 0.10 if fname != "fcf_yield" else (-0.02 if i == 1 else 0.03)
+            # Realistic size: every launch factor, full-precision floats and mixed flags, so the
+            # payload budget is tested against what a real cohort serialises (a 7-factor fixture
+            # with identical values passed while the real 501-name payload was 4.0 MB).
+            for k, (fname, _v, _fam, _d) in enumerate(FACTOR_SET):
+                if fname == "fcf_yield":
+                    raw_val = -0.02 if i == 1 else 0.03 + i * 1e-5
+                else:
+                    raw_val = float(RNG.normal()) * (10 ** (k % 5))
+                z_val = float(RNG.normal())
+                flag = ("", "", "", "small_group", "missing", "not_applicable")[(i + k) % 6]
                 factor_rows.append((
-                    COHORT_ID, AS_OF, sid, f"{fname}@1", raw_val, raw_val, 0.5, sector_group,
-                    "", "[]", "live", 1,
+                    COHORT_ID, AS_OF, sid, f"{fname}@1", raw_val, raw_val, z_val, sector_group,
+                    flag, "[]", "live", 1,
                 ))
+            if sid > 1:
+                for q in ("2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31", "2026-03-31", "2026-06-30"):
+                    for field in ("Total Revenue", "EBITDA", "Net Income"):
+                        quarterly_rows.append((sid, q, field, float(RNG.uniform(1e8, 5e10))))
 
         conn.executemany(
             "INSERT INTO securities (security_id, isin, name, first_seen, last_seen, status) "
@@ -152,6 +166,13 @@ def published_cohort_db(tmp_path):
             "sector_group, flags, input_refs_json, track, run_id) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             factor_rows,
+        )
+
+        conn.executemany(
+            "INSERT INTO fundamentals (security_id, statement, freq, period_end, field, value, unit, "
+            "available_from, available_from_basis, fetched_at, source, run_id) "
+            f"VALUES (?, 'income', 'Q', ?, ?, ?, 'inr', '{BEFORE_CUTOFF}', 'earnings_date', '{BEFORE_CUTOFF}', 'yahoo', 1)",
+            quarterly_rows,
         )
 
         # A fundamental visible as of the cohort's knowledge cutoff.
@@ -254,3 +275,19 @@ def test_ui_export_still_succeeds_when_legacy_db_open_would_fail(tmp_path, cfg, 
     monkeypatch.setattr(sqlite3, "connect", blow_up)
     exported = export(conn, test_cfg)
     assert exported
+
+
+def test_ui_export_factor_rows_are_compact_and_gates_come_from_the_cohort(tmp_path, cfg, published_cohort_db):
+    """Integration finding: factor evidence was 1.6 MB of verbose objects on a real cohort and the
+    gates panel was a hard-coded all-PASS list. Rows now reference one catalog, and gates are the
+    cohort's recorded dq_runs (none recorded here, so none shown)."""
+    conn, db_path = published_cohort_db
+    ui_out = tmp_path / "ui_compact"
+    test_cfg = cfg.with_paths(db=db_path, ui_dir=ui_out)
+    export(conn, test_cfg)
+    payload = json.loads((ui_out / "data.js").read_text(encoding="utf-8").split("=", 1)[1].rstrip(";\n"))
+    assert len(payload["factor_catalog"]) == len(FACTOR_SET)
+    row = payload["stocks"][0]["factors"][0]
+    assert isinstance(row, list) and len(row) == 4
+    assert payload["factor_flags"][0] == ""
+    assert payload["gates_audit"] == []

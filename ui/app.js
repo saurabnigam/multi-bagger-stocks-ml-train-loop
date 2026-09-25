@@ -261,7 +261,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const fs = stock.family_scores || {};
-        const factorRows = stock.factors || [];
+        // Factor evidence arrives compact: [catalog_index, raw, z, flag_index] rows against
+        // data.factor_catalog ([factor_id, name, family, direction]) and data.factor_flags.
+        const catalog = data.factor_catalog || [];
+        const flagVocab = data.factor_flags || [];
+        const factorRows = (stock.factors || []).map(r => Array.isArray(r)
+            ? { factor_id: (catalog[r[0]] || [])[0], name: (catalog[r[0]] || [])[1], family: (catalog[r[0]] || [])[2],
+                raw: r[1], z: r[2], flags: flagVocab[r[3]] || '' }
+            : r);
         const qm = stock.quarterly || {};
 
         detailViewEl.innerHTML = `
@@ -284,7 +291,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="quant-hud">
                 <div class="quant-badge">
                     <span class="hud-label">Final Score</span>
-                    <span class="hud-value ${stock.final_score >= 60 ? 'good' : ''}">${fmtNum(stock.final_score, 1)}</span>
+                    <span class="hud-value ${(stock.decile || 0) >= 9 ? 'good' : ''}">${fmtNum(stock.final_score, 2)}</span>
                 </div>
                 <div class="quant-badge">
                     <span class="hud-label">Composite</span>
@@ -999,7 +1006,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderDataProvenance() {
         const audit = data.gates_audit || [];
         renderKpiGrid('data-kpis', [
-            { label: 'Quality Gates', value: `${audit.length}/10 PASS`, sub: 'Pre-compute G1-G7 & Post-compute G8-G10', subClass: 'positive' },
+            { label: 'Quality Gates', value: audit.length ? `${audit.filter(g => g.status === 'PASS').length}/${audit.length} PASS` : 'None recorded', sub: 'Recorded results for this cohort (G1-G10 and warnings)', subClass: audit.length && audit.every(g => g.status !== 'FAIL' || !g.blocking) ? 'positive' : '' },
             { label: 'Strict Cutoff', value: 'IST 23:59:59', sub: 'Zero lookahead leakage contract', subClass: 'positive' },
             { label: 'Cohort State', value: (data.track || 'LEGACY').toUpperCase(), sub: `Cohort ID: ${data.cohort_id || '2026-09-03'}` },
             { label: 'Immutability', value: 'SHA256 Bit-Exact', sub: 'Journaled append-only ledger' },
