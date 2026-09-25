@@ -350,7 +350,15 @@ def _g9_replay(ctx: RunContext, draft: Draft) -> Check:
         members=members, groups=groups, source_refs={"replay": True},
     )
     recomputed = factor_registry.compute_all(ctx, replay_draft)
-    merged = stored.merge(recomputed[["security_id", "factor_id", "z"]], on=["security_id", "factor_id"],
+    # T3/D5: compare only factor ids the current registry actually recomputes. A stored
+    # factor id that the current registry no longer recomputes -- retired, or superseded
+    # by a version bump (a new factor_id under MASTER_SPEC 5.1/5.2) -- cannot be replayed
+    # and must not fail the gate; it is reported for visibility instead.
+    recomputed_ids = set(recomputed["factor_id"].unique())
+    stored_ids = set(stored["factor_id"].unique())
+    not_replayed = sorted(stored_ids - recomputed_ids)
+    stored_live = stored[stored["factor_id"].isin(recomputed_ids)]
+    merged = stored_live.merge(recomputed[["security_id", "factor_id", "z"]], on=["security_id", "factor_id"],
                          how="left", suffixes=("_stored", "_replay"))
     both_nan = merged["z_stored"].isna() & merged["z_replay"].isna()
     diff = (merged["z_stored"] - merged["z_replay"]).abs()
@@ -358,7 +366,8 @@ def _g9_replay(ctx: RunContext, draft: Draft) -> Check:
     ok = mismatch.empty
     return Check(
         id="G9", status="PASS" if ok else "FAIL",
-        observed={"rows": int(len(merged)), "mismatches": int(len(mismatch))}, expected="exact_match",
+        observed={"rows": int(len(merged)), "mismatches": int(len(mismatch)), "not_replayed": not_replayed},
+        expected="exact_match",
         reason=("Prior cohort reproduced from pinned inputs" if ok
                 else f"{len(mismatch)} factor values differ on replay of {prior['cohort_id']}"),
         blocking=not ok,

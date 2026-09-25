@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import sqlite3
-from typing import Any, Dict, List, Optional
+import textwrap
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from quant.data import fundamentals as fundamentals_mod
+from quant.data import holdings as holdings_mod
+from quant.data.prices import PriceStore
 from quant.errors import Blocked, Refused
 from quant.factors.base import Factor, FactorSpec
 from quant.factors.controls import Beta252, Liq, Size
@@ -57,8 +62,143 @@ ACTIVE_LAUNCH_FACTORS = {
 }
 
 
+# --------------------------------------------------------------- code identity v2 (D5, T3)
+#
+# _calc_code_sha (v2) pins a factor version to its *code*, not just its spec text: the
+# factor class source, the module-level helpers it calls by name, the FactorInputs
+# accessors its compute() reads (scan for "inputs.<method>(") and whatever those
+# accessors themselves depend on (below), plus the shared standardise.transform every
+# factor's raw output is put through. A shared-helper change (e.g. a fix in
+# quant.data.prices.PriceStore._apply_actions_to_factors) now changes the hash of every
+# factor that reads through it, even though no factor's own formula text moved -- MASTER_SPEC
+# 5.1 requires that to force a version bump, not pass silently under the old version.
+#
+# ACCESSOR_HELPER_MAP is the explicit, maintained map from a FactorInputs accessor name to
+# the objects whose content backs it: the accessor method itself plus the helper
+# callables/data it reads. Entries are real objects (not lambdas) so a test can monkeypatch
+# a single entry to a temporary function or module and observe the hash move.
+ACCESSOR_HELPER_MAP: Dict[str, Tuple[Any, ...]] = {
+    "attribute": (FactorInputs.attribute,),
+    "fundamental": (
+        FactorInputs.fundamental,
+        FactorInputs._normalise_request,
+        FactorInputs._query_frames,
+        fundamentals_mod.pit_frame,
+        fundamentals_mod._expand_fields,
+        fundamentals_mod._alias_rank,
+        fundamentals_mod.FIELD_ALIASES,
+    ),
+    "fundamental_dated": (
+        FactorInputs.fundamental_dated,
+        FactorInputs._normalise_request,
+        FactorInputs._query_frames,
+        fundamentals_mod.pit_frame,
+        fundamentals_mod._expand_fields,
+        fundamentals_mod._alias_rank,
+        fundamentals_mod.FIELD_ALIASES,
+    ),
+    "ttm": (FactorInputs.ttm, fundamentals_mod.ttm),
+    "holdings": (FactorInputs.holdings, holdings_mod.series),
+    "tri": (
+        FactorInputs.tri,
+        PriceStore._versioned,
+        PriceStore.corporate_actions,
+        PriceStore._apply_actions_to_factors,
+    ),
+    "close_split": (
+        FactorInputs.close_split,
+        PriceStore._versioned,
+        PriceStore.corporate_actions,
+        PriceStore._apply_actions_to_factors,
+    ),
+    "close_raw": (FactorInputs.close_raw, PriceStore._versioned),
+    "volume": (FactorInputs.volume, PriceStore._versioned),
+    "adv_inr": (FactorInputs.adv_inr,),
+    "splits": (FactorInputs.splits, PriceStore.split_events, PriceStore.corporate_actions),
+    "benchmark_tri": (FactorInputs.benchmark_tri,),
+}
+
+
+def _normalise_source(src: str) -> str:
+    """Dedent and strip trailing per-line whitespace so formatting-only edits do not move the hash."""
+    return "\n".join(line.rstrip() for line in textwrap.dedent(src).splitlines())
+
+
+def _content_of(obj: Any) -> str:
+    """Deterministic text content of a hash input: a dict's sorted items, else an object's source.
+
+    No absolute paths and no object ids reach the hash -- ``inspect.getsource`` returns the
+    source text itself, and dict content is captured via ``sorted(...items())``, so this is
+    stable across processes and machines for a given checkout.
+    """
+    if isinstance(obj, dict):
+        return repr(sorted(obj.items()))
+    return _normalise_source(inspect.getsource(obj))
+
+
+def _referenced_module_functions(cls: type) -> List[Any]:
+    """Module-level functions defined in ``cls``'s own module that its source references by name.
+
+    E.g. ``growth.EpsGrowth3y.compute`` calls the bare name ``share_basis_multiplier``, a
+    module-level helper in the same file. Sorted by qualified name for determinism.
+    """
+    import ast
+
+    module = inspect.getmodule(cls)
+    if module is None:
+        return []
+    try:
+        tree = ast.parse(textwrap.dedent(inspect.getsource(cls)))
+    except (OSError, TypeError):
+        return []
+    referenced = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    found = [
+        obj for name, obj in vars(module).items()
+        if name in referenced and inspect.isfunction(obj) and getattr(obj, "__module__", None) == module.__name__
+    ]
+    return sorted(found, key=lambda f: f.__qualname__)
+
+
+def _inputs_accessor_calls(cls: type) -> List[str]:
+    """FactorInputs accessor names ``cls``'s source calls: scan for ``inputs.<method>(``."""
+    import re
+
+    try:
+        src = inspect.getsource(cls)
+    except (OSError, TypeError):
+        return []
+    return sorted(set(re.findall(r"\binputs\.(\w+)\(", src)))
+
+
 def _calc_code_sha(spec: FactorSpec) -> str:
-    """Deterministic hash of factor formula, direction, inputs and hypothesis."""
+    """Code identity v2 (MASTER_SPEC 5.1, D5): pins spec text, source and helper dependencies.
+
+    Hashes, in order: the spec text fields (name, version, formula, inputs, direction,
+    hypothesis -- the v1 content); the normalised source of the factor class; the
+    module-level helpers in the factor's own module it references by name; for every
+    FactorInputs accessor its compute() calls, that accessor's own source plus the
+    dependencies pinned for it in ``ACCESSOR_HELPER_MAP``; and the shared
+    ``quant.factors.standardise.transform`` every factor's raw output passes through.
+    Deterministic across processes and machines: no absolute paths, no object ids.
+    """
+    parts = [
+        f"{spec.name}:{spec.version}:{spec.formula}:{','.join(sorted(spec.inputs))}:{spec.direction}:{spec.hypothesis}"
+    ]
+    cls = LAUNCH_FACTOR_CLASSES.get(spec.name)
+    if cls is not None:
+        parts.append(_normalise_source(inspect.getsource(cls)))
+        for fn in _referenced_module_functions(cls):
+            parts.append(_content_of(fn))
+        for accessor in _inputs_accessor_calls(cls):
+            for dep in ACCESSOR_HELPER_MAP.get(accessor, ()):
+                parts.append(_content_of(dep))
+    parts.append(_content_of(transform))
+    content = "\x1f".join(parts)
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _calc_code_sha_v1(spec: FactorSpec) -> str:
+    """Legacy (pre-D5) hash: spec text only. Used only to detect a not-yet-migrated row."""
     content = f"{spec.name}:{spec.version}:{spec.formula}:{','.join(sorted(spec.inputs))}:{spec.direction}:{spec.hypothesis}"
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
@@ -81,17 +221,46 @@ def _ensure_bootstrap_decision(conn: sqlite3.Connection, timestamp: str, git_sha
     )
 
 
+def _ensure_code_identity_v2_decision(conn: sqlite3.Connection, timestamp: str, git_sha: str) -> None:
+    """Ensure the one-time Tier-0 decision covering the v1 -> v2 code identity re-pin exists."""
+    context = (
+        "MASTER_SPEC 5.1 (D5): code_sha256 now pins source and shared-helper dependencies, "
+        "not only spec text; unchanged rows still on the v1 (spec-text-only) hash are "
+        "re-pinned once so a future genuine drift is not silently accepted."
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO decisions (
+            decision_id, kind, tier, subject_id, title, context, options_json,
+            decision, evidence_refs_json, decided_on, decided_by, approver_kind,
+            status, adr_path, git_sha
+        ) VALUES (
+            'DEC_CODE_IDENTITY_V2', 'factor_registration', 0, 'factors',
+            'Re-pin factor code identity to v2 (source + helper dependency hashes)',
+            ?, '[]', 'approve', '[]', ?, 'system', 'system',
+            'approved', 'docs/adr/0002-code-identity-v2.md', ?
+        )
+        """,
+        (context, timestamp, git_sha),
+    )
+
+
 def sync(ctx: RunContext, definitions: List[FactorSpec]) -> Result:
     """Sync registered factor definitions to factor_registry and factor_status_history.
-    
-    Rejects changed code/helper hashes without affected version bumps.
-    Assigns valid lifecycle shadow to controls and legacy diagnostics.
+
+    Rejects changed code/helper hashes without affected version bumps. A row still carrying
+    the v1 (spec-text-only) hash for an otherwise-unchanged spec is re-pinned to v2 once
+    (MASTER_SPEC 5.1, D5); any other mismatch still refuses. Assigns valid lifecycle shadow
+    to controls and legacy diagnostics.
     """
+    from quant.data.gates import record_event
+
     cur = ctx.conn.cursor()
     _ensure_bootstrap_decision(ctx.conn, ctx.clock.iso(), ctx.git_sha)
 
     synced_count = 0
     now_iso = ctx.clock.iso()
+    repinned: List[str] = []
 
     for spec in definitions:
         code_sha = _calc_code_sha(spec)
@@ -101,12 +270,19 @@ def sync(ctx: RunContext, definitions: List[FactorSpec]) -> Result:
 
         if existing is not None:
             existing_sha, existing_formula = existing
-            if existing_sha != code_sha or existing_formula != spec.formula:
-                raise Refused(
-                    "CODE_CHANGED_WITHOUT_VERSION_BUMP",
-                    f"Factor {spec.factor_id} code or formula changed without version bump (sha {existing_sha} != {code_sha})",
+            if existing_sha == code_sha and existing_formula == spec.formula:
+                continue
+            if existing_formula == spec.formula and existing_sha == _calc_code_sha_v1(spec):
+                cur.execute(
+                    "UPDATE factor_registry SET code_sha256 = ? WHERE factor_id = ?",
+                    (code_sha, spec.factor_id),
                 )
-            continue
+                repinned.append(spec.factor_id)
+                continue
+            raise Refused(
+                "CODE_CHANGED_WITHOUT_VERSION_BUMP",
+                f"Factor {spec.factor_id} code or formula changed without version bump (sha {existing_sha} != {code_sha})",
+            )
         if spec.hypothesis_id:
             cur.execute(
                 """
@@ -192,10 +368,17 @@ def sync(ctx: RunContext, definitions: List[FactorSpec]) -> Result:
         )
         synced_count += 1
 
+    if repinned:
+        _ensure_code_identity_v2_decision(ctx.conn, now_iso, ctx.git_sha)
+        record_event(
+            ctx, "CODE_IDENTITY_REPIN", "INFO",
+            {"decision_id": "DEC_CODE_IDENTITY_V2", "factor_ids": sorted(repinned)},
+        )
+
     return Result(
         status="ok",
-        counts={"synced": synced_count},
-        details={"message": f"Synced {synced_count} factors"},
+        counts={"synced": synced_count, "repinned": len(repinned)},
+        details={"message": f"Synced {synced_count} factors", "repinned": sorted(repinned)},
     )
 
 
