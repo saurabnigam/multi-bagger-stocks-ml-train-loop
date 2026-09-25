@@ -47,6 +47,7 @@ price_min_coverage = 0.95
 other_min_coverage = 0.70
 corr_limit_new = 0.70
 corr_limit_redundant = 0.85
+max_annual_age_days = 487
 [horizons]
 learning_m = 3
 thesis_m = 12

@@ -44,10 +44,17 @@ class FactorInputs:
     G6 unit-bound masking (MASTER_SPEC section 4.6) happens here, at read time, not by
     rewriting stored rows: `attribute()` masks trailing_pe with abs(PE) >= 1000,
     mcap_inr <= 0, dividend_rate_inr < 0 and ev_inr <= 0 to NaN; `holdings()` masks
-    values outside [0, 1] to NaN. `ttm()` and `fundamental()` are unaffected -- their
-    values are validated by each factor's own formula-specific denominator checks, not
-    by G6. `self.members` is always a pandas Index of security_id ints; every series
-    returned here is reindexed against it with an explicit float dtype.
+    values outside [0, 1] to NaN. `ttm()` and `fundamental()` are unaffected by G6 --
+    their values are validated by each factor's own formula-specific denominator
+    checks, not by G6. `self.members` is always a pandas Index of security_id ints;
+    every series returned here is reindexed against it with an explicit float dtype.
+
+    Latest-annual staleness (MASTER_SPEC 4.4, 5.3; task T8), a separate rule from G6,
+    is also enforced here: `fundamental()` and `fundamental_dated()` blank every period
+    of a security at annual frequency whose newest admissible annual period_end is
+    older than `max_annual_age_days` before `as_of` (default 487 days / ~16 months).
+    Without this, a field Yahoo left null for the newest fiscal year silently reads as
+    the prior year's "latest annual" value with no signal that it is stale.
     """
 
     def __init__(
@@ -63,6 +70,7 @@ class FactorInputs:
         ttm_fn: Optional[Callable[[str, int, List[int]], Tuple[pd.Series, pd.Series]]] = None,
         holdings_fn: Optional[Callable[[int, List[int]], pd.Series]] = None,
         fund_dates_fn: Optional[Callable[[str, str, str, int, List[int]], Tuple[pd.DataFrame, pd.DataFrame]]] = None,
+        max_annual_age_days: int = 487,
     ):
         self.as_of = str(as_of)
         self.cutoff = str(cutoff)
@@ -75,6 +83,7 @@ class FactorInputs:
         self._ttm_fn = ttm_fn
         self._holdings_fn = holdings_fn
         self._fund_dates_fn = fund_dates_fn
+        self._max_annual_age_days = int(max_annual_age_days)
 
     def _get_start_date(self, lookback_days: int) -> str:
         if lookback_days < 0:
@@ -220,25 +229,71 @@ class FactorInputs:
         return (pd.DataFrame.from_dict(data, orient="index", columns=cols),
                 pd.DataFrame.from_dict(dates, orient="index", columns=cols))
 
-    def fundamental(self, statement: str, field: str, freq: str, n_periods: int) -> pd.DataFrame:
-        """Point-in-time fundamental statement series."""
-        canon_stmt, freq_norm = self._normalise_request(statement, freq)
-        if self._fund_fn:
-            df = self._fund_fn(canon_stmt, field, freq_norm, n_periods, [int(x) for x in self.members])
-            return df.reindex(index=self.members)
-        return self._query_frames(canon_stmt, field, freq_norm, n_periods)[0]
+    def _mask_stale_annual(self, vals: pd.DataFrame, dates: pd.DataFrame) -> pd.DataFrame:
+        """Blank every period of a security whose newest admissible annual period_end
+        is older than ``max_annual_age_days`` before ``as_of`` (MASTER_SPEC 4.4, 5.3;
+        task T8). A missing newest date (no data at all) is left alone -- that is
+        "missing", not "stale" -- so only a security with a real, too-old date is
+        masked. Only the values are blanked; the dates frame keeps its original
+        content for provenance.
+        """
+        if dates.shape[1] == 0:
+            return vals
+        newest = pd.to_datetime(dates.iloc[:, 0], errors="coerce")
+        limit = pd.Timestamp(self.as_of) - pd.Timedelta(days=self._max_annual_age_days)
+        stale = newest.notna() & (newest < limit)
+        if not stale.any():
+            return vals
+        vals = vals.copy()
+        vals.loc[stale] = np.nan
+        return vals
 
-    def fundamental_dated(self, statement: str, field: str, freq: str, n_periods: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """``fundamental()`` plus the period_end of every value (None where unknown)."""
+    def fundamental(self, statement: str, field: str, freq: str, n_periods: int) -> pd.DataFrame:
+        """Point-in-time fundamental statement series.
+
+        Annual frequency is masked for staleness -- see ``_mask_stale_annual`` -- when
+        a dated reader (``fund_dates_fn``, or the default query, both of which know
+        each value's period_end) is available. A custom ``fund_fn`` with no dates
+        function cannot know staleness and behaves as before.
+        """
         canon_stmt, freq_norm = self._normalise_request(statement, freq)
         sids = [int(x) for x in self.members]
         if self._fund_dates_fn:
             vals, dates = self._fund_dates_fn(canon_stmt, field, freq_norm, n_periods, sids)
-            return vals.reindex(index=self.members), dates.reindex(index=self.members)
+            vals = vals.reindex(index=self.members)
+            if freq_norm == "A":
+                vals = self._mask_stale_annual(vals, dates.reindex(index=self.members))
+            return vals
+        if self._fund_fn:
+            df = self._fund_fn(canon_stmt, field, freq_norm, n_periods, sids)
+            return df.reindex(index=self.members)
+        vals, dates = self._query_frames(canon_stmt, field, freq_norm, n_periods)
+        if freq_norm == "A":
+            vals = self._mask_stale_annual(vals, dates)
+        return vals
+
+    def fundamental_dated(self, statement: str, field: str, freq: str, n_periods: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """``fundamental()`` plus the period_end of every value (None where unknown).
+
+        Values are masked for staleness the same way ``fundamental()`` is; the
+        returned dates are never masked, so callers can still see what was blanked.
+        """
+        canon_stmt, freq_norm = self._normalise_request(statement, freq)
+        sids = [int(x) for x in self.members]
+        if self._fund_dates_fn:
+            vals, dates = self._fund_dates_fn(canon_stmt, field, freq_norm, n_periods, sids)
+            vals = vals.reindex(index=self.members)
+            dates = dates.reindex(index=self.members)
+            if freq_norm == "A":
+                vals = self._mask_stale_annual(vals, dates)
+            return vals, dates
         if self._fund_fn:
             vals = self._fund_fn(canon_stmt, field, freq_norm, n_periods, sids).reindex(index=self.members)
             return vals, pd.DataFrame(None, index=self.members, columns=list(range(n_periods)), dtype=object)
-        return self._query_frames(canon_stmt, field, freq_norm, n_periods)
+        vals, dates = self._query_frames(canon_stmt, field, freq_norm, n_periods)
+        if freq_norm == "A":
+            vals = self._mask_stale_annual(vals, dates)
+        return vals, dates
 
     def splits(self, lookback_days: int) -> Dict[int, List[tuple]]:
         """Point-in-time split/bonus events per security: sid -> [(date, ratio)], oldest first."""
@@ -355,9 +410,12 @@ def build(ctx: RunContext, draft: Draft) -> FactorInputs:
         from quant.data.fundamentals import pit_frame
         return pit_frame(ctx.conn, draft.knowledge_cutoff, statement, field, freq, n_periods, sids, with_dates=True)
 
+    max_annual_age_days = int(getattr(ctx.cfg.factors, "max_annual_age_days", 487))
+
     def _ttm_fn(field: str, offset_quarters: int, sids: List[int]) -> Tuple[pd.Series, pd.Series]:
         from quant.data.fundamentals import ttm
-        return ttm(ctx.conn, draft.knowledge_cutoff, field, sids, offset_quarters=offset_quarters)
+        return ttm(ctx.conn, draft.knowledge_cutoff, field, sids, offset_quarters=offset_quarters,
+                   as_of=draft.as_of, max_annual_age_days=max_annual_age_days)
 
     def _holdings_fn(lag_runs: int, sids: List[int]) -> pd.Series:
         from quant.data.holdings import series
@@ -382,4 +440,5 @@ def build(ctx: RunContext, draft: Draft) -> FactorInputs:
         ttm_fn=_ttm_fn,
         holdings_fn=_holdings_fn,
         fund_dates_fn=_fund_dates_fn,
+        max_annual_age_days=max_annual_age_days,
     )
