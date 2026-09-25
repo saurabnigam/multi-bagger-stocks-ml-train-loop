@@ -16,6 +16,75 @@ from quant.types import Clock, Result
 
 REQUIRED_HEADERS = {"Company Name", "Industry", "Symbol", "Series", "ISIN Code"}
 
+PLACEHOLDER_SYMBOL_PREFIX = "DUMMY"
+
+
+def validate_isin(isin: Any) -> bool:
+    """Structural + check-digit validation of an ISIN (ISO 6166).
+
+    A valid ISIN is exactly 12 characters: a 2-letter country code, 9 further
+    alphanumeric characters, and a 1-digit check digit. The check digit is the
+    standard Luhn-style checksum computed over the numeral string obtained by
+    mapping each letter to two digits (A=10 .. Z=35) and leaving digits as-is.
+
+    Task T9 / decision D10: NSE's own placeholder rows for entities mid-demerger
+    (e.g. "Dummy HEG Ltd.", symbol DUMMYHEG, ISIN DUM545A01024) are syntactically
+    12-character codes but fail this check digit -- the same signal used by
+    quant.model.screens to exclude them with reason index_placeholder.
+    """
+    if not isinstance(isin, str):
+        return False
+    code = isin.strip().upper()
+    if len(code) != 12:
+        return False
+    if not code[:2].isalpha():
+        return False
+    if not code[2:11].isalnum():
+        return False
+    if not code[11].isdigit():
+        return False
+
+    numeral_chars = []
+    for ch in code:
+        if ch.isdigit():
+            numeral_chars.append(ch)
+        else:
+            numeral_chars.append(str(ord(ch) - ord("A") + 10))
+    numeral = "".join(numeral_chars)
+
+    total = 0
+    for i, ch in enumerate(numeral[::-1]):
+        d = int(ch)
+        if i % 2 == 1:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+    return total % 10 == 0
+
+
+def is_placeholder_symbol(symbol: Any) -> bool:
+    """NSE lists index-placeholder rows for spun-off entities before the new listing
+    has prices (task T9 / decision D10), e.g. "Dummy HEG Ltd." under symbol DUMMYHEG."""
+    if pd.isna(symbol):
+        return False
+    return str(symbol).strip().upper().startswith(PLACEHOLDER_SYMBOL_PREFIX)
+
+
+def is_index_placeholder(symbol: Any, isin: Any) -> bool:
+    """True when a member is an NSE index-placeholder row: symbol prefixed DUMMY, or
+    -- when an ISIN is actually present -- an ISIN that fails check-digit validation.
+    A missing/blank ISIN is not itself placeholder evidence; only a present but
+    malformed one is (MASTER_SPEC 6.1 exclusion reasons; task T9 / decision D10)."""
+    if is_placeholder_symbol(symbol):
+        return True
+    if pd.isna(isin):
+        return False
+    isin_str = str(isin).strip()
+    if not isin_str:
+        return False
+    return not validate_isin(isin_str)
+
 
 def fetch_list(name: str, cfg: Config, clock: Clock) -> tuple[bytes, dict[str, Any]]:
     name_lower = name.lower()
@@ -154,6 +223,9 @@ def capture(ctx: Any) -> Result:
             (capture_id, meta["captured_at"], str(raw_path), meta["sha256"], ctx.run_id),
         )
 
+        isin_to_security_id: dict[str, int] = {}
+        symbol_to_isin: dict[str, str] = {}
+
         for _, r in df.iterrows():
             # Upsert security
             cur = ctx.conn.execute("SELECT security_id FROM securities WHERE isin = ?", (r["isin"],))
@@ -171,6 +243,9 @@ def capture(ctx: Any) -> Result:
                 )
                 sec_id = cur_ins.lastrowid
 
+            isin_to_security_id[str(r["isin"])] = int(sec_id)
+            symbol_to_isin[str(r["symbol"]).strip().upper()] = str(r["isin"])
+
             # symbol_history keeps exactly one open row per security: an unchanged symbol is
             # a no-op, a changed symbol closes the open row and opens a new one.
             _upsert_symbol(ctx, int(sec_id), str(r["symbol"]), captured_date)
@@ -181,6 +256,43 @@ def capture(ctx: Any) -> Result:
                 "VALUES (?, ?, ?, 'NIFTY500', ?, ?, ?, 'nse_csv', ?)",
                 (captured_date, meta["captured_at"], sec_id, r["symbol"], r["nse_sector"], r["series"], meta["sha256"]),
             )
+
+        # Task T9 / decision D10: NSE placeholder rows (e.g. DUMMYHEG for a
+        # mid-demerger spin-off) get one WARN data_quality_events row each, recorded
+        # as corporate-action evidence for the parent member the placeholder most
+        # likely refers to -- its own symbol with the DUMMY prefix removed, when that
+        # symbol is itself a member of this capture. Import kept local: quant.data.gates
+        # does not otherwise depend on quant.data.universe, and vice versa.
+        from quant.data.gates import record_event
+
+        for _, r in df.iterrows():
+            symbol = str(r["symbol"])
+            isin = str(r["isin"])
+            if not is_index_placeholder(symbol, isin):
+                continue
+
+            own_security_id = isin_to_security_id.get(isin)
+            parent_symbol = None
+            parent_security_id = None
+            if is_placeholder_symbol(symbol):
+                candidate = symbol.strip().upper()[len(PLACEHOLDER_SYMBOL_PREFIX):]
+                candidate_isin = symbol_to_isin.get(candidate)
+                if candidate_isin is not None:
+                    parent_symbol = candidate
+                    parent_security_id = isin_to_security_id.get(candidate_isin)
+
+            record_event(
+                ctx,
+                code="INDEX_PLACEHOLDER",
+                severity="WARN",
+                detail={
+                    "placeholder_symbol": symbol,
+                    "placeholder_isin": isin,
+                    "parent_symbol": parent_symbol,
+                },
+                security_id=parent_security_id if parent_security_id is not None else own_security_id,
+            )
+
         ctx.conn.execute("RELEASE quant_universe_capture")
     except Exception:
         ctx.conn.execute("ROLLBACK TO quant_universe_capture")

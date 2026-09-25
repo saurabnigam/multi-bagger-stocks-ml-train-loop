@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
+from quant.data.universe import is_index_placeholder
 from quant.portfolio.costs import bucket as liquidity_bucket_for
 
 if TYPE_CHECKING:
@@ -15,6 +16,16 @@ if TYPE_CHECKING:
 
 # MASTER_SPEC section 6.1: "unknown sector" covers these exact spellings.
 UNKNOWN_SECTOR_VALUES = {"UNCLASSIFIED", "UNKNOWN", "", "None", "nan"}
+
+
+def _placeholder_signal(sid: Any, members: pd.DataFrame | None) -> tuple[Any, Any]:
+    """Pull the (symbol, isin) pair for a member, tolerating either column's absence
+    -- many synthetic/unit-test member frames carry neither."""
+    if members is None or sid not in members.index:
+        return None, None
+    symbol = members.loc[sid, "symbol"] if "symbol" in members.columns else None
+    isin = members.loc[sid, "isin"] if "isin" in members.columns else None
+    return symbol, isin
 
 
 def apply(
@@ -110,6 +121,16 @@ def apply(
     exclusion_reason = out["exclusion_reason"].copy()
 
     for sid in idx:
+        # Task T9 / decision D10 (MASTER_SPEC 6.1 exclusion reasons): NSE placeholder
+        # rows for entities mid-demerger (symbol DUMMY*, or a present-but-invalid
+        # ISIN) are excluded as index_placeholder. This takes precedence over
+        # coverage and every other reason below -- checked first, unconditionally.
+        m_symbol, m_isin = _placeholder_signal(sid, members)
+        if is_index_placeholder(m_symbol, m_isin):
+            eligible.loc[sid] = 0
+            exclusion_reason.loc[sid] = "index_placeholder"
+            continue
+
         if out.loc[sid, "scored"] == 0:
             eligible.loc[sid] = 0
             if pd.isna(exclusion_reason.loc[sid]) or not exclusion_reason.loc[sid]:
