@@ -447,7 +447,7 @@ def _git(args: list[str], cwd: Path) -> tuple[int, str]:
     return res.returncode, (res.stdout + res.stderr).strip()
 
 
-def _commit_and_push(cfg: Config, as_of: str, *, commit: bool, push: bool) -> None:
+def _commit_and_push(cfg: Config, as_of: str, *, commit: bool, push: bool, clock: Clock, actor: Actor) -> None:
     """Commit only intended data/report files; push only with the explicit flag."""
     if not commit:
         return
@@ -469,8 +469,23 @@ def _commit_and_push(cfg: Config, as_of: str, *, commit: bool, push: bool) -> No
     warn_bytes = int(_cfg(cfg, "budgets", "state_warn_bytes", 50_000_000))
     db_path = Path(cfg.paths.db)
     if db_path.exists() and db_path.stat().st_size > warn_bytes:
-        _print(f"State database {db_path} is {db_path.stat().st_size} bytes (> state_warn_bytes {warn_bytes}); "
+        actual_bytes = db_path.stat().st_size
+        _print(f"State database {db_path} is {actual_bytes} bytes (> state_warn_bytes {warn_bytes}); "
                "not staged. Record a capacity decision before committing it.")
+        # Non-blocking: a recorded warning, never a publication block (MASTER_SPEC 10.5,
+        # decision D8). Journaled through its own short RunContext, since the monthly
+        # run's own RunContext has already committed and closed by this point.
+        try:
+            from quant.data.gates import record_event
+            with RunContext(as_of=as_of, kind="maintenance", track="live", cfg=cfg, clock=clock, actor=actor) as budget_ctx:
+                record_event(
+                    budget_ctx,
+                    code="STATE_BUDGET_EXCEEDED",
+                    severity="WARN",
+                    detail={"bytes": actual_bytes, "budget": warn_bytes, "db_path": str(db_path)},
+                )
+        except Exception as exc:
+            _print(f"Failed to record STATE_BUDGET_EXCEEDED event: {exc!r}")
         rel = [r for r in rel if Path(root / r).resolve() != db_path.resolve()]
         if not rel:
             return
@@ -689,5 +704,5 @@ def monthly(
     finally:
         post_conn.close()
 
-    _commit_and_push(cfg, as_of, commit=commit, push=push)
+    _commit_and_push(cfg, as_of, commit=commit, push=push, clock=clock, actor=actor)
     return 2 if blocked_reason else 0
