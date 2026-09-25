@@ -18,7 +18,8 @@ def test_db_conn(tmp_path):
 
 
 def test_seed_initializes_launch_models(test_db_conn, cfg):
-    """Seed registers initial models: EW_HIER_v1 (champion), EW_FLAT_v1, MOM_ONLY_v1, IC_SHRUNK_v1."""
+    """Seed registers initial models: EW_HIER_v1 (champion), EW_FLAT_v1, MOM_ONLY_v1, IC_SHRUNK_v1,
+    plus challengers EW_HIER_NR_v1 and EW_HIER_COV_v1 (MASTER_SPEC 6.4 decisions D6/D7)."""
     ctx = RunContext(
         as_of="2026-09-01",
         kind="test",
@@ -39,9 +40,9 @@ def test_seed_initializes_launch_models(test_db_conn, cfg):
     assert rows["IC_SHRUNK_v1"] == "challenger"
     assert "SECTOR_OVERLAY_v1" not in rows
 
-    # Verify versions
+    # Verify versions (6 launch models, one version-1 row each)
     v_rows = test_db_conn.execute("SELECT model_id, version FROM model_versions").fetchall()
-    assert len(v_rows) == 4
+    assert len(v_rows) == 6
     for mid, v in v_rows:
         assert v == 1
 
@@ -165,7 +166,10 @@ def test_score_all_and_idempotence(test_db_conn, cfg, spec_case):
     scores2, weights2 = score_all(ctx, draft, ic_hist)
 
     assert len(scores1) > 0
-    assert set(scores1["model_id"]) == {"EW_HIER_v1", "EW_FLAT_v1", "MOM_ONLY_v1", "IC_SHRUNK_v1"}
+    assert set(scores1["model_id"]) == {
+        "EW_HIER_v1", "EW_FLAT_v1", "MOM_ONLY_v1", "IC_SHRUNK_v1",
+        "EW_HIER_NR_v1", "EW_HIER_COV_v1",
+    }
     pd.testing.assert_frame_equal(scores1, scores2)
     pd.testing.assert_frame_equal(weights1, weights2)
 

@@ -44,6 +44,21 @@ def compose(
         with weights from units renormalized over present families.
       - 'flat': Averages all finite active/probation factors directly using status weights.
       - 'mom_only': Only requires the momentum family and >= 1 finite factor.
+      - 'hierarchical_nr': Family scores and composite exactly as 'hierarchical', but
+        'final' is the raw composite -- no within-sector re-neutralisation. Drops the
+        group-size ceiling that composite_neutral's rank-normal transform imposes
+        (MASTER_SPEC 6.4 decision D6). 'composite_neutral' is still computed and stored
+        for diagnostics; a group too small/constant to standardise never excludes a name
+        from being scored in this mode, since 'final' does not depend on it. Ranks by
+        'final' descending; since final == composite, ties are already broken by
+        composite descending, then security_id ascending.
+      - 'hierarchical_cov': As 'hierarchical', but 'final' = composite_neutral *
+        sqrt(n_factors_used / n_applicable_factors) -- a mild coverage shrinkage so a
+        composite over few applicable factors counts for less (MASTER_SPEC 6.4 decision
+        D7). n_applicable_factors excludes nonfinancial-only factors for Financial
+        Services names, matching the coverage-share denominator above. Coverage and
+        eligibility rules are unchanged; a name unscored for neutralisation stays
+        unscored here too, since 'final' derives from composite_neutral.
     """
     idx = z.index
     groups_aligned = groups.reindex(idx).fillna("UNKNOWN")
@@ -89,6 +104,7 @@ def compose(
     composites = {}
     scored_flags = {}
     n_factors_used = {}
+    n_applicable = {}
     exclusion_reasons = {}
 
     for sid in idx:
@@ -102,6 +118,7 @@ def compose(
             app_factors = eval_factors
 
         D = len(app_factors)
+        n_applicable[sid] = D
 
         # Finite observations
         finite_factors = [
@@ -178,11 +195,17 @@ def compose(
     # doing so would silently mix a raw, non-comparable score into production ranking.
     # Such names are unscored with reason "neutralisation"; the raw composite is kept
     # for diagnostics but composite_neutral/final stay NaN.
+    #
+    # 'hierarchical_nr' does not use composite_neutral for 'final' at all (MASTER_SPEC
+    # 6.4 D6), so a failed neutralisation must not exclude a name here -- comp_neutral
+    # is retained purely as a diagnostic column in that mode.
+    is_nr_mode = mode.lower() == "hierarchical_nr"
     failed_neutral = (scored_series == 1) & comp_neutral.isna() & comp_series.notna()
-    for sid in failed_neutral[failed_neutral].index:
-        scored_flags[sid] = 0
-        exclusion_reasons[sid] = "neutralisation"
-    scored_series = pd.Series(scored_flags, index=idx, dtype=int)
+    if not is_nr_mode:
+        for sid in failed_neutral[failed_neutral].index:
+            scored_flags[sid] = 0
+            exclusion_reasons[sid] = "neutralisation"
+        scored_series = pd.Series(scored_flags, index=idx, dtype=int)
 
     comp_neutral = comp_neutral.where(scored_series == 1, np.nan)
 
@@ -194,6 +217,21 @@ def compose(
     else:
         sector_tilt = pd.Series(0.0, index=idx, dtype=float)
         final = comp_neutral.copy()
+
+    if is_nr_mode:
+        # No within-sector re-neutralisation: rank directly on the raw composite.
+        final = comp_series.copy()
+    elif mode.lower() == "hierarchical_cov":
+        # Mild coverage shrinkage (MASTER_SPEC 6.4 D7): a composite built from fewer of
+        # the applicable factors counts for less. n_applicable_factors (D, computed per
+        # security above) already excludes nonfinancial-only factors for Financial
+        # Services names, matching the coverage-share denominator.
+        n_used_series = pd.Series(n_factors_used, index=idx, dtype=float)
+        n_app_series = pd.Series(n_applicable, index=idx, dtype=float)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            cov_scale = np.sqrt(n_used_series / n_app_series)
+        final = comp_neutral * cov_scale
+
     final = final.where(scored_series == 1, np.nan)
 
     # Initial rankings on scored names
