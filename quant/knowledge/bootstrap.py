@@ -6,19 +6,14 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from quant.factors.registry import LAUNCH_FACTOR_CLASSES, sync as sync_factors
+from quant.factors.registry import LAUNCH_FACTOR_CLASSES, _calc_code_sha, sync as sync_factors
 from quant.model.models import seed as seed_models
 from quant.types import Result
 
 if TYPE_CHECKING:
     from quant.run import RunContext
-
-
-def _calc_code_sha(spec: Any) -> str:
-    content = f"{spec.name}:{spec.version}:{spec.formula}:{','.join(sorted(spec.inputs))}:{spec.direction}:{spec.hypothesis}"
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 def seed(ctx: RunContext, spec_sha256: str) -> Result:
