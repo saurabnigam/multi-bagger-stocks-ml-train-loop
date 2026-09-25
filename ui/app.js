@@ -11,8 +11,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const factors = window.QUANT_FACTORS || { summary: {}, family_weights: [], factors: [], contracts: [] };
     const kb = window.QUANT_KB || { summary: {}, decisions: [], proposals: [], lessons: [], hypotheses: [] };
 
+    // data.accepted/rejected/turnaround are arrays of security_id (single canonical
+    // stock list, MASTER_SPEC 10.7); resolve them against data.stocks here.
+    const stocksById = new Map((data.stocks || []).map(s => [s.security_id, s]));
+    function resolveStockIds(ids) {
+        return (ids || []).map(id => stocksById.get(id)).filter(Boolean);
+    }
+
     // Global Chart Instances to prevent canvas collision
-    let stockCfChart = null;
     let learningChartInstance = null;
     let scoreboardChartInstance = null;
     let sectorsChartInstance = null;
@@ -88,6 +94,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ========================================================================
     // 3. TAB 1: Ranking View
+    //
+    // Stock cards show only stored V2 values published for this cohort: final score,
+    // rank/decile/quintile, family_scores, per-factor raw/z/flags, exclusion_reason,
+    // liquidity_bucket and n_factors_used. There is no multiplier, death-cross or
+    // value-trap narrative here (MASTER_SPEC 6.1); that content lives only in the
+    // Legacy tab. dc_flag is shown as a diagnostic only and never gates a card.
     // ========================================================================
     const stockListEl = document.getElementById('stock-list');
     const detailViewEl = document.getElementById('detail-view');
@@ -111,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
         aiWeightsContainer.style.display = 'block';
         aiWeightsContainer.innerHTML = `
             <div class="ai-weights-title">
-                <span>Active AI Weights</span>
+                <span>Published Family Weights</span>
                 <span>${meta.snapshot_date || ''}</span>
             </div>
             <div class="ai-weights-grid">
@@ -133,14 +145,14 @@ document.addEventListener('DOMContentLoaded', () => {
         let stocksToRender = [];
         if (currentRankingSubtab === 'accepted') {
             stocksToRender = (data.accepted && data.accepted.length > 0)
-                ? data.accepted
-                : (data.stocks || []).filter(s => s.eligible && s.final_score > 0 && !s.dc_flag).slice(0, 25);
+                ? resolveStockIds(data.accepted)
+                : (data.stocks || []).filter(s => s.eligible && s.final_score > 0).slice(0, 25);
         } else if (currentRankingSubtab === 'rejected') {
             stocksToRender = (data.rejected && data.rejected.length > 0)
-                ? data.rejected
-                : (data.stocks || []).filter(s => !s.eligible || s.final_score === 0 || s.dc_flag === 1);
+                ? resolveStockIds(data.rejected)
+                : (data.stocks || []).filter(s => !s.eligible || s.final_score === 0);
         } else if (currentRankingSubtab === 'turnaround') {
-            stocksToRender = data.turnaround || [];
+            stocksToRender = resolveStockIds(data.turnaround);
         }
 
         if (stocksToRender.length === 0) {
@@ -158,12 +170,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let badge = '';
             if (currentRankingSubtab === 'rejected') {
-                if (stock.dc_flag === 1 || (stock.rejection_reason && stock.rejection_reason.includes('Death Cross'))) {
-                    badge = '<span class="badge-refused" style="background:#ff3b30; color:white;">DEATH CROSS</span>';
+                if (!stock.eligible) {
+                    badge = '<span class="badge-refused" style="background:#ff3b30; color:white;">EXCLUDED</span>';
                 } else if (stock.final_score === 0) {
-                    badge = '<span class="badge-refused" style="background:#ff3b30; color:white;">EJECTED</span>';
+                    badge = '<span class="badge-refused" style="background:#ff3b30; color:white;">UNSCORED</span>';
                 } else {
-                    badge = '<span class="badge-unavailable">FAIL</span>';
+                    badge = `<span class="badge-unavailable">RANK #${stock.rank || '--'}</span>`;
                 }
             } else if (currentRankingSubtab === 'turnaround') {
                 badge = '<span class="badge-unavailable" style="background:#fff8e6; color:#d97d00; border-color:#ffd591;">CASH BURN</span>';
@@ -172,9 +184,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const title = stock.company_name || stock.ticker;
-            const sub = (stock.company_name && stock.company_name !== stock.ticker)
-                ? `${stock.ticker} · ${stock.sector_group || stock.sector || ''}`
-                : (stock.sector_group || stock.sector || '');
 
             li.innerHTML = `
                 <div class="stock-ticker">${stock.ticker} ${badge}</div>
@@ -217,6 +226,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function fmtNum(v, digits) {
+        return (v === null || v === undefined) ? '--' : Number(v).toFixed(digits === undefined ? 3 : digits);
+    }
+
     function loadStock(stock) {
         if (!detailViewEl || !stock) return;
         document.querySelectorAll('.stock-item').forEach(el => el.classList.remove('active'));
@@ -225,178 +238,155 @@ document.addEventListener('DOMContentLoaded', () => {
 
         detailViewEl.classList.remove('empty-state');
 
-        // Banners
+        // Banners: built only from stored values (exclusion_reason, rank, family_scores).
         let bannerHtml = '';
         if (currentRankingSubtab === 'rejected') {
+            const reason = stock.exclusion_reason
+                || (stock.eligible ? `Eligible; rank #${stock.rank || '--'} exceeds the portfolio cutoff (top ${(data.snapshotMeta || {}).top_n || 25}).` : 'Not eligible for this cohort.');
             bannerHtml = `
                 <div style="background-color: #fff1f0; border-left: 4px solid #ff3b30; padding: 14px 16px; margin-bottom: 20px; border-radius: 6px;">
-                    <h4 style="color: #ff3b30; margin: 0 0 6px 0; font-size: 13px; text-transform: uppercase;">Why This Stock Was Rejected</h4>
-                    <p style="margin: 0; font-size: 13px; font-weight: 500; color: #333;">${stock.rejection_reason || 'Fundamental composite fell below top portfolio eligibility.'}</p>
+                    <h4 style="color: #ff3b30; margin: 0 0 6px 0; font-size: 13px; text-transform: uppercase;">Why This Stock Is Not In The Portfolio</h4>
+                    <p style="margin: 0; font-size: 13px; font-weight: 500; color: #333;">${reason}</p>
                 </div>
             `;
         } else if (currentRankingSubtab === 'turnaround') {
-            const burnVal = stock.bearRisk && stock.bearRisk.fcf_burn_raw ? Math.abs(stock.bearRisk.fcf_burn_raw).toFixed(1) : 'substantial';
             bannerHtml = `
                 <div style="background-color: #fff8e6; border-left: 4px solid #ff9500; padding: 14px 16px; margin-bottom: 20px; border-radius: 6px;">
-                    <h4 style="color: #d97d00; margin: 0 0 6px 0; font-size: 13px; text-transform: uppercase;">Hyper-CapEx / Turnaround Alert</h4>
+                    <h4 style="color: #d97d00; margin: 0 0 6px 0; font-size: 13px; text-transform: uppercase;">Turnaround Saved Filter</h4>
                     <p style="margin: 0; font-size: 13px; font-weight: 500; line-height: 1.5; color: #333;">
-                        This stock was quarantined from the core portfolio due to heavy Free Cash Flow burn (₹${burnVal} Cr). However, it demonstrates explosive underlying growth. If CapEx is successfully monetized, substantial multi-bagger re-rating may follow.
+                        Top-quintile growth family score with negative FCF yield (MASTER_SPEC 6.1). This is a display filter over published values, not a separate scoring path.
                     </p>
                 </div>
             `;
         }
 
-        const qt = stock.quantTickers || {};
-        const pe = qt.pe > 0 ? qt.pe : '--';
-        const roce = qt.roce !== undefined ? qt.roce : '--';
-        const fcfYield = qt.fcf_yield !== undefined ? qt.fcf_yield : '--';
-        const divYield = qt.div_yield !== undefined ? qt.div_yield : '--';
-        const sma50 = qt.sma50 ? qt.sma50.toFixed(1) : '--';
-        const sma200 = qt.sma200 ? qt.sma200.toFixed(1) : '--';
-        const instHoldings = qt.inst_holdings !== undefined ? qt.inst_holdings : '--';
-
-        const peClass = qt.pe > 0 && qt.pe < 25 ? 'good' : '';
-        const roceClass = qt.roce > 15 ? 'good' : '';
-        const fcfClass = qt.fcf_yield > 0 ? 'good' : (qt.fcf_yield < 0 ? 'negative' : '');
-        const smaClass = qt.sma50 > qt.sma200 ? 'good' : '';
-
-        // Quarterly and EBITDA metrics
+        const fs = stock.family_scores || {};
+        const factorRows = stock.factors || [];
         const qm = stock.quarterly || {};
-        const ebitdaVal = qm.ebitda_cr !== null && qm.ebitda_cr !== undefined 
-            ? `₹${qm.ebitda_cr.toLocaleString('en-IN', { maximumFractionDigits: 1 })} Cr` 
-            : '--';
-        const ebitdaMarginVal = qm.ebitda_margin_pct !== null && qm.ebitda_margin_pct !== undefined
-            ? `${qm.ebitda_margin_pct.toFixed(1)}%`
-            : null;
-        
-        const revGrowthVal = qm.qoq_rev_growth_pct !== null && qm.qoq_rev_growth_pct !== undefined
-            ? `${qm.qoq_rev_growth_pct > 0 ? '+' : ''}${qm.qoq_rev_growth_pct.toFixed(1)}%`
-            : '--';
-        const revGrowthClass = qm.qoq_rev_growth_pct > 0 ? 'good' : (qm.qoq_rev_growth_pct < 0 ? 'negative' : '');
-
-        const ebitdaGrowthVal = qm.qoq_ebitda_growth_pct !== null && qm.qoq_ebitda_growth_pct !== undefined
-            ? `${qm.qoq_ebitda_growth_pct > 0 ? '+' : ''}${qm.qoq_ebitda_growth_pct.toFixed(1)}%`
-            : (qm.qoq_pat_growth_pct !== null && qm.qoq_pat_growth_pct !== undefined 
-                ? `${qm.qoq_pat_growth_pct > 0 ? '+' : ''}${qm.qoq_pat_growth_pct.toFixed(1)}% (PAT)` 
-                : '--');
-        const ebitdaGrowthClass = (qm.qoq_ebitda_growth_pct > 0 || (qm.qoq_ebitda_growth_pct === null && qm.qoq_pat_growth_pct > 0)) 
-            ? 'good' 
-            : ((qm.qoq_ebitda_growth_pct < 0 || (qm.qoq_ebitda_growth_pct === null && qm.qoq_pat_growth_pct < 0)) ? 'negative' : '');
-
-        const peText = stock.plainEnglish || {};
 
         detailViewEl.innerHTML = `
             <div class="detail-header">
                 <h1>${stock.company_name || stock.ticker}</h1>
                 <div class="detail-meta">
                     <span class="meta-pill">${stock.ticker}</span>
-                    <span class="meta-pill">${stock.isin || 'INE000000000'}</span>
+                    <span class="meta-pill">${stock.isin || '--'}</span>
                     <span class="meta-pill">${stock.sector_group || stock.sector || 'Sector'}</span>
-                    <span class="meta-pill">Decile: ${stock.decile || '--'}</span>
-                    <span class="meta-pill">Rank: #${stock.rank || '--'}</span>
-                    <span class="meta-pill">${stock.mcap || 'Mkt cap n/a'}</span>
-                    ${stock.margin_of_safety ? `<span class="meta-pill" style="color: ${stock.margin_of_safety > 0 ? '#1a7f37' : '#cf222e'}">MOS: ${stock.margin_of_safety}%</span>` : ''}
+                    <span class="meta-pill">Decile: ${stock.decile ?? '--'}</span>
+                    <span class="meta-pill">Quintile: ${stock.quintile ?? '--'}</span>
+                    <span class="meta-pill">Rank: #${stock.rank ?? '--'}</span>
+                    <span class="meta-pill">Liquidity: ${stock.liquidity_bucket || '--'}</span>
                 </div>
             </div>
 
             ${bannerHtml}
 
-            <!-- Quant HUD (Institutional Metrics) -->
+            <!-- Quant HUD: stored V2 values only -->
             <div class="quant-hud">
                 <div class="quant-badge">
                     <span class="hud-label">Final Score</span>
-                    <span class="hud-value ${stock.final_score >= 60 ? 'good' : ''}">${stock.final_score ? stock.final_score.toFixed(1) : '--'}</span>
+                    <span class="hud-value ${stock.final_score >= 60 ? 'good' : ''}">${fmtNum(stock.final_score, 1)}</span>
                 </div>
                 <div class="quant-badge">
-                    <span class="hud-label">P/E Ratio</span>
-                    <span class="hud-value ${peClass}">${pe}x</span>
+                    <span class="hud-label">Composite</span>
+                    <span class="hud-value">${fmtNum(stock.composite, 1)}</span>
                 </div>
                 <div class="quant-badge">
-                    <span class="hud-label">ROCE</span>
-                    <span class="hud-value ${roceClass}">${roce}%</span>
+                    <span class="hud-label">N Factors Used</span>
+                    <span class="hud-value">${stock.n_factors_used ?? '--'}</span>
                 </div>
                 <div class="quant-badge">
-                    <span class="hud-label">FCF Yield</span>
-                    <span class="hud-value ${fcfClass}">${fcfYield}%</span>
+                    <span class="hud-label">Eligible</span>
+                    <span class="hud-value ${stock.eligible ? 'good' : 'negative'}">${stock.eligible ? 'Yes' : 'No'}</span>
                 </div>
                 <div class="quant-badge">
-                    <span class="hud-label">EBITDA (Qtr)</span>
-                    <span class="hud-value">${ebitdaVal}</span>
-                    ${ebitdaMarginVal ? `<span class="hud-sub">Margin: ${ebitdaMarginVal}</span>` : `<span class="hud-sub">${qm.latest_quarter || '--'}</span>`}
-                </div>
-                <div class="quant-badge">
-                    <span class="hud-label">QoQ Rev Growth</span>
-                    <span class="hud-value ${revGrowthClass}">${revGrowthVal}</span>
-                    <span class="hud-sub">${qm.latest_quarter ? 'Seq Quarter' : '--'}</span>
-                </div>
-                <div class="quant-badge">
-                    <span class="hud-label">QoQ EBITDA Growth</span>
-                    <span class="hud-value ${ebitdaGrowthClass}">${ebitdaGrowthVal}</span>
-                    <span class="hud-sub">${qm.qoq_ebitda_growth_pct !== null ? 'Seq Quarter' : 'PAT Seq Growth'}</span>
-                </div>
-                <div class="quant-badge">
-                    <span class="hud-label">Div Yield</span>
-                    <span class="hud-value">${divYield}%</span>
-                </div>
-                <div class="quant-badge">
-                    <span class="hud-label">50 / 200 SMA</span>
-                    <span class="hud-value ${smaClass}">${sma50} / ${sma200}</span>
-                </div>
-                <div class="quant-badge">
-                    <span class="hud-label">Inst Holdings</span>
-                    <span class="hud-value">${instHoldings}%</span>
+                    <span class="hud-label">Diagnostic Trend Flag</span>
+                    <span class="hud-value">${stock.dc_flag ? 'Below trend (diagnostic only)' : 'Above trend'}</span>
                 </div>
             </div>
 
-            <!-- Two-Column Layout for Factors & Qualitative Analysis -->
+            <!-- Two-Column Layout: Family Scores, Factor Evidence, Quarterly Fundamentals -->
             <div class="dashboard-grid">
                 <!-- Left Column -->
                 <div class="left-col">
-                    <!-- Quarterly Trends & EBITDA Card -->
                     <div class="card" style="margin-bottom: 24px;">
-                        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px;">
-                            <h3 style="margin-bottom: 0;">Quarterly Performance & EBITDA (QoQ Trends)</h3>
-                            <span style="font-size: 11px; color: var(--text-secondary); font-weight: 600;">Latest Period: ${qm.latest_quarter || 'PIT Statements'}</span>
+                        <h3>Family Scores</h3>
+                        <div class="metrics-grid">
+                            ${Object.keys(fs).length > 0 ? Object.entries(fs).map(([fam, val]) => `
+                                <div class="metric-box" style="border-left: 4px solid #0066cc; padding-left: 12px;">
+                                    <span class="metric-label" style="font-weight: 700; color: #0066cc; text-transform: capitalize;">${fam}</span>
+                                    <span class="metric-value" style="font-size: 16px; font-weight: 700; color: #1d1d1f; margin-top: 4px;">${fmtNum(val, 4)}</span>
+                                </div>
+                            `).join('') : '<div class="empty-state-box"><h4>No family scores published</h4></div>'}
                         </div>
-                        <div class="metrics-grid" style="margin-bottom: 16px;">
+                    </div>
+
+                    <div class="card" style="margin-bottom: 24px;">
+                        <h3>Per-Factor Evidence (raw / z / flags)</h3>
+                        ${factorRows.length > 0 ? `
+                            <div style="overflow-x: auto;">
+                                <table class="quarterly-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Factor</th>
+                                            <th>Family</th>
+                                            <th style="text-align: right;">Raw</th>
+                                            <th style="text-align: right;">Z</th>
+                                            <th>Flags</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${factorRows.map(f => `
+                                            <tr>
+                                                <td style="font-weight: 600;">${f.name}</td>
+                                                <td style="text-transform: capitalize;">${f.family}</td>
+                                                <td style="text-align: right; font-variant-numeric: tabular-nums;">${fmtNum(f.raw, 4)}</td>
+                                                <td style="text-align: right; font-variant-numeric: tabular-nums;">${fmtNum(f.z, 4)}</td>
+                                                <td>${f.flags || '--'}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ` : '<div class="empty-state-box"><h4>No factor evidence published</h4></div>'}
+                    </div>
+                </div>
+
+                <!-- Right Column -->
+                <div class="right-col">
+                    <div class="card" style="margin-bottom: 24px;">
+                        <h3>Quarterly Fundamentals (as captured, no derived statistics)</h3>
+                        <div style="font-size: 11px; color: var(--text-secondary); font-weight: 600; margin-bottom: 12px;">
+                            Latest period visible as of the cohort's knowledge cutoff: ${qm.latest_quarter || '--'}
+                        </div>
+                        <div class="metrics-grid">
                             <div class="metric-box" style="border-left: 4px solid #0066cc; padding-left: 12px;">
-                                <span class="metric-label" style="font-weight: 700; color: #0066cc;">Quarterly Revenue</span>
+                                <span class="metric-label" style="font-weight: 700; color: #0066cc;">Revenue</span>
                                 <span class="metric-value" style="font-size: 16px; font-weight: 700; color: #1d1d1f; margin-top: 4px;">
                                     ${qm.revenue_cr !== null && qm.revenue_cr !== undefined ? '₹' + qm.revenue_cr.toLocaleString('en-IN', { maximumFractionDigits: 1 }) + ' Cr' : '--'}
                                 </span>
-                                <span style="font-size: 11px; color: ${qm.qoq_rev_growth_pct > 0 ? '#1a7f37' : (qm.qoq_rev_growth_pct < 0 ? '#cf222e' : 'inherit')}; font-weight: 600;">
-                                    QoQ: ${revGrowthVal}
-                                </span>
                             </div>
                             <div class="metric-box" style="border-left: 4px solid #34c759; padding-left: 12px;">
-                                <span class="metric-label" style="font-weight: 700; color: #1a7f37;">Quarterly EBITDA</span>
+                                <span class="metric-label" style="font-weight: 700; color: #1a7f37;">EBITDA</span>
                                 <span class="metric-value" style="font-size: 16px; font-weight: 700; color: #1d1d1f; margin-top: 4px;">
-                                    ${ebitdaVal}
-                                </span>
-                                <span style="font-size: 11px; color: var(--text-secondary); font-weight: 500;">
-                                    ${ebitdaMarginVal ? 'Margin: ' + ebitdaMarginVal + ' · ' : ''}QoQ: ${ebitdaGrowthVal}
+                                    ${qm.ebitda_cr !== null && qm.ebitda_cr !== undefined ? '₹' + qm.ebitda_cr.toLocaleString('en-IN', { maximumFractionDigits: 1 }) + ' Cr' : '--'}
                                 </span>
                             </div>
                             <div class="metric-box" style="border-left: 4px solid #af52de; padding-left: 12px;">
-                                <span class="metric-label" style="font-weight: 700; color: #af52de;">Quarterly PAT (Net Profit)</span>
+                                <span class="metric-label" style="font-weight: 700; color: #af52de;">PAT (Net Profit)</span>
                                 <span class="metric-value" style="font-size: 16px; font-weight: 700; color: #1d1d1f; margin-top: 4px;">
                                     ${qm.pat_cr !== null && qm.pat_cr !== undefined ? '₹' + qm.pat_cr.toLocaleString('en-IN', { maximumFractionDigits: 1 }) + ' Cr' : '--'}
-                                </span>
-                                <span style="font-size: 11px; color: ${qm.qoq_pat_growth_pct > 0 ? '#1a7f37' : (qm.qoq_pat_growth_pct < 0 ? '#cf222e' : 'inherit')}; font-weight: 600;">
-                                    QoQ: ${qm.qoq_pat_growth_pct !== null && qm.qoq_pat_growth_pct !== undefined ? (qm.qoq_pat_growth_pct > 0 ? '+' : '') + qm.qoq_pat_growth_pct.toFixed(1) + '%' : '--'}
                                 </span>
                             </div>
                         </div>
 
                         ${qm.history && qm.history.length > 0 ? `
-                            <div style="overflow-x: auto;">
+                            <div style="overflow-x: auto; margin-top: 12px;">
                                 <table class="quarterly-table">
                                     <thead>
                                         <tr>
                                             <th>Quarter Period</th>
                                             <th style="text-align: right;">Revenue (₹ Cr)</th>
                                             <th style="text-align: right;">EBITDA (₹ Cr)</th>
-                                            <th style="text-align: right;">EBITDA Margin</th>
                                             <th style="text-align: right;">PAT (₹ Cr)</th>
                                         </tr>
                                     </thead>
@@ -405,8 +395,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                             <tr>
                                                 <td style="font-weight: 600;">${row.period}</td>
                                                 <td style="text-align: right; font-variant-numeric: tabular-nums;">${row.revenue_cr !== null && row.revenue_cr !== undefined ? '₹' + row.revenue_cr.toLocaleString('en-IN', { maximumFractionDigits: 1 }) : '--'}</td>
-                                                <td style="text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: ${row.ebitda_cr > 0 ? '#1a7f37' : 'inherit'};">${row.ebitda_cr !== null && row.ebitda_cr !== undefined ? '₹' + row.ebitda_cr.toLocaleString('en-IN', { maximumFractionDigits: 1 }) : '--'}</td>
-                                                <td style="text-align: right; font-variant-numeric: tabular-nums;">${row.ebitda_margin_pct !== null && row.ebitda_margin_pct !== undefined ? row.ebitda_margin_pct.toFixed(1) + '%' : '--'}</td>
+                                                <td style="text-align: right; font-variant-numeric: tabular-nums;">${row.ebitda_cr !== null && row.ebitda_cr !== undefined ? '₹' + row.ebitda_cr.toLocaleString('en-IN', { maximumFractionDigits: 1 }) : '--'}</td>
                                                 <td style="text-align: right; font-variant-numeric: tabular-nums;">${row.pat_cr !== null && row.pat_cr !== undefined ? '₹' + row.pat_cr.toLocaleString('en-IN', { maximumFractionDigits: 1 }) : '--'}</td>
                                             </tr>
                                         `).join('')}
@@ -416,149 +405,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         ` : ''}
                     </div>
 
-                    <div class="card" style="margin-bottom: 24px;">
-                        <h3>The Math: Factor Breakdown</h3>
-                        <div class="metrics-grid">
-                            <div class="metric-box" style="border-left: 4px solid #0066cc; padding-left: 12px;">
-                                <span class="metric-label" style="font-weight: 700; color: #0066cc;">Fundamental Growth</span>
-                                <span class="metric-value" style="font-size: 13px; font-weight: normal; color: #333; margin-top: 4px;">${peText.growth || 'Score: --/100'}</span>
-                            </div>
-                            <div class="metric-box" style="border-left: 4px solid #8e8e93; padding-left: 12px;">
-                                <span class="metric-label" style="font-weight: 700; color: #555;">Momentum Analysis</span>
-                                <span class="metric-value" style="font-size: 13px; font-weight: normal; color: #333; margin-top: 4px;">${peText.momentum || 'Neutral trend'}</span>
-                            </div>
-                            <div class="metric-box" style="border-left: 4px solid #34c759; padding-left: 12px;">
-                                <span class="metric-label" style="font-weight: 700; color: #1a7f37;">Valuation & Price</span>
-                                <span class="metric-value" style="font-size: 13px; font-weight: normal; color: #333; margin-top: 4px;">${peText.valuation || 'Fairly priced'}</span>
-                            </div>
-                            <div class="metric-box" style="border-left: 4px solid #af52de; padding-left: 12px;">
-                                <span class="metric-label" style="font-weight: 700; color: #af52de;">Smart Money (FII/DII)</span>
-                                <span class="metric-value" style="font-size: 13px; font-weight: normal; color: #333; margin-top: 4px;">${peText.fii || 'Institutional accumulation'}</span>
-                            </div>
-                            <div class="metric-box" style="border-left: 4px solid #ff9500; padding-left: 12px;">
-                                <span class="metric-label" style="font-weight: 700; color: #d97d00;">Balance Sheet Health</span>
-                                <span class="metric-value" style="font-size: 13px; font-weight: normal; color: #333; margin-top: 4px;">${peText.balance_sheet || 'Conservative leverage'}</span>
-                            </div>
-                            <div class="metric-box" style="border-left: 4px solid #1d1d1f; padding-left: 12px;">
-                                <span class="metric-label" style="font-weight: 700; color: #1d1d1f;">Business Quality</span>
-                                <span class="metric-value" style="font-size: 13px; font-weight: normal; color: #333; margin-top: 4px;">${peText.quality || 'Capital efficient compounder'}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="card" style="margin-bottom: 24px;">
-                        <h3>4-Year Cash Flow Trajectory (₹ Crores)</h3>
-                        <div class="chart-container">
-                            <canvas id="stock-cf-chart"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Right Column -->
-                <div class="right-col">
-                    <div class="card" style="margin-bottom: 24px; background: #e6f7ff; border: 1px solid #91d5ff;">
-                        <h3 style="color: #0050b3; display: flex; align-items: center; gap: 8px;">
-                            <span>🎙️</span> Concall / Earnings Sentiment
-                        </h3>
-                        <div style="font-size: 13px; color: #333; margin-top: 8px; line-height: 1.5;">
-                            ${peText.concall || 'Management guidance reflects stable capacity utilization.'}
-                        </div>
-                    </div>
-
-                    <div class="card" style="margin-bottom: 24px; background: #f8f9fa; border: 1px solid #e9ecef;">
-                        <h3 style="color: #1d1d1f; display: flex; align-items: center; gap: 8px;">
-                            <span>📰</span> Latest Catalyst
-                        </h3>
-                        <div style="font-size: 14px; font-weight: 500; color: #333; line-height: 1.5; margin-top: 8px;">
-                            ${peText.news_link && peText.news_link !== '#' ? `<a href="${peText.news_link}" target="_blank" style="color: #0066cc; text-decoration: none;">${peText.news}</a>` : (peText.news || 'Regular disclosures and exchange filings.')}
-                        </div>
-                    </div>
-
-                    <div class="card" style="margin-bottom: 24px;">
-                        <h3>Screener Thesis & Synthesis</h3>
-                        <div class="bull-case">
-                            ${stock.bullCase || 'Candidate demonstrates multi-factor compounder characteristics across growth and quality dimensions.'}
-                        </div>
-                    </div>
-
                     <div class="bear-case-card">
                         <div class="bear-case-header">
-                            <span class="bear-case-icon">⚠️</span>
-                            <div class="bear-case-title">${stock.bearRisk ? stock.bearRisk.title : 'FACTORIZED RISK AUDIT'}</div>
+                            <span class="bear-case-icon">i</span>
+                            <div class="bear-case-title">Exclusion / Screening Trace</div>
                         </div>
                         <div class="bear-case-desc">
-                            ${stock.bearRisk ? stock.bearRisk.description : 'Standard market risk and industry cyclicality factors.'}
+                            ${stock.exclusion_reason || (stock.eligible ? 'No exclusion recorded; passed eligibility screens (MASTER_SPEC 6.1).' : 'Not eligible for this cohort.')}
                         </div>
-                        <div style="margin-top: 14px; font-size: 11px; font-weight: 700; color: var(--danger); text-transform: uppercase;">
-                            Risk Level: ${stock.bearRisk ? stock.bearRisk.level : 'Medium'}
+                        <div style="margin-top: 14px; font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;">
+                            Liquidity Bucket: ${stock.liquidity_bucket || '--'} · N Factors Used: ${stock.n_factors_used ?? '--'}
                         </div>
                     </div>
                 </div>
             </div>
         `;
-
-        // Render Cash Flow Chart
-        renderStockCashFlowChart(stock.cashflows);
-    }
-
-    function renderStockCashFlowChart(cf) {
-        const canvas = document.getElementById('stock-cf-chart');
-        if (!canvas || typeof Chart === 'undefined') return;
-
-        if (stockCfChart) {
-            stockCfChart.destroy();
-            stockCfChart = null;
-        }
-
-        const ocf = (cf && cf.ocf) ? cf.ocf : [0, 0, 0, 0];
-        const fcf = (cf && cf.fcf) ? cf.fcf : [0, 0, 0, 0];
-
-        stockCfChart = new Chart(canvas.getContext('2d'), {
-            type: 'line',
-            data: {
-                labels: ['FY -3', 'FY -2', 'FY -1', 'Latest FY'],
-                datasets: [
-                    {
-                        label: 'Operating Cash Flow (OCF)',
-                        data: ocf,
-                        borderColor: '#0066cc',
-                        backgroundColor: 'rgba(0, 102, 204, 0.08)',
-                        borderWidth: 2,
-                        tension: 0.2,
-                        fill: true,
-                        pointRadius: 4,
-                    },
-                    {
-                        label: 'Free Cash Flow (FCF)',
-                        data: fcf,
-                        borderColor: '#34c759',
-                        backgroundColor: 'rgba(52, 199, 89, 0.08)',
-                        borderWidth: 2,
-                        tension: 0.2,
-                        fill: true,
-                        pointRadius: 4,
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
-                },
-                scales: {
-                    y: {
-                        grid: { color: '#f0f0f5' },
-                        ticks: { font: { size: 11 } },
-                        title: { display: true, text: '₹ Crores', font: { size: 11 } }
-                    },
-                    x: {
-                        grid: { display: false },
-                        ticks: { font: { size: 11 } }
-                    }
-                }
-            }
-        });
     }
 
     // ========================================================================
