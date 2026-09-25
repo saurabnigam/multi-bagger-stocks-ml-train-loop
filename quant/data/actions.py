@@ -2,13 +2,22 @@
 from __future__ import annotations
 
 import json
-from typing import List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from quant.data.identity import resolve_security_id
 from quant.errors import Refused
+from quant.knowledge.adr import write as write_adr
 from quant.run import RunContext
 from quant.types import Result
+
+#: Kinds an operator can select from `data actions-resolve` (MASTER_SPEC 2.3, 4.3).
+#: 'genuine' is not a stored kind; it records a reviewed-and-real move as manual_adj/1.0.
+RESOLVE_VALUE_TRANSFER_KINDS = ("demerger", "rights", "scheme", "manual_adj")
+RESOLVE_SPLIT_KINDS = ("split", "bonus")
+RESOLVE_KINDS = RESOLVE_VALUE_TRANSFER_KINDS + RESOLVE_SPLIT_KINDS + ("genuine",)
+JUMP_RATIO_BOUNDS = (1.0 / 1.40, 1.40)
 
 
 def _validate_decision(ctx: RunContext, decision_id: str) -> dict:
@@ -122,7 +131,7 @@ def add(
 
     ratio = factor if kind in ("split", "bonus") else None
     amount_inr = factor if kind == "dividend" else None
-    adj_factor = factor if kind in ("rights", "demerger", "manual_adj") else 1.0
+    adj_factor = factor if kind in RESOLVE_VALUE_TRANSFER_KINDS else 1.0
 
     cur = ctx.conn.cursor()
     now_iso = ctx.clock.iso()
@@ -141,6 +150,246 @@ def add(
         status="ok",
         counts={"actions": 1},
         details={"isin": isin, "security_id": sid, "kind": kind, "decision_id": decision_id},
+    )
+
+
+def list_suspects(
+    conn,
+    price_store=None,
+    security_ids: Optional[List[int]] = None,
+    include_resolved: bool = False,
+) -> List[Dict[str, Any]]:
+    """Read-only operator review queue for suspected corporate actions (D3/T2).
+
+    One row per suspected ``(security, ex_date)``. ``resolved`` is ``None`` while the
+    only row for that key is the ``suspected`` one from :func:`detect`; once an
+    operator has recorded an approved row for the same key via :func:`add` (or
+    :func:`resolve`), that row's kind/value/decision_id is surfaced here instead --
+    ``corporate_actions`` is append-only, so the suspect row itself is never edited
+    (:func:`PriceStore.corporate_actions` resolves the same precedence). Unresolved
+    rows are filtered out unless ``include_resolved`` is set (``data actions-list
+    --all``). ``in_trailing_13m`` is True when ``ex_date`` falls within 13 months of
+    that security's latest known price bar -- a still-truncated name in that window
+    is actively distorting the current live cohort, not just historical replays.
+    """
+    query = "SELECT security_id, ex_date, observed_at, note FROM corporate_actions WHERE kind = 'suspected'"
+    params: List[Any] = []
+    if security_ids:
+        placeholders = ",".join("?" for _ in security_ids)
+        query += f" AND security_id IN ({placeholders})"
+        params.extend(int(s) for s in security_ids)
+    query += " ORDER BY security_id, ex_date"
+    suspects = conn.execute(query, params).fetchall()
+
+    out: List[Dict[str, Any]] = []
+    for sid_raw, ex_date, observed_at, note in suspects:
+        sid = int(sid_raw)
+        resolution_row = conn.execute(
+            "SELECT kind, ratio, adj_factor, decision_id, observed_at FROM corporate_actions "
+            "WHERE security_id = ? AND ex_date = ? AND decision_id IS NOT NULL "
+            "ORDER BY observed_at DESC LIMIT 1",
+            (sid, ex_date),
+        ).fetchone()
+        if resolution_row and not include_resolved:
+            continue
+
+        sec_row = conn.execute("SELECT isin, name FROM securities WHERE security_id = ?", (sid,)).fetchone()
+        sym_row = conn.execute(
+            "SELECT nse_symbol FROM symbol_history WHERE security_id = ? ORDER BY valid_from DESC LIMIT 1",
+            (sid,),
+        ).fetchone()
+
+        gross_factor = None
+        if note:
+            try:
+                gross_factor = float(json.loads(note).get("gross_factor"))
+            except (ValueError, TypeError, AttributeError):
+                gross_factor = None
+
+        in_trailing_13m = None
+        if price_store is not None:
+            with price_store.conn() as p_conn:
+                latest = p_conn.execute(
+                    "SELECT max(date) FROM prices_daily WHERE security_id = ?", (sid,)
+                ).fetchone()[0]
+            if latest:
+                window_start = (pd.Timestamp(latest) - pd.DateOffset(months=13)).strftime("%Y-%m-%d")
+                in_trailing_13m = bool(window_start <= ex_date <= str(latest))
+
+        resolved = None
+        if resolution_row:
+            r_kind, r_ratio, r_adj, r_decision_id, r_observed_at = resolution_row
+            resolved = {
+                "kind": r_kind,
+                "value": r_adj if r_adj is not None else r_ratio,
+                "decision_id": r_decision_id,
+                "observed_at": r_observed_at,
+            }
+
+        out.append({
+            "security_id": sid,
+            "isin": sec_row[0] if sec_row else None,
+            "symbol": sym_row[0] if sym_row else None,
+            "ex_date": ex_date,
+            "gross_factor": gross_factor,
+            "evidence_observed_at": observed_at,
+            "in_trailing_13m": in_trailing_13m,
+            "resolved": resolved,
+        })
+    return out
+
+
+def resolve(
+    ctx: RunContext,
+    *,
+    isin: Optional[str] = None,
+    symbol: Optional[str] = None,
+    ex_date: str,
+    kind: str,
+    factor: float,
+    evidence: str,
+    title: Optional[str] = None,
+    force: bool = False,
+) -> Result:
+    """Operator resolution of a suspected corporate action (D3/T2; MASTER_SPEC 2.3, 4.3, 9.3).
+
+    Human-only: a value-transfer factor is a Tier-1 judgment call read off a filing, and
+    the spec's LLM-provisional path (9.3) is deliberately not offered here -- a wrong
+    factor silently corrupts every downstream TRI and evaluation. Records a Tier-1
+    ``data_fix`` decision at status ``approved`` (never ``provisional``), writes its ADR
+    with the existing writer so ``kb check`` stays clean, then calls :func:`add` under
+    that decision. ``kind='genuine'`` means the move was real: it is stored as
+    ``manual_adj`` with ``adj_factor`` 1.0, which stops the truncation without touching
+    the observed return. ``split``/``bonus`` take ``factor`` as the vendor-missed ratio
+    (new shares per old); the other kinds take it as the multiplicative value-transfer
+    adjustment. Refuses a second resolution of the same ``(security, ex_date)``, and an
+    implausible combination of the evidenced jump and the chosen factor unless ``force``.
+    """
+    if ctx.actor.kind != "human":
+        raise Refused(
+            "governance",
+            "data actions-resolve requires --actor-kind human: a corporate-action "
+            f"value-transfer factor is never LLM-provisional (actor was '{ctx.actor.kind}')",
+        )
+
+    if kind not in RESOLVE_KINDS:
+        raise Refused("invalid_kind", f"Invalid resolution kind '{kind}'; choose one of {RESOLVE_KINDS}")
+
+    if kind == "genuine":
+        stored_kind, stored_factor = "manual_adj", 1.0
+    else:
+        stored_kind, stored_factor = kind, float(factor)
+
+    if not (0 < stored_factor <= 20):
+        raise Refused("implausible_factor", f"Factor {stored_factor} is outside the sane range (0, 20]")
+
+    sid = resolve_security_id(ctx.conn, isin=isin, symbol=symbol, cutoff=ctx.as_of)
+    if sid is None:
+        raise Refused("security_missing", f"Could not resolve isin={isin!r} symbol={symbol!r} at {ctx.as_of}")
+
+    canonical_isin = isin
+    if canonical_isin is None:
+        row = ctx.conn.execute("SELECT isin FROM securities WHERE security_id = ?", (sid,)).fetchone()
+        canonical_isin = row[0] if row else None
+
+    existing = ctx.conn.execute(
+        "SELECT decision_id FROM corporate_actions WHERE security_id = ? AND ex_date = ? "
+        "AND decision_id IS NOT NULL",
+        (sid, ex_date),
+    ).fetchone()
+    if existing:
+        raise Refused(
+            "already_resolved",
+            f"{canonical_isin} {ex_date} was already resolved under decision {existing[0]}; "
+            "corporate_actions is append-only and never re-resolved",
+        )
+
+    note_row = ctx.conn.execute(
+        "SELECT note FROM corporate_actions WHERE security_id = ? AND ex_date = ? AND kind = 'suspected' "
+        "ORDER BY observed_at DESC LIMIT 1",
+        (sid, ex_date),
+    ).fetchone()
+    gross_factor = 1.0
+    if note_row and note_row[0]:
+        try:
+            gross_factor = float(json.loads(note_row[0]).get("gross_factor", 1.0))
+        except (ValueError, TypeError, AttributeError):
+            gross_factor = 1.0
+
+    combined = gross_factor * stored_factor
+    lo, hi = JUMP_RATIO_BOUNDS
+    warning = None
+    # 'genuine' means the evidenced jump IS the real return -- it is not meant to cancel
+    # gross_factor, so the plausibility check (which only makes sense for a corrective
+    # value-transfer/split factor) does not apply to it.
+    if kind != "genuine" and not (lo <= combined <= hi):
+        if not force:
+            raise Refused(
+                "implausible_combination",
+                f"gross_factor {gross_factor:.4f} x factor {stored_factor:.4f} = {combined:.4f} lies "
+                f"outside [{lo:.4f}, {hi:.4f}]; pass --force to override",
+            )
+        warning = (
+            f"gross_factor {gross_factor:.4f} x factor {stored_factor:.4f} = {combined:.4f} lies outside "
+            f"[{lo:.4f}, {hi:.4f}]; proceeding under --force"
+        )
+
+    seq = ctx.conn.execute("SELECT coalesce(max(rowid), 0) + 1 FROM decisions").fetchone()[0]
+    decision_id = f"D-{ctx.as_of[:7]}-{seq:02d}"
+    k_dir = Path(ctx.cfg.paths.knowledge_dir)
+    adr_path = str(k_dir / "decisions" / f"ADR-{decision_id}.md")
+    timestamp = ctx.clock.iso()
+    decided_by = ctx.actor.by
+
+    ctx.conn.execute(
+        """
+        INSERT INTO decisions (
+            decision_id, proposal_id, kind, tier, subject_id, title, context,
+            options_json, decision, evidence_refs_json, criteria_check_json,
+            decided_on, decided_by, approver_kind, ratified_by, ratified_on,
+            status, effective_from, applied_on, adr_path, supersedes, reverted_by, git_sha
+        ) VALUES (
+            ?, NULL, 'data_fix', 1, ?, ?, ?,
+            ?, ?, ?, NULL,
+            ?, ?, ?, NULL, NULL,
+            'approved', ?, NULL, ?, NULL, NULL, ?
+        )
+        """,
+        (
+            decision_id,
+            canonical_isin,
+            title or f"Corporate action resolution: {canonical_isin} {ex_date} ({stored_kind})",
+            f"Suspected corporate action detected on {ex_date} with evidenced gross factor "
+            f"{gross_factor:.4f}; reviewed against the operator-supplied evidence below.",
+            json.dumps([{"kind": stored_kind, "factor": stored_factor}]),
+            f"Record {stored_kind} with factor {stored_factor} for {canonical_isin} on {ex_date}",
+            json.dumps([evidence]),
+            timestamp,
+            decided_by,
+            ctx.actor.kind,
+            ctx.as_of,
+            adr_path,
+            ctx.git_sha,
+        ),
+    )
+    write_adr(ctx.conn, decision_id, k_dir / "decisions")
+
+    add(ctx, isin=canonical_isin, ex_date=ex_date, kind=stored_kind, factor=stored_factor, decision_id=decision_id)
+
+    return Result(
+        status="ok",
+        counts={"decisions": 1, "actions": 1},
+        details={
+            "decision_id": decision_id,
+            "isin": canonical_isin,
+            "security_id": sid,
+            "ex_date": ex_date,
+            "kind": stored_kind,
+            "factor": stored_factor,
+            "gross_factor": gross_factor,
+            "adr_path": adr_path,
+            "warning": warning,
+        },
     )
 
 
