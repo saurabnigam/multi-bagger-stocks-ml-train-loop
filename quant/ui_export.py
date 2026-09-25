@@ -6,11 +6,19 @@ Generates browser-native standalone data payloads in ui_dir:
   3. data_scoreboard.js - portfolios, NAVs, pending orders, benchmarks, cumulative performance
   4. data_factors.js - factor registry, definitions, family weights, diagnostics
   5. data_kb.js - hypotheses, decisions, proposals, lessons, review budget
+
+V2 stock cards (data.js `stocks`) show only stored values published for the cohort:
+final/rank/decile/quintile, family_scores, per-factor raw/z/flags, exclusion_reason,
+liquidity_bucket and n_factors_used. There is no prediction-based multiplier, death-cross
+or value-trap narrative (MASTER_SPEC 6.1), and this exporter never opens the frozen
+legacy `quant_engine.db` or computes derived statistics such as QoQ growth or margins
+(MASTER_SPEC 10.6, 10.7). Legacy snapshots surface only in the dedicated Legacy tab.
 """
 
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 import sqlite3
 from typing import Any
@@ -18,79 +26,10 @@ from typing import Any
 from quant.config import Config
 
 
-def _display_div_yield(v: Any) -> float:
-    """Legacy snapshots stored yfinance percent x100 (e.g. 349.0). Normalise for display."""
-    try:
-        val = float(v) if v is not None else 0.0
-    except (ValueError, TypeError):
-        return 0.0
-    return round(val / 100.0, 2) if val > 25 else round(val, 2)
-
-
-def _display_fcf_yield(v: Any) -> float:
-    """Legacy snapshots divided rupees by crores (off by 1e7)."""
-    try:
-        val = float(v) if v is not None else 0.0
-    except (ValueError, TypeError):
-        return 0.0
-    return round(val / 1e7, 2) if abs(val) > 1000 else round(val, 2)
-
-
-def _load_legacy_stock_details(root_path: Path, date_str: str) -> tuple[dict[str, Any], dict[str, str]]:
-    """Load historical stock details from frozen quant_engine.db in read-only mode."""
-    legacy_db = root_path / "quant_engine.db"
-    if not legacy_db.exists():
-        return {}, {}
-    try:
-        leg_conn = sqlite3.connect(f"file:{legacy_db}?mode=ro", uri=True)
-        leg_cur = leg_conn.cursor()
-
-        dates = [
-            r[0]
-            for r in leg_cur.execute(
-                "SELECT DISTINCT date FROM daily_predictions ORDER BY date DESC"
-            ).fetchall()
-        ]
-        match_date = date_str if date_str in dates else (dates[0] if dates else None)
-        stock_details: dict[str, Any] = {}
-        if match_date:
-            rows = leg_cur.execute(
-                "SELECT ticker, raw_json FROM daily_predictions WHERE date = ?", (match_date,)
-            ).fetchall()
-            for ticker, rj in rows:
-                if not rj:
-                    continue
-                try:
-                    raw = json.loads(rj)
-                    stock_details[ticker] = raw
-                    base = ticker.replace(".NS", "").replace(".BO", "")
-                    stock_details[base] = raw
-                except Exception:
-                    continue
-
-        active_weights: dict[str, str] = {}
-        w_row = leg_cur.execute("SELECT * FROM active_weights ORDER BY id DESC LIMIT 1").fetchone()
-        if w_row:
-            col_names = [d[0] for d in leg_cur.description]
-            wd = dict(zip(col_names, w_row))
-            active_weights = {
-                "Quality": f"{wd.get('quality_weight', 0.152)*100:.1f}%",
-                "Growth": f"{wd.get('growth_weight', 0.300)*100:.1f}%",
-                "Valuation": f"{wd.get('valuation_weight', 0.055)*100:.1f}%",
-                "Risk": f"{wd.get('risk_weight', 0.185)*100:.1f}%",
-                "Moat": f"{wd.get('moat_weight', 0.090)*100:.1f}%",
-                "Balance Sheet": f"{wd.get('bs_weight', 0.099)*100:.1f}%",
-                "Cap Alloc": f"{wd.get('cap_alloc_weight', 0.050)*100:.1f}%",
-                "Smart Money": f"{wd.get('smart_money_weight', 0.069)*100:.1f}%",
-            }
-        leg_conn.close()
-        return stock_details, active_weights
-    except Exception:
-        return {}, {}
-
-
-def _load_quarterly_fundamentals(conn: sqlite3.Connection) -> dict[int, dict[str, Any]]:
-    """Aggregate quarterly income statement metrics (EBITDA, Revenue, PAT) and QoQ growth."""
+def _load_quarterly_fundamentals(conn: sqlite3.Connection, cutoff: str) -> dict[int, dict[str, Any]]:
+    """Load stored quarterly income-statement line items visible as of the cohort's
+    knowledge cutoff. This performs no aggregation beyond picking the latest reported
+    values per period; it computes no growth rates or margins (MASTER_SPEC 10.7)."""
     cur = conn.cursor()
     try:
         rows = cur.execute(
@@ -101,8 +40,11 @@ def _load_quarterly_fundamentals(conn: sqlite3.Connection) -> dict[int, dict[str
                 'EBITDA', 'Normalized EBITDA', 'Operating Income',
                 'Total Revenue', 'Operating Revenue', 'Net Income'
             )
+            AND available_from <= ?
+            AND fetched_at <= ?
             ORDER BY security_id, period_end DESC
-            """
+            """,
+            (cutoff, cutoff),
         ).fetchall()
     except Exception:
         return {}
@@ -126,26 +68,12 @@ def _load_quarterly_fundamentals(conn: sqlite3.Connection) -> dict[int, dict[str
             rev = p_data.get("Total Revenue") if "Total Revenue" in p_data else p_data.get("Operating Revenue")
             eb = p_data.get("EBITDA") if "EBITDA" in p_data else (p_data.get("Normalized EBITDA") if "Normalized EBITDA" in p_data else p_data.get("Operating Income"))
             pat = p_data.get("Net Income")
-            margin = (eb / rev * 100.0) if (eb is not None and rev is not None and rev > 0) else None
             history.append({
                 "period": p,
                 "revenue_cr": round(rev / 1e7, 1) if rev is not None else None,
                 "ebitda_cr": round(eb / 1e7, 1) if eb is not None else None,
                 "pat_cr": round(pat / 1e7, 1) if pat is not None else None,
-                "ebitda_margin_pct": round(margin, 1) if margin is not None else None,
             })
-
-        qoq_rev = None
-        qoq_eb = None
-        qoq_pat = None
-        if len(history) >= 2:
-            h0, h1 = history[0], history[1]
-            if h0["revenue_cr"] is not None and h1["revenue_cr"] is not None and h1["revenue_cr"] != 0:
-                qoq_rev = round((h0["revenue_cr"] - h1["revenue_cr"]) / abs(h1["revenue_cr"]) * 100.0, 1)
-            if h0["ebitda_cr"] is not None and h1["ebitda_cr"] is not None and h1["ebitda_cr"] != 0:
-                qoq_eb = round((h0["ebitda_cr"] - h1["ebitda_cr"]) / abs(h1["ebitda_cr"]) * 100.0, 1)
-            if h0["pat_cr"] is not None and h1["pat_cr"] is not None and h1["pat_cr"] != 0:
-                qoq_pat = round((h0["pat_cr"] - h1["pat_cr"]) / abs(h1["pat_cr"]) * 100.0, 1)
 
         latest = history[0] if history else {}
         result[sid] = {
@@ -153,13 +81,69 @@ def _load_quarterly_fundamentals(conn: sqlite3.Connection) -> dict[int, dict[str
             "ebitda_cr": latest.get("ebitda_cr"),
             "revenue_cr": latest.get("revenue_cr"),
             "pat_cr": latest.get("pat_cr"),
-            "ebitda_margin_pct": latest.get("ebitda_margin_pct"),
-            "qoq_rev_growth_pct": qoq_rev,
-            "qoq_ebitda_growth_pct": qoq_eb,
-            "qoq_pat_growth_pct": qoq_pat,
             "history": history,
         }
     return result
+
+
+def _load_factor_details(conn: sqlite3.Connection, cohort_id: str) -> dict[int, list[dict[str, Any]]]:
+    """Per-security, per-factor raw/z values and flags for the published cohort, joined
+    to the factor registry for name/family/direction. This is stored evidence only; the
+    exporter derives nothing from it."""
+    if not cohort_id:
+        return {}
+    cur = conn.cursor()
+    try:
+        rows = cur.execute(
+            """
+            SELECT fv.security_id, fv.factor_id, fr.name, fr.family, fr.direction,
+                   fv.raw, fv.z, fv.flags
+            FROM factor_values fv
+            JOIN factor_registry fr ON fv.factor_id = fr.factor_id
+            WHERE fv.cohort_id = ?
+            ORDER BY fv.security_id, fr.family, fr.name
+            """,
+            (cohort_id,),
+        ).fetchall()
+    except Exception:
+        return {}
+
+    result: dict[int, list[dict[str, Any]]] = {}
+    for sid, factor_id, name, family, direction, raw, z, flags in rows:
+        result.setdefault(sid, []).append({
+            "factor_id": factor_id,
+            "name": name,
+            "family": family,
+            "direction": direction,
+            "raw": raw,
+            "z": z,
+            "flags": flags,
+        })
+    return result
+
+
+def _load_model_weights(conn: sqlite3.Connection, cohort_id: str, model_id: str) -> dict[str, str]:
+    """Published integer-unit family weights (MASTER_SPEC 6.3) for the cohort's primary
+    model, as public percentages. Empty when no model_weights are published yet."""
+    if not cohort_id or not model_id:
+        return {}
+    cur = conn.cursor()
+    try:
+        rows = cur.execute(
+            """
+            SELECT family, weight_units FROM model_weights mw
+            WHERE cohort_id = ? AND model_id = ?
+            AND model_version = (
+                SELECT MAX(model_version) FROM model_weights
+                WHERE cohort_id = mw.cohort_id AND model_id = mw.model_id
+            )
+            ORDER BY family
+            """,
+            (cohort_id, model_id),
+        ).fetchall()
+    except Exception:
+        return {}
+    return {family.title(): f"{(units / 10000.0) * 100:.1f}%" for family, units in rows}
 
 
 def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
@@ -222,16 +206,23 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
             (cohort_id, primary_model),
         ).fetchall()
 
-    legacy_stock_details, legacy_weights = _load_legacy_stock_details(cfg._root, as_of)
-    quarterly_by_sid = _load_quarterly_fundamentals(conn)
+    quarterly_by_sid = _load_quarterly_fundamentals(conn, cutoff)
+    factors_by_sid = _load_factor_details(conn, cohort_id)
+    ai_weights = _load_model_weights(conn, cohort_id, primary_model if cohort_id and scores_rows else "")
 
     stocks: list[dict[str, Any]] = []
-    accepted: list[dict[str, Any]] = []
-    rejected: list[dict[str, Any]] = []
-    turnaround: list[dict[str, Any]] = []
+    accepted_ids: list[int] = []
+    rejected_ids: list[int] = []
 
-    seen_ids = set()
-    rank = 0
+    # Saved turnaround filter (MASTER_SPEC 6.1/10.7): high-growth top-quintile and
+    # negative FCF. This is a display filter over already-published values, never a
+    # separate scoring path.
+    growth_by_sid: dict[int, float] = {}
+    fcf_raw_by_sid: dict[int, float] = {}
+
+    seen_ids: set[int] = set()
+    rank_counter = 0
+    top_n = 25
 
     for r in scores_rows:
         d = dict(r)
@@ -239,146 +230,24 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
         if sid in seen_ids:
             continue
         seen_ids.add(sid)
-        qm = quarterly_by_sid.get(sid, {})
 
         ticker = d.get("yahoo_ticker") or f"{d.get('nse_symbol', 'STOCK')}.NS"
         base_sym = d.get("nse_symbol") or ticker.replace(".NS", "").replace(".BO", "")
         company_name = d.get("company_name") or base_sym
 
-        score = float(d.get("final") or 0.0)
+        final_score = float(d.get("final") or 0.0)
         composite = float(d.get("composite") or 0.0)
         eligible = bool(d.get("eligible"))
         dc_flag = int(d.get("dc_flag") or 0)
         sector_group = d.get("sector_group") or "Unknown"
 
-        raw = legacy_stock_details.get(ticker) or legacy_stock_details.get(base_sym) or {}
-
-        price = float(raw.get("Price", 0.0))
-        mcap_cr = raw.get("Market_Cap_Cr")
-        mcap_text = f"₹{mcap_cr:,.0f} Cr" if mcap_cr else "Mkt cap n/a"
-        mos = raw.get("Margin_Of_Safety_%", 0.0)
-        iv = raw.get("Intrinsic_Value", 0.0)
-        q_score = raw.get("Quality_Score", 50)
-        g_score = raw.get("Growth_Score", 50)
-        risk_score = raw.get("Risk_Score", 50)
-        v_trap = raw.get("Value_Trap_Risk", 0)
-        sm_score = raw.get("Smart_Money_Score", 50)
-        de_ratio = raw.get("Debt_to_Equity", 0.0)
-        inst_holdings = raw.get("Inst_Holdings_%", 0.0)
-        momentum = raw.get("Momentum_Status", "Neutral")
-        news = raw.get("Latest_Catalyst", f"Recent trading activity and quarterly disclosures for {company_name}")
-        news_link = raw.get("Latest_News_Link", "#")
-        inst_flow_delta = raw.get("Inst_Flow_Delta", 0.0)
-        concall_sentiment = raw.get("Concall_Sentiment_Score", 0.0)
-        concall_summary = raw.get("Concall_Summary", "Neutral management guidance with stable capital allocation.")
-
         try:
-            ocf_arr = json.loads(raw["ocf_array"]) if isinstance(raw.get("ocf_array"), str) else raw.get("ocf_array", [0, 0, 0, 0])
-            fcf_arr = json.loads(raw["fcf_array"]) if isinstance(raw.get("fcf_array"), str) else raw.get("fcf_array", [0, 0, 0, 0])
-        except Exception:
-            ocf_arr = [0, 0, 0, 0]
-            fcf_arr = [0, 0, 0, 0]
+            family_scores = json.loads(d.get("family_scores_json") or "{}")
+        except (TypeError, ValueError):
+            family_scores = {}
 
-        if q_score >= 80:
-            qual_text = f"<b>Raw Score: {q_score}/100</b><br>Exceptional Business: Highly efficient at turning profits into actual cash in the bank."
-        elif q_score >= 50:
-            qual_text = f"<b>Raw Score: {q_score}/100</b><br>Solid Business: Good profitability, though it requires capital to maintain expansion."
-        else:
-            qual_text = f"<b>Raw Score: {q_score}/100</b><br>Capital Intensive: Reinvestment requirements dilute cash conversion."
-
-        if iv <= 0:
-            val_text = "<b>Margin of Safety: n/a</b><br>Intrinsic value undefined due to historical cashflow profile; valuation scores conservatively."
-        elif mos > 10:
-            val_text = f"<b>Margin of Safety: {mos}%</b><br>Discounted: Trading below intrinsic value of ₹{iv:.1f} (Current Price: ₹{price:.1f})."
-        elif mos > -10:
-            val_text = f"<b>Margin of Safety: {mos}%</b><br>Fairly Priced: Trading near intrinsic value of ₹{iv:.1f}."
-        else:
-            val_text = f"<b>Margin of Safety: {mos}%</b><br>Expensive: Premium of {abs(mos):.1f}% over intrinsic value (₹{iv:.1f} vs Price: ₹{price:.1f})."
-
-        comp_growth = raw.get("Composite_Growth_%")
-        growth_extra = f" (composite growth {comp_growth}%/yr)" if comp_growth is not None else ""
-        growth_math = f"<b>Growth Score: {g_score}/100</b>{growth_extra}<br>"
-        qoq_notes = []
-        if qm.get("revenue_cr") is not None:
-            rev_txt = f"Revenue ₹{qm['revenue_cr']:,.1f} Cr"
-            if qm.get("qoq_rev_growth_pct") is not None:
-                rev_txt += f" (QoQ: {qm['qoq_rev_growth_pct']:+.1f}%)"
-            qoq_notes.append(rev_txt)
-        if qm.get("ebitda_cr") is not None:
-            eb_txt = f"EBITDA ₹{qm['ebitda_cr']:,.1f} Cr"
-            if qm.get("ebitda_margin_pct") is not None:
-                eb_txt += f" [{qm['ebitda_margin_pct']:.1f}% margin]"
-            if qm.get("qoq_ebitda_growth_pct") is not None:
-                eb_txt += f" (QoQ: {qm['qoq_ebitda_growth_pct']:+.1f}%)"
-            qoq_notes.append(eb_txt)
-
-        qoq_summary = f"<br><i>Quarterly ({qm.get('latest_quarter', '--')}): {' · '.join(qoq_notes)}</i>" if qoq_notes else ""
-
-        if g_score >= 80:
-            growth_text = growth_math + "Explosive fundamental earnings and cash flow expansion." + qoq_summary
-        elif g_score >= 50:
-            growth_text = growth_math + "Steady, resilient fundamental operating growth." + qoq_summary
-        else:
-            growth_text = growth_math + "Stagnant or cyclically contracting fundamental growth." + qoq_summary
-
-        bs_text = f"<b>Debt-to-Equity Ratio: {de_ratio:.2f}x</b><br>Prudent capital structure. Debt levels are evaluated against operating cash flow coverage."
-        fii_flow_text = f"Net Buying (+{inst_flow_delta}%)" if inst_flow_delta > 0 else (f"Net Selling ({inst_flow_delta}%)" if inst_flow_delta < 0 else "Neutral")
-        fii_text = f"<b>Institutional Holding: {inst_holdings:.1f}%</b><br>Smart Money Score: {sm_score}/100<br><i>Recent Flow: {fii_flow_text}</i>"
-        concall_text = f"<b>Headline Sentiment Score: {concall_sentiment}</b> <i>(diagnostic signal)</i><br><i>{concall_summary}</i>"
-
-        if "Death Cross" in momentum or dc_flag == 1:
-            mom_text = f"<span style='color: #ff3b30; font-weight: bold;'>FATAL MULTIPLIER (0.0x): {momentum}</span>"
-            rejection_reason = "REJECTED: 50-day SMA is below 200-day SMA (Death Cross technical breakdown)."
-        elif "Bearish" in momentum:
-            mom_text = f"<span style='color: #ff9500; font-weight: bold;'>WARNING MULTIPLIER (0.8x): {momentum}</span>"
-            rejection_reason = "REJECTED: Bearish technical momentum dragged down final rank."
-        else:
-            mom_text = f"<span style='color: #34c759; font-weight: bold;'>BULLISH / SAFE (1.0x): {momentum}</span>"
-            rejection_reason = "REJECTED: Technicals safe, but fundamental composite was outside the Top 25 portfolio cut."
-
-        if v_trap >= 50:
-            rejection_reason = "REJECTED: Value Trap detected due to negative FCF burn or excessive leverage."
-        if score == 0:
-            rejection_reason = "REJECTED: Hard-kill rule or eligibility failure applied."
-
-        comp_str = f" (Composite: {composite:.1f}/100)" if composite else ""
-        bull_case = (
-            f"<b>FINAL SCORE: {score:.1f}/100</b>{comp_str}<br><br>"
-            f"<b>Investment Thesis:</b><br>"
-            f"• <b>Growth Driver:</b> {growth_text}<br>"
-            f"• <b>Quality Profile:</b> {qual_text}<br>"
-            f"• <b>Ownership:</b> {fii_text}"
-        )
-
-        bear_risk = {
-            "title": "FACTORIZED RISK & VALUE TRAP AUDIT",
-            "description": f"Risk Score: {risk_score}/100 · Trap Score: {v_trap}/100. Evaluates balance sheet debt, solvency headroom, and cashflow consistency.",
-            "level": "High" if risk_score < 40 or v_trap >= 50 else ("Medium" if risk_score < 70 else "Low"),
-        }
-
-        quant_tickers = {
-            "pe": round(float(raw.get("Trailing_PE", 0.0) or 0.0), 2),
-            "roce": round(float(raw.get("ROCE_%", 0.0) or 0.0), 2),
-            "fcf_yield": _display_fcf_yield(raw.get("FCF_Yield_%", 0.0)),
-            "div_yield": _display_div_yield(raw.get("Div_Yield_%", 0.0)),
-            "sma50": round(float(raw.get("SMA_50", 0.0) or 0.0), 2),
-            "sma200": round(float(raw.get("SMA_200", 0.0) or 0.0), 2),
-            "debt_to_equity": round(float(de_ratio), 2),
-            "inst_holdings": round(float(inst_holdings), 1),
-            "ebitda_cr": qm.get("ebitda_cr"),
-            "ebitda_margin": qm.get("ebitda_margin_pct"),
-            "qoq_rev_growth": qm.get("qoq_rev_growth_pct"),
-            "qoq_ebitda_growth": qm.get("qoq_ebitda_growth_pct"),
-            "qoq_pat_growth": qm.get("qoq_pat_growth_pct"),
-            "latest_quarter": qm.get("latest_quarter"),
-        }
-
-        is_turnaround = False
-        fcf_burn_raw = 0.0
-        if sector_group != "Financial Services" and (g_score >= 80 or composite >= 80):
-            if len(fcf_arr) > 0 and fcf_arr[-1] < 0:
-                is_turnaround = True
-                fcf_burn_raw = float(fcf_arr[-1])
+        factor_list = factors_by_sid.get(sid, [])
+        qm = quarterly_by_sid.get(sid, {})
 
         stock_item = {
             "id": base_sym.lower(),
@@ -388,56 +257,53 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
             "company_name": company_name,
             "isin": d.get("isin") or "",
             "model_id": d["model_id"],
-            "final_score": score,
+            "final_score": final_score,
             "composite": composite,
             "rank": d.get("rank"),
             "decile": d.get("decile"),
             "quintile": d.get("quintile"),
             "sector_group": sector_group,
             "sector": sector_group,
+            # dc_flag is a diagnostic only (MASTER_SPEC: "diagnostic, never weighted");
+            # it must never gate eligibility, acceptance or rank.
             "dc_flag": dc_flag,
             "eligible": eligible,
-            "price": price,
-            "mcap": mcap_text,
-            "margin_of_safety": mos,
-            "intrinsic_value": iv,
-            "rejection_reason": rejection_reason,
-            "cashflows": {"ocf": ocf_arr, "fcf": fcf_arr},
+            "scored": bool(d.get("scored")),
+            "exclusion_reason": d.get("exclusion_reason") or "",
+            "liquidity_bucket": d.get("liquidity_bucket"),
+            "n_factors_used": d.get("n_factors_used"),
+            "family_scores": family_scores,
+            "factors": factor_list,
             "quarterly": qm,
-            "plainEnglish": {
-                "quality": qual_text,
-                "valuation": val_text,
-                "growth": growth_text,
-                "momentum": mom_text,
-                "balance_sheet": bs_text,
-                "fii": fii_text,
-                "concall": concall_text,
-                "news": news,
-                "news_link": news_link,
-                "data_quality": "Validated clean PIT capture without forward lookahead.",
-            },
-            "bullCase": bull_case,
-            "bearRisk": bear_risk,
-            "quantTickers": quant_tickers,
         }
 
         stocks.append(stock_item)
 
-        if is_turnaround:
-            stock_item["bearRisk"]["fcf_burn_raw"] = fcf_burn_raw
-            turnaround.append(stock_item)
+        growth_val = family_scores.get("growth")
+        if isinstance(growth_val, (int, float)):
+            growth_by_sid[sid] = float(growth_val)
+        fcf_factor = next((f for f in factor_list if f["name"] == "fcf_yield"), None)
+        if fcf_factor is not None and fcf_factor.get("raw") is not None:
+            fcf_raw_by_sid[sid] = float(fcf_factor["raw"])
 
-        if eligible and score > 0 and dc_flag == 0:
-            rank += 1
-            if rank <= 25:
-                stock_item["rejection_reason"] = ""
-                accepted.append(stock_item)
+        if eligible and final_score > 0:
+            rank_counter += 1
+            if rank_counter <= top_n:
+                accepted_ids.append(sid)
             else:
-                rejected.append(stock_item)
+                rejected_ids.append(sid)
         else:
-            rejected.append(stock_item)
+            rejected_ids.append(sid)
 
-    turnaround.sort(key=lambda x: x["bearRisk"].get("fcf_burn_raw", 0.0))
+    turnaround_ids: list[int] = []
+    if growth_by_sid:
+        ranked_by_growth = sorted(growth_by_sid.items(), key=lambda kv: kv[1], reverse=True)
+        quintile_size = max(1, math.ceil(len(ranked_by_growth) * 0.2))
+        top_quintile_ids = {sid for sid, _ in ranked_by_growth[:quintile_size]}
+        turnaround_ids = [
+            sid for sid, _ in ranked_by_growth
+            if sid in top_quintile_ids and fcf_raw_by_sid.get(sid, 0.0) < 0
+        ]
 
     # Sector distribution
     sector_counts: dict[str, list[float]] = {}
@@ -480,17 +346,9 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
         {"gate": "G10", "name": "Cohort Immutability & Replay", "requirement": "Deterministic SHA256 definition & membership hashes", "observed": "Verified reproducible bit-for-bit", "status": "PASS"},
     ]
 
-    ai_weights = legacy_weights or {
-        "Growth": "30.0%",
-        "Risk": "18.5%",
-        "Quality": "15.2%",
-        "Balance Sheet": "9.9%",
-        "Moat": "9.0%",
-        "Smart Money": "6.9%",
-        "Valuation": "5.5%",
-        "Cap Alloc": "5.0%",
-    }
-    snapshot_meta = {"snapshot_date": as_of, "universe": len(stocks), "top_n": 25}
+    # aiWeights is the published cohort's own model_weights (MASTER_SPEC 6.3), not a
+    # legacy reconstruction; it is empty (not a fabricated default) when unpublished.
+    snapshot_meta = {"snapshot_date": as_of, "universe": len(stocks), "top_n": top_n}
 
     data_payload = {
         "as_of": as_of,
@@ -500,9 +358,9 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
         "cohort_id": cohort_id,
         "freshness": gen_at[:10] if gen_at else as_of,
         "stocks": stocks,
-        "accepted": accepted,
-        "rejected": rejected,
-        "turnaround": turnaround,
+        "accepted": accepted_ids,
+        "rejected": rejected_ids,
+        "turnaround": turnaround_ids,
         "aiWeights": ai_weights,
         "snapshotMeta": snapshot_meta,
         "sector_distribution": sector_distribution,
@@ -510,14 +368,10 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
     }
 
     data_path = ui_dir / "data.js"
-    js_content = "\n".join([
-        f"window.QUANT_DATA = {json.dumps(data_payload, indent=2)};",
-        f"const aiWeights = {json.dumps(ai_weights, indent=2)};",
-        f"const snapshotMeta = {json.dumps(snapshot_meta, indent=2)};",
-        f"const acceptedStocks = {json.dumps(accepted, indent=2)};",
-        f"const rejectedStocks = {json.dumps(rejected, indent=2)};",
-        f"const turnaroundStocks = {json.dumps(turnaround, indent=2)};",
-    ]) + "\n"
+    # Single canonical payload; accepted/rejected/turnaround are id arrays into `stocks`
+    # (no duplicated stock objects, no orphaned top-level globals) to keep the export
+    # under the UI payload budget (MASTER_SPEC 10.7).
+    js_content = f"window.QUANT_DATA = {json.dumps(data_payload, indent=2)};\n"
     data_path.write_text(js_content, encoding="utf-8")
     out_files.append(data_path)
 
