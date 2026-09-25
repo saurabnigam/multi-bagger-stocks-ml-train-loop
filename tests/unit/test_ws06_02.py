@@ -9,6 +9,33 @@ from quant.run import RunContext
 from quant.types import Draft
 
 
+def _valid_isin(i: int) -> str:
+    """A syntactically valid, correctly check-digited ISIN for security index `i`.
+
+    Task T9 / decision D10: screens.apply now excludes any member with a present
+    but check-digit-invalid ISIN as index_placeholder (NSE's own signal for a
+    mid-demerger placeholder row), so fixtures that exercise other exclusion
+    reasons must use real, Luhn-valid ISINs rather than an arbitrary INE-prefixed
+    string, or they collide with that new precedence rule.
+    """
+    body = f"INE{i:08d}"
+    numeral = "".join(
+        ch if ch.isdigit() else str(ord(ch) - ord("A") + 10) for ch in body
+    )
+    for d in range(10):
+        total = 0
+        for pos, ch in enumerate((numeral + str(d))[::-1]):
+            v = int(ch)
+            if pos % 2 == 1:
+                v *= 2
+                if v > 9:
+                    v -= 9
+            total += v
+        if total % 10 == 0:
+            return body + str(d)
+    raise AssertionError("no check digit found")
+
+
 def test_flat_equals_finite_factor_mean_and_differs_from_hierarchical(cfg):
     """Flat mode averages all finite active factors directly and differs from hierarchical."""
     cfg.standardise.min_group_nonnull = 1
@@ -177,7 +204,7 @@ def test_illiquid_names_remain_stored_but_ineligible(cfg):
     groups = pd.Series(["A"] * 5, index=sids)
     members = pd.DataFrame({
         "security_id": sids,
-        "isin": [f"INE{i:09d}" for i in sids],
+        "isin": [_valid_isin(i) for i in sids],
         "symbol": [f"SYM{i}" for i in sids],
         "company_name": [f"Co {i}" for i in sids],
         "nse_sector": ["Sector A"] * 5,
