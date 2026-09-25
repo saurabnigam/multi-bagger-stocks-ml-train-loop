@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 # they keep their books. Read from the registry's `family` column, not a
 # hard-coded factor_id list, so a future family added under either name is
 # excluded automatically.
-NEVER_WEIGHTED_FAMILIES = ("control", "legacy")
+from quant.factors.registry import NEVER_WEIGHTED_FAMILIES  # noqa: E402  (single source, MASTER_SPEC 5.3)
 
 
 def _add_months(as_of: str, months: int) -> str:
@@ -624,19 +624,33 @@ def roll_forward(ctx: RunContext, through: str, portfolio_id: str | None = None)
 
     # One TRI fetch for the whole call: same vintage_at/start throughout, so
     # the widest end plus the union of securities covers every period any
-    # in-scope portfolio needs to slice below.
-    tri_cache: dict[tuple[str, str, str], pd.DataFrame | None] = {}
+    # in-scope portfolio needs to slice below. Exception: PriceStore.tri
+    # truncates a security's history before an unresolved suspected corporate
+    # action inside the fetched window, so a suspect dated after a period's end
+    # would wrongly truncate that earlier period in the widest window. Those
+    # few securities keep the per-period fetch (end = that period's end).
+    def _fetch(sids: list[int], end: str) -> pd.DataFrame | None:
+        try:
+            return store.tri(sids, start=history_start, end=end, vintage_at=vintage_at)
+        except Exception:
+            return None
 
-    def _get_tri(end: str) -> pd.DataFrame | None:
-        key = (vintage_at, history_start, end)
-        if key not in tri_cache:
-            try:
-                tri_cache[key] = store.tri(sorted(all_sids), start=history_start, end=end, vintage_at=vintage_at)
-            except Exception:
-                tri_cache[key] = None
-        return tri_cache[key]
+    suspect_sids: set[int] = set()
+    master_tri_df = None
+    if all_sids and widest_end:
+        try:
+            suspect_sids = set(store.unresolved_actions(sorted(all_sids), history_start, widest_end, vintage_at))
+        except Exception:
+            suspect_sids = set()
+        master_tri_df = _fetch(sorted(all_sids - suspect_sids), widest_end)
+    suspect_tri: dict[str, pd.DataFrame | None] = {}
 
-    master_tri_df = _get_tri(widest_end) if all_sids and widest_end else None
+    def _tri_for(sid: int, end: str) -> pd.DataFrame | None:
+        if sid not in suspect_sids:
+            return master_tri_df
+        if end not in suspect_tri:
+            suspect_tri[end] = _fetch(sorted(suspect_sids), end)
+        return suspect_tri[end]
 
     # Pass 2: same per-period computation as before, sliced from the shared matrix.
     for plan in plans:
@@ -681,19 +695,19 @@ def roll_forward(ctx: RunContext, through: str, portfolio_id: str | None = None)
 
             sids = sorted(held_weights.keys())
             r_by_sid: dict[int, float] = {}
-            if sids:
-                tri_df = master_tri_df
+            for sid in sids:
+                tri_df = _tri_for(sid, period_end)
                 if (
-                    tri_df is not None
-                    and not tri_df.empty
-                    and period_start in tri_df.index
-                    and period_end in tri_df.index
+                    tri_df is None
+                    or tri_df.empty
+                    or sid not in tri_df.columns
+                    or period_start not in tri_df.index
+                    or period_end not in tri_df.index
                 ):
-                    row_s, row_e = tri_df.loc[period_start], tri_df.loc[period_end]
-                    for sid in sids:
-                        v0, v1 = row_s.get(sid), row_e.get(sid)
-                        if pd.notna(v0) and pd.notna(v1) and float(v0) > 0:
-                            r_by_sid[sid] = float(v1) / float(v0) - 1.0
+                    continue
+                v0, v1 = tri_df.at[period_start, sid], tri_df.at[period_end, sid]
+                if pd.notna(v0) and pd.notna(v1) and float(v0) > 0:
+                    r_by_sid[sid] = float(v1) / float(v0) - 1.0
 
             ret_gross = sum(held_weights[sid] * r_by_sid.get(sid, 0.0) for sid in sids)
 

@@ -242,6 +242,7 @@ def test_capture_records_index_placeholder_event_naming_parent(ctx, monkeypatch)
     assert detail["placeholder_symbol"] == "DUMMYHEG"
     assert detail["placeholder_isin"] == "DUM545A01024"
     assert detail["parent_symbol"] == "HEG"
+    assert detail["basis"] == "dummy_prefix"
 
     parent_security_id = ctx.conn.execute(
         "SELECT security_id FROM securities WHERE isin = ?", (_isin_with_check_digit("INE545A0102"),)

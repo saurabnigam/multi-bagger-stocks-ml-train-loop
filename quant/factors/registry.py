@@ -77,12 +77,16 @@ ACTIVE_LAUNCH_FACTORS = {
 # the objects whose content backs it: the accessor method itself plus the helper
 # callables/data it reads. Entries are real objects (not lambdas) so a test can monkeypatch
 # a single entry to a temporary function or module and observe the hash move.
+# MASTER_SPEC 5.3: control and legacy families are diagnostics, never weighted or promoted.
+NEVER_WEIGHTED_FAMILIES = ("control", "legacy")
+
 ACCESSOR_HELPER_MAP: Dict[str, Tuple[Any, ...]] = {
     "attribute": (FactorInputs.attribute,),
     "fundamental": (
         FactorInputs.fundamental,
         FactorInputs._normalise_request,
         FactorInputs._query_frames,
+        FactorInputs._mask_stale_annual,
         fundamentals_mod.pit_frame,
         fundamentals_mod._expand_fields,
         fundamentals_mod._alias_rank,
@@ -92,31 +96,40 @@ ACCESSOR_HELPER_MAP: Dict[str, Tuple[Any, ...]] = {
         FactorInputs.fundamental_dated,
         FactorInputs._normalise_request,
         FactorInputs._query_frames,
+        FactorInputs._mask_stale_annual,
         fundamentals_mod.pit_frame,
         fundamentals_mod._expand_fields,
         fundamentals_mod._alias_rank,
         fundamentals_mod.FIELD_ALIASES,
     ),
-    "ttm": (FactorInputs.ttm, fundamentals_mod.ttm),
+    "ttm": (FactorInputs.ttm, fundamentals_mod.ttm, fundamentals_mod._stale_annual_cutoff,
+            fundamentals_mod._expand_fields, fundamentals_mod._alias_rank, fundamentals_mod.FIELD_ALIASES),
     "holdings": (FactorInputs.holdings, holdings_mod.series),
     "tri": (
         FactorInputs.tri,
+        FactorInputs._get_start_date,
+        PriceStore.tri,
         PriceStore._versioned,
         PriceStore.corporate_actions,
         PriceStore._apply_actions_to_factors,
     ),
     "close_split": (
         FactorInputs.close_split,
+        FactorInputs._get_start_date,
+        PriceStore.close_split,
         PriceStore._versioned,
         PriceStore.corporate_actions,
         PriceStore._apply_actions_to_factors,
     ),
-    "close_raw": (FactorInputs.close_raw, PriceStore._versioned),
-    "volume": (FactorInputs.volume, PriceStore._versioned),
-    "adv_inr": (FactorInputs.adv_inr,),
-    "splits": (FactorInputs.splits, PriceStore.split_events, PriceStore.corporate_actions),
-    "benchmark_tri": (FactorInputs.benchmark_tri,),
+    "close_raw": (FactorInputs.close_raw, FactorInputs._get_start_date, PriceStore.close_raw, PriceStore._versioned),
+    "volume": (FactorInputs.volume, FactorInputs._get_start_date, PriceStore.volume, PriceStore._versioned),
+    "adv_inr": (FactorInputs.adv_inr, PriceStore.adv_inr),
+    "splits": (FactorInputs.splits, FactorInputs._get_start_date, PriceStore.split_events,
+               PriceStore.corporate_actions),
+    "benchmark_tri": (FactorInputs.benchmark_tri, FactorInputs._get_start_date),
 }
+# Maintenance rule: when a mapped accessor or helper is refactored to delegate to a new
+# private helper, add that helper here too; the coverage test only sees accessor names.
 
 
 def _normalise_source(src: str) -> str:
@@ -193,6 +206,7 @@ def _calc_code_sha(spec: FactorSpec) -> str:
             for dep in ACCESSOR_HELPER_MAP.get(accessor, ()):
                 parts.append(_content_of(dep))
     parts.append(_content_of(transform))
+    parts.append(_content_of(build_inputs))  # wiring of readers, cutoffs and config into FactorInputs
     content = "\x1f".join(parts)
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
@@ -313,7 +327,7 @@ def sync(ctx: RunContext, definitions: List[FactorSpec]) -> Result:
             )
 
         # Determine launch lifecycle status
-        if spec.family in ("control", "legacy"):
+        if spec.family in NEVER_WEIGHTED_FAMILIES:
             status = "shadow"
         elif spec.name in ACTIVE_LAUNCH_FACTORS:
             status = "active"

@@ -357,19 +357,31 @@ def _g9_replay(ctx: RunContext, draft: Draft) -> Check:
     recomputed_ids = set(recomputed["factor_id"].unique())
     stored_ids = set(stored["factor_id"].unique())
     not_replayed = sorted(stored_ids - recomputed_ids)
+    # Only a retired or superseded id may be skipped; one the registry still lists as
+    # live but that the replay did not produce is a failure, not a silent exemption.
+    live_status = dict(ctx.conn.execute(
+        "SELECT factor_id, status FROM factor_registry WHERE status IN ('active', 'shadow', 'probation')"
+    ).fetchall())
+    missing_live = [f for f in not_replayed if f in live_status]
     stored_live = stored[stored["factor_id"].isin(recomputed_ids)]
     merged = stored_live.merge(recomputed[["security_id", "factor_id", "z"]], on=["security_id", "factor_id"],
                          how="left", suffixes=("_stored", "_replay"))
     both_nan = merged["z_stored"].isna() & merged["z_replay"].isna()
     diff = (merged["z_stored"] - merged["z_replay"]).abs()
     mismatch = merged[~both_nan & ~(diff <= 1e-9)]
-    ok = mismatch.empty
+    ok = mismatch.empty and not missing_live
+    if missing_live:
+        reason = f"Live factors not recomputed on replay of {prior['cohort_id']}: {missing_live}"
+    elif not ok:
+        reason = f"{len(mismatch)} factor values differ on replay of {prior['cohort_id']}"
+    else:
+        reason = "Prior cohort reproduced from pinned inputs"
     return Check(
         id="G9", status="PASS" if ok else "FAIL",
-        observed={"rows": int(len(merged)), "mismatches": int(len(mismatch)), "not_replayed": not_replayed},
+        observed={"rows": int(len(merged)), "mismatches": int(len(mismatch)),
+                  "not_replayed": [f for f in not_replayed if f not in live_status], "missing_live": missing_live},
         expected="exact_match",
-        reason=("Prior cohort reproduced from pinned inputs" if ok
-                else f"{len(mismatch)} factor values differ on replay of {prior['cohort_id']}"),
+        reason=reason,
         blocking=not ok,
     )
 
@@ -456,8 +468,37 @@ def _git(args: list[str], cwd: Path) -> tuple[int, str]:
     return res.returncode, (res.stdout + res.stderr).strip()
 
 
+def _state_over_budget(cfg: Config, as_of: str, clock: Clock, actor: Actor) -> bool:
+    """MASTER_SPEC 10.5: measure state growth after every monthly run, committed or not.
+
+    Non-blocking: an oversized state file is a recorded WARN (decision D8), never a
+    publication block. Journaled through its own short RunContext, since the monthly
+    run's own RunContext has already committed and closed by this point.
+    """
+    warn_bytes = int(_cfg(cfg, "budgets", "state_warn_bytes", 50_000_000))
+    db_path = Path(cfg.paths.db)
+    if not db_path.exists() or db_path.stat().st_size <= warn_bytes:
+        return False
+    actual_bytes = db_path.stat().st_size
+    _print(f"State database {db_path} is {actual_bytes} bytes (> state_warn_bytes {warn_bytes}); "
+           "not staged. Record a capacity decision before committing it.")
+    try:
+        from quant.data.gates import record_event
+        with RunContext(as_of=as_of, kind="maintenance", track="live", cfg=cfg, clock=clock, actor=actor) as budget_ctx:
+            record_event(
+                budget_ctx,
+                code="STATE_BUDGET_EXCEEDED",
+                severity="WARN",
+                detail={"bytes": actual_bytes, "budget": warn_bytes, "db_path": str(db_path)},
+            )
+    except Exception as exc:
+        _print(f"Failed to record STATE_BUDGET_EXCEEDED event: {exc!r}")
+    return True
+
+
 def _commit_and_push(cfg: Config, as_of: str, *, commit: bool, push: bool, clock: Clock, actor: Actor) -> None:
     """Commit only intended data/report files; push only with the explicit flag."""
+    over_budget = _state_over_budget(cfg, as_of, clock, actor)
     if not commit:
         return
     root = Path(cfg.paths.db).resolve().parent
@@ -473,28 +514,9 @@ def _commit_and_push(cfg: Config, as_of: str, *, commit: bool, push: bool, clock
                 continue
     if not rel:
         return
-    # MASTER_SPEC 10.5: measure growth; an oversized state file is a recorded capacity issue,
-    # never silently committed.
-    warn_bytes = int(_cfg(cfg, "budgets", "state_warn_bytes", 50_000_000))
-    db_path = Path(cfg.paths.db)
-    if db_path.exists() and db_path.stat().st_size > warn_bytes:
-        actual_bytes = db_path.stat().st_size
-        _print(f"State database {db_path} is {actual_bytes} bytes (> state_warn_bytes {warn_bytes}); "
-               "not staged. Record a capacity decision before committing it.")
-        # Non-blocking: a recorded warning, never a publication block (MASTER_SPEC 10.5,
-        # decision D8). Journaled through its own short RunContext, since the monthly
-        # run's own RunContext has already committed and closed by this point.
-        try:
-            from quant.data.gates import record_event
-            with RunContext(as_of=as_of, kind="maintenance", track="live", cfg=cfg, clock=clock, actor=actor) as budget_ctx:
-                record_event(
-                    budget_ctx,
-                    code="STATE_BUDGET_EXCEEDED",
-                    severity="WARN",
-                    detail={"bytes": actual_bytes, "budget": warn_bytes, "db_path": str(db_path)},
-                )
-        except Exception as exc:
-            _print(f"Failed to record STATE_BUDGET_EXCEEDED event: {exc!r}")
+    # An oversized state file is a recorded capacity issue, never silently committed.
+    if over_budget:
+        db_path = Path(cfg.paths.db)
         rel = [r for r in rel if Path(root / r).resolve() != db_path.resolve()]
         if not rel:
             return

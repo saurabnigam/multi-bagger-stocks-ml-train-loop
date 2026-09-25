@@ -269,3 +269,20 @@ def test_g9_passes_when_only_the_superseded_factor_is_absent(ctx, monkeypatch):
     assert check.blocking is False
     assert check.observed["not_replayed"] == ["retired_factor@1"]
     assert check.observed["mismatches"] == 0
+
+
+def test_g9_fails_when_a_live_factor_is_not_recomputed(ctx, monkeypatch):
+    """Review finding: an id the registry still lists as active but the replay did not produce
+    (e.g. a class-resolution bug) must fail the gate instead of passing as 'not replayed'."""
+    _seed_prior_cohort_with_two_factors(ctx)
+
+    def fake_compute_all(_ctx, _draft):
+        return pd.DataFrame(columns=["security_id", "factor_id", "z"])
+
+    monkeypatch.setattr("quant.factors.registry.compute_all", fake_compute_all)
+
+    check = _g9_replay(ctx, _new_draft())
+
+    assert check.status == "FAIL" and check.blocking is True
+    assert check.observed["missing_live"] == ["roce@1"]
+    assert check.observed["not_replayed"] == ["retired_factor@1"]

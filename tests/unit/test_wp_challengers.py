@@ -401,3 +401,32 @@ def test_challenger_definitions_cover_both_models():
     assert CHALLENGER_DEFINITIONS["EW_HIER_COV_v1"]["params"]["mode"] == "hierarchical_cov"
     for defn in CHALLENGER_DEFINITIONS.values():
         assert defn["kind"] == "equal"
+
+
+def test_register_challenger_refuses_beyond_live_challenger_budget(cfg):
+    """Review finding: MASTER_SPEC 9.4 allows at most learning.max_challengers (3) live challengers."""
+    ctx = _fresh_ctx(cfg, actor_kind="human", actor_name="owner")
+    with ctx:
+        conn = ctx.conn
+        _insert_decision(conn, "D-CH-CAP", tier=2, approver_kind="human")
+        for i in range(3):
+            conn.execute(
+                "INSERT INTO models (model_id, kind, role, description, params_json, hypothesis_id, registered_on, "
+                "decision_id) VALUES (?, 'equal', 'challenger', 'x', '{}', NULL, '2026-09-01', 'D-CH-CAP')",
+                (f"OTHER_{i}",),
+            )
+        with pytest.raises(Refused) as exc_info:
+            register_challenger(ctx, "EW_HIER_NR_v1", "D-CH-CAP")
+        assert "budget" in str(exc_info.value)
+
+
+def test_new_modes_refuse_a_sector_tilt_sleeve():
+    """Review finding: the NR/COV branches overwrite 'final', so a sleeve would be silently dropped."""
+    cfg = load_config()
+    definitions = pd.DataFrame([{"factor_id": "m1", "family": "momentum", "status_weight": 1.0, "nonfinancial": False}])
+    sids = list(range(1, 11))
+    z = pd.DataFrame({"m1": np.linspace(-1, 1, 10)}, index=sids)
+    groups = pd.Series(["A"] * 10, index=sids)
+    for mode in ("hierarchical_nr", "hierarchical_cov"):
+        with pytest.raises(ValueError):
+            compose(z, definitions, {"momentum": 10000}, groups, cfg, mode=mode, sleeve_weight=0.1)

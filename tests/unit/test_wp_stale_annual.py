@@ -234,3 +234,22 @@ def test_ttm_quarterly_path_unaffected_by_staleness(ctx):
                        max_annual_age_days=1)
     assert vals[sid] == pytest.approx(100.0)
     assert flags[sid] == ""
+
+
+def test_exact_487_day_boundary_agrees_in_both_readers(ctx):
+    """Review finding: pin the edge. Exactly 487 days is not stale in FactorInputs and in ttm();
+    the two readers encode the cutoff independently and must not drift apart."""
+    sid = 11
+    period_end = "2025-03-31"
+    as_of = (pd.Timestamp(period_end) + pd.Timedelta(days=487)).strftime("%Y-%m-%d")
+    cutoff = f"{as_of}T18:29:59.999999Z"
+    _security(ctx, sid)
+    _insert_fund(ctx, sid, "balance", period_end, "Stockholders Equity", 500.0,
+                 available="2025-06-01T00:00:00.000000Z", fetched="2025-06-01T00:00:00.000000Z")
+    _insert_fund(ctx, sid, "income", period_end, "EBIT", 40.0, freq="A",
+                 available="2025-06-01T00:00:00.000000Z", fetched="2025-06-01T00:00:00.000000Z")
+
+    inputs = build_inputs(ctx, _draft(sid, as_of=as_of, cutoff=cutoff))
+    assert inputs.fundamental("balance", "Stockholders Equity", "A", 1).loc[sid, 0] == pytest.approx(500.0)
+    vals, flags = ttm(ctx.conn, cutoff, "EBIT", [sid], as_of=as_of)
+    assert vals[sid] == pytest.approx(40.0) and flags[sid] == "ttm_from_annual"

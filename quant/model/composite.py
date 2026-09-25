@@ -200,6 +200,8 @@ def compose(
     # 6.4 D6), so a failed neutralisation must not exclude a name here -- comp_neutral
     # is retained purely as a diagnostic column in that mode.
     is_nr_mode = mode.lower() == "hierarchical_nr"
+    if mode.lower() in ("hierarchical_nr", "hierarchical_cov") and sleeve_weight > 0.0:
+        raise ValueError(f"mode {mode!r} does not support a sector-tilt sleeve (sleeve_weight={sleeve_weight})")
     failed_neutral = (scored_series == 1) & comp_neutral.isna() & comp_series.notna()
     if not is_nr_mode:
         for sid in failed_neutral[failed_neutral].index:

@@ -247,6 +247,14 @@ def register_challenger(ctx: RunContext, model_id: str, decision_id: str) -> Res
             f"'{model_id}' requires a human-approved decision",
         )
 
+    # MASTER_SPEC 9.4: at most learning.max_challengers (3) live challengers at a time.
+    max_challengers = int(getattr(getattr(ctx.cfg, "learning", None), "max_challengers", 3))
+    already = conn.execute("SELECT 1 FROM models WHERE model_id = ?", (model_id,)).fetchone()
+    live = conn.execute("SELECT count(*) FROM models WHERE role = 'challenger'").fetchone()[0]
+    if already is None and live >= max_challengers:
+        raise Refused("budget", f"{live} live challengers already registered (limit {max_challengers}); "
+                                f"retire one before registering '{model_id}'")
+
     as_of = ctx.as_of or "2026-09-01"
     timestamp = (
         ctx.clock.now_iso()

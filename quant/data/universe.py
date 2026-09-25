@@ -288,6 +288,7 @@ def capture(ctx: Any) -> Result:
                 detail={
                     "placeholder_symbol": symbol,
                     "placeholder_isin": isin,
+                    "basis": "dummy_prefix" if is_placeholder_symbol(symbol) else "invalid_isin",
                     "parent_symbol": parent_symbol,
                 },
                 security_id=parent_security_id if parent_security_id is not None else own_security_id,

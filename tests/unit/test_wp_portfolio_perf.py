@@ -370,6 +370,38 @@ def test_roll_forward_batches_tri_and_matches_reference(tmp_path):
     assert len(positions_new) > 0
 
 
+def test_roll_forward_matches_reference_with_a_later_suspected_action(tmp_path):
+    """Review finding (blocker): PriceStore.tri truncates history before an unresolved
+    suspected action inside the fetched window. Fetching once to the widest end must not
+    let a suspect dated after a period's end truncate that earlier period; the per-period
+    reference fetches to each period's own end, so only the period containing the
+    suspect loses the security's return.
+    """
+    ctx_ref, conn_ref, _ = _build_roll_forward_fixture(tmp_path / "ref")
+    ctx_new, conn_new, _ = _build_roll_forward_fixture(tmp_path / "new")
+    for conn in (conn_ref, conn_new):
+        with conn:
+            conn.execute(
+                "INSERT INTO corporate_actions (security_id, ex_date, kind, ratio, amount_inr, adj_factor, source, "
+                "observed_at, decision_id, note) VALUES (3, '2027-01-29', 'suspected', NULL, NULL, NULL, 'inferred', "
+                "'2026-09-01T00:00:00.000000Z', NULL, '{}')"
+            )
+
+    res_new = roll_forward(ctx_new, through="2027-02-26")
+    res_ref = _reference_roll_forward(ctx_ref, through="2027-02-26")
+    assert res_new.counts == res_ref.counts
+
+    cols = "portfolio_id, month_end, evidence_hash, ret_gross, ret_net, n_positions"
+    rows_new = [dict(r) for r in conn_new.execute(f"SELECT {cols} FROM portfolio_returns ORDER BY 1, 2").fetchall()]
+    rows_ref = [dict(r) for r in conn_ref.execute(f"SELECT {cols} FROM portfolio_returns ORDER BY 1, 2").fetchall()]
+    assert rows_new == rows_ref
+    # security 3 (held by PA and PC) still earns its return in periods ending before the suspect
+    early = conn_new.execute(
+        "SELECT ret_gross FROM portfolio_returns WHERE portfolio_id = 'PA' AND month_end = '2026-12-31'"
+    ).fetchone()[0]
+    assert early != 0.0
+
+
 # =============================================================================
 # T5: no attribution books for never-weighted (diagnostic) factor families
 # =============================================================================
@@ -613,3 +645,21 @@ def test_state_budget_not_exceeded_records_no_event(tmp_path):
         assert n == 0
     finally:
         check_conn.close()
+
+
+def test_state_budget_recorded_even_without_commit(tmp_path):
+    """Review finding: the WARN must not depend on --commit (monthly() defaults to commit=False)."""
+    cfg = _make_cfg(tmp_path)
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    conn = connect(cfg.paths.db)
+    apply_schema(conn, kind="state")
+    conn.close()
+    from quant.config import Config
+    raw = cfg.to_dict()
+    raw["budgets"]["state_warn_bytes"] = 1
+    tiny_cfg = Config(raw, cfg._root, policy_hash=cfg.policy_sha256)
+    _commit_and_push(tiny_cfg, as_of="2026-09-07", commit=False, push=False,
+                     clock=FrozenClock("2026-09-08T00:00:00.000000Z"), actor=Actor(kind="system", name="t"))
+    c = connect(cfg.paths.db)
+    n = c.execute("SELECT count(*) FROM data_quality_events WHERE code = 'STATE_BUDGET_EXCEEDED'").fetchone()[0]
+    assert n == 1
