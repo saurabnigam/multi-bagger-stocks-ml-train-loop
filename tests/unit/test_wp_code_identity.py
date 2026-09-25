@@ -286,3 +286,19 @@ def test_g9_fails_when_a_live_factor_is_not_recomputed(ctx, monkeypatch):
     assert check.status == "FAIL" and check.blocking is True
     assert check.observed["missing_live"] == ["roce@1"]
     assert check.observed["not_replayed"] == ["retired_factor@1"]
+
+
+def test_monthly_staging_refuses_a_factor_changed_without_version_bump(ctx, monkeypatch):
+    """Integration finding: registry.sync was never called outside tests, so the D5 check never
+    ran in production. _stage_and_publish now syncs first and refuses on drift before gates or
+    factor computation run."""
+    from quant import run as run_mod
+
+    registry.sync(ctx, registry.launch_specs())
+    ctx.conn.execute("UPDATE factor_registry SET code_sha256 = 'drifted' WHERE factor_id = 'roce@1'")
+    called = {"gates": False}
+    monkeypatch.setattr("quant.data.gates.run", lambda *a, **k: called.__setitem__("gates", True))
+    with pytest.raises(Refused) as exc_info:
+        run_mod._stage_and_publish(ctx, _new_draft(), stop_after="gates")
+    assert "CODE_CHANGED_WITHOUT_VERSION_BUMP" in str(exc_info.value)
+    assert called["gates"] is False

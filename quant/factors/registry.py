@@ -259,6 +259,11 @@ def _ensure_code_identity_v2_decision(conn: sqlite3.Connection, timestamp: str, 
     )
 
 
+def launch_specs() -> List[FactorSpec]:
+    """Specifications of every registered launch factor class, in a stable order."""
+    return [LAUNCH_FACTOR_CLASSES[name]().spec for name in sorted(LAUNCH_FACTOR_CLASSES)]
+
+
 def sync(ctx: RunContext, definitions: List[FactorSpec]) -> Result:
     """Sync registered factor definitions to factor_registry and factor_status_history.
 

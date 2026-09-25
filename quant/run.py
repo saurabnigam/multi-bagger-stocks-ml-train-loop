@@ -410,6 +410,11 @@ def _stage_and_publish(ctx: RunContext, draft: Draft, stop_after: Optional[str])
     from quant.factors import registry as factor_registry
     from quant.model import models
 
+    # MASTER_SPEC 5.1 (D5): a factor whose code or helper dependencies changed without a
+    # version bump refuses the run before anything is computed; the first run after the
+    # code-identity v2 change re-pins legacy hashes once (recorded decision and DQ event).
+    factor_registry.sync(ctx, factor_registry.launch_specs())
+
     gates.run(ctx, draft, phase="pre", strict=True)
     if stop_after == "gates":
         return False
