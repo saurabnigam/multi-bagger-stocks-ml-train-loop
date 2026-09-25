@@ -20,6 +20,18 @@ from quant.types import Result
 if TYPE_CHECKING:
     from quant.run import RunContext
 
+# MASTER_SPEC 5.3: families whose members are "diagnostic, never weighted" --
+# they cannot be promoted into the composite regardless of lifecycle status,
+# so an attribution book (TOP_Q20/MATCHED_EW) for one of them can never
+# supply promotion evidence (MASTER_SPEC 8) and is pure storage overhead
+# (MASTER_SPEC 10.5, decision D8). This is distinct from a factor whose
+# *launch role* happens to say "diagnostic" (e.g. rev_1m, max_ret_21): those
+# sit in a weighted family (momentum, low_risk) and can still be promoted, so
+# they keep their books. Read from the registry's `family` column, not a
+# hard-coded factor_id list, so a future family added under either name is
+# excluded automatically.
+NEVER_WEIGHTED_FAMILIES = ("control", "legacy")
+
 
 def _add_months(as_of: str, months: int) -> str:
     """Calculate endpoint month and return the last calendar day in that month."""
@@ -235,13 +247,17 @@ def plan(ctx: RunContext, cohort_id: str) -> Result:
             cfg=ctx.cfg,
         )
 
-    # 2b. Factor attribution books
+    # 2b. Factor attribution books -- never for a factor whose family can
+    # never be weighted (MASTER_SPEC 5.3); active/shadow/probation members of
+    # a real weighted family still get books.
+    never_weighted_placeholders = ",".join("?" for _ in NEVER_WEIGHTED_FAMILIES)
     factor_rows = conn.execute(
         "SELECT DISTINCT fv.factor_id, fr.version "
         "FROM factor_values fv "
         "JOIN factor_registry fr ON fv.factor_id = fr.factor_id "
-        "WHERE fv.cohort_id = ? AND fr.status IN ('active', 'shadow', 'probation')",
-        (cohort_id,),
+        "WHERE fv.cohort_id = ? AND fr.status IN ('active', 'shadow', 'probation') "
+        f"  AND fr.family NOT IN ({never_weighted_placeholders})",
+        (cohort_id, *NEVER_WEIGHTED_FAMILIES),
     ).fetchall()
 
     for f_row in factor_rows:
@@ -508,10 +524,23 @@ def roll_forward(ctx: RunContext, through: str, portfolio_id: str | None = None)
     each calendar month end), never bare calendar dates -- a calendar
     month-start/end is usually not a session, which silently zeroed every
     return under the old implementation. Each period's per-position return is
-    the TRI ratio between its start and end session (one ``tri()`` call per
-    portfolio-month); positions drift with those returns between fills
-    ((1+r_i)/(1+r_portfolio)), and a rebalance's recorded ``weight_delta`` is
-    applied on top of the drifted weight. Produces no pre-inception returns.
+    the TRI ratio between its start and end session; positions drift with
+    those returns between fills ((1+r_i)/(1+r_portfolio)), and a rebalance's
+    recorded ``weight_delta`` is applied on top of the drifted weight.
+    Produces no pre-inception returns.
+
+    TRI reads are batched: every portfolio/period in one call shares the same
+    ``vintage_at`` and ``start`` (the configured history start), so the only
+    axis that varies is the end date, and a wider window is a superset of a
+    narrower one for the same start/vintage (TRI is 100-based at the first
+    bar on/after ``start``, so widening ``end`` never changes values on
+    shared dates -- see ``PriceStore.tri``). This call therefore fetches one
+    TRI matrix per distinct ``(vintage_at, start, end)`` actually needed --
+    the union of every security touched by any in-scope portfolio, over the
+    widest end date any of them needs -- and every portfolio/period slices
+    its own return out of that shared matrix, instead of issuing its own
+    ``tri()`` call per portfolio-period. A different ``roll_forward`` call
+    (a different ``through``/vintage) never reuses another call's matrix.
     """
     conn = ctx.conn
     if conn is None:
@@ -540,6 +569,15 @@ def roll_forward(ctx: RunContext, through: str, portfolio_id: str | None = None)
         history_start = str(ctx.cfg.yahoo.history_start)
 
     returns_updated = 0
+
+    # Pass 1: work out, per in-scope portfolio, the periods it needs and the
+    # trades that drive them -- purely from portfolio_trades, no pricing.
+    # Which securities are held in a period is determined by trades alone
+    # (drift only rescales an existing holding; a holding leaves the book
+    # only via a trade), so this never needs a TRI read.
+    plans: list[dict[str, Any]] = []
+    all_sids: set[int] = set()
+    widest_end: str | None = None
 
     for port in portfolios:
         pid = port["portfolio_id"]
@@ -580,6 +618,32 @@ def roll_forward(ctx: RunContext, through: str, portfolio_id: str | None = None)
             (pid,),
         ).fetchall()
 
+        all_sids.update(int(t["security_id"]) for t in all_trades)
+        widest_end = points[-1] if widest_end is None else max(widest_end, points[-1])
+        plans.append({"pid": pid, "points": points, "all_trades": all_trades})
+
+    # One TRI fetch for the whole call: same vintage_at/start throughout, so
+    # the widest end plus the union of securities covers every period any
+    # in-scope portfolio needs to slice below.
+    tri_cache: dict[tuple[str, str, str], pd.DataFrame | None] = {}
+
+    def _get_tri(end: str) -> pd.DataFrame | None:
+        key = (vintage_at, history_start, end)
+        if key not in tri_cache:
+            try:
+                tri_cache[key] = store.tri(sorted(all_sids), start=history_start, end=end, vintage_at=vintage_at)
+            except Exception:
+                tri_cache[key] = None
+        return tri_cache[key]
+
+    master_tri_df = _get_tri(widest_end) if all_sids and widest_end else None
+
+    # Pass 2: same per-period computation as before, sliced from the shared matrix.
+    for plan in plans:
+        pid = plan["pid"]
+        points = plan["points"]
+        all_trades = plan["all_trades"]
+
         current_weights: dict[int, float] = {}
         entry_dates: dict[int, str] = {}
         bucket_by_sid: dict[int, str] = {}
@@ -618,10 +682,7 @@ def roll_forward(ctx: RunContext, through: str, portfolio_id: str | None = None)
             sids = sorted(held_weights.keys())
             r_by_sid: dict[int, float] = {}
             if sids:
-                try:
-                    tri_df = store.tri(sids, start=history_start, end=period_end, vintage_at=vintage_at)
-                except Exception:
-                    tri_df = None
+                tri_df = master_tri_df
                 if (
                     tri_df is not None
                     and not tri_df.empty
