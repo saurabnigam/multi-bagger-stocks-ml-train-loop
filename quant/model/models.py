@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
+from quant.data.actions import _validate_decision
+from quant.errors import Refused
 from quant.model.composite import compose
 from quant.model.learn import allocate_units, fit_family_weights
 from quant.model.screens import apply as apply_screens
@@ -37,6 +39,26 @@ MOM_FACTORS = [
     {"factor_id": "mom_12_1", "family": "momentum", "status_weight": 1.0, "nonfinancial": False},
     {"factor_id": "trend_200", "family": "momentum", "status_weight": 1.0, "nonfinancial": False},
 ]
+
+# Challenger models registrable into an existing database via register_challenger()
+# (MASTER_SPEC 6.4 decisions D6/D7). Not part of the launch-exemption set: registering
+# one requires an approved decision, and it never gets a launch hypothesis.
+CHALLENGER_DEFINITIONS: dict[str, dict[str, Any]] = {
+    "EW_HIER_NR_v1": {
+        "kind": "equal",
+        "description": "Equal-weight hierarchical composite, ranked without within-sector re-neutralisation (D6)",
+        "params": {"mode": "hierarchical_nr", "sleeve_weight": 0.0},
+        "weights": {"families": ["momentum", "low_risk", "quality", "value", "growth"], "mode": "hierarchical_nr", "sleeve": 0.0},
+        "note": "Challenger: drops the sector-size ceiling from composite_neutral (D6)",
+    },
+    "EW_HIER_COV_v1": {
+        "kind": "equal",
+        "description": "Equal-weight hierarchical composite, coverage-scaled by sqrt(n_used/n_applicable) (D7)",
+        "params": {"mode": "hierarchical_cov", "sleeve_weight": 0.0},
+        "weights": {"families": ["momentum", "low_risk", "quality", "value", "growth"], "mode": "hierarchical_cov", "sleeve": 0.0},
+        "note": "Challenger: shrinks thin-evidence composites toward zero (D7)",
+    },
+}
 
 
 def seed(ctx: RunContext, bootstrap_decision_id: str) -> Result:
@@ -86,6 +108,26 @@ def seed(ctx: RunContext, bootstrap_decision_id: str) -> Result:
             "challenger",
             "Shrunk family-weight challenger model (k_shrink=24, min_n_eff=4)",
             json.dumps({"mode": "hierarchical", "k_shrink": 24.0, "min_n_eff": 4.0, "sleeve_weight": 0.0}),
+            None,
+            timestamp,
+            bootstrap_decision_id,
+        ),
+        (
+            "EW_HIER_NR_v1",
+            CHALLENGER_DEFINITIONS["EW_HIER_NR_v1"]["kind"],
+            "challenger",
+            CHALLENGER_DEFINITIONS["EW_HIER_NR_v1"]["description"],
+            json.dumps(CHALLENGER_DEFINITIONS["EW_HIER_NR_v1"]["params"]),
+            None,
+            timestamp,
+            bootstrap_decision_id,
+        ),
+        (
+            "EW_HIER_COV_v1",
+            CHALLENGER_DEFINITIONS["EW_HIER_COV_v1"]["kind"],
+            "challenger",
+            CHALLENGER_DEFINITIONS["EW_HIER_COV_v1"]["description"],
+            json.dumps(CHALLENGER_DEFINITIONS["EW_HIER_COV_v1"]["params"]),
             None,
             timestamp,
             bootstrap_decision_id,
@@ -143,6 +185,26 @@ def seed(ctx: RunContext, bootstrap_decision_id: str) -> Result:
             bootstrap_decision_id,
             "Initial challenger",
         ),
+        (
+            "EW_HIER_NR_v1",
+            1,
+            json.dumps(LAUNCH_FACTORS),
+            json.dumps(CHALLENGER_DEFINITIONS["EW_HIER_NR_v1"]["weights"]),
+            as_of,
+            None,
+            bootstrap_decision_id,
+            CHALLENGER_DEFINITIONS["EW_HIER_NR_v1"]["note"],
+        ),
+        (
+            "EW_HIER_COV_v1",
+            1,
+            json.dumps(LAUNCH_FACTORS),
+            json.dumps(CHALLENGER_DEFINITIONS["EW_HIER_COV_v1"]["weights"]),
+            as_of,
+            None,
+            bootstrap_decision_id,
+            CHALLENGER_DEFINITIONS["EW_HIER_COV_v1"]["note"],
+        ),
     ]
 
     for row in versions_data:
@@ -156,6 +218,60 @@ def seed(ctx: RunContext, bootstrap_decision_id: str) -> Result:
         )
 
     return Result(status="ok", counts={"models": len(models_data), "versions": len(versions_data)})
+
+
+def register_challenger(ctx: RunContext, model_id: str, decision_id: str) -> Result:
+    """Register a known challenger model definition into an existing database.
+
+    Unlike the launch set seeded by seed(), a challenger registered this way requires
+    its own approved decision (MASTER_SPEC 6.4): _validate_decision (the same governance
+    check quant.data.actions uses for corporate actions and quality-event clearances)
+    confirms the decision exists, is approved, and matches the calling actor's kind; a
+    Tier >= 1 decision must additionally have been approved by a human, since registering
+    a challenger is not a launch-exempt, system-decided act. Idempotent: registering the
+    same model_id twice under a decision that still validates is a no-op on content.
+    """
+    conn = ctx.conn
+    if conn is None:
+        return Result(status="ok", counts={"models": 0, "versions": 0})
+
+    defn = CHALLENGER_DEFINITIONS.get(model_id)
+    if defn is None:
+        raise Refused("unknown_model", f"'{model_id}' is not a registrable challenger definition")
+
+    decision = _validate_decision(ctx, decision_id)
+    if int(decision["tier"]) >= 1 and decision["approver_kind"] != "human":
+        raise Refused(
+            "governance",
+            f"Decision {decision_id} is Tier {decision['tier']}; registering challenger "
+            f"'{model_id}' requires a human-approved decision",
+        )
+
+    as_of = ctx.as_of or "2026-09-01"
+    timestamp = (
+        ctx.clock.now_iso()
+        if (ctx and getattr(ctx, "clock", None))
+        else f"{as_of}T00:00:00.000000Z"
+    )
+
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO models
+        (model_id, kind, role, description, params_json, hypothesis_id, registered_on, decision_id)
+        VALUES (?, ?, 'challenger', ?, ?, NULL, ?, ?)
+        """,
+        (model_id, defn["kind"], defn["description"], json.dumps(defn["params"]), timestamp, decision_id),
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO model_versions
+        (model_id, version, factor_set_json, weights_json, valid_from, valid_to, decision_id, note)
+        VALUES (?, 1, ?, ?, ?, NULL, ?, ?)
+        """,
+        (model_id, json.dumps(LAUNCH_FACTORS), json.dumps(defn["weights"]), as_of, decision_id, defn["note"]),
+    )
+
+    return Result(status="ok", counts={"models": 1, "versions": 1}, details={"model_id": model_id, "decision_id": decision_id})
 
 
 def definition_at(conn: sqlite3.Connection, model_id: str, as_of: str) -> dict[str, Any]:

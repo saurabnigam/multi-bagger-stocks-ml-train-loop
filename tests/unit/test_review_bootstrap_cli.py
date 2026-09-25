@@ -19,7 +19,8 @@ def test_kb_bootstrap_seeds_launch_set_journaled_and_idempotent(tmp_path, monkey
     assert main(["kb", "bootstrap", "--db", str(db), "--as-of", "2026-09-30"]) == 0
     conn = connect(db, readonly=True)
     assert conn.execute("SELECT count(*) FROM decisions WHERE decision_id = 'DEC_BOOTSTRAP'").fetchone()[0] == 1
-    assert conn.execute("SELECT count(*) FROM models").fetchone()[0] == 4
+    # 6 launch models: EW_HIER_v1, EW_FLAT_v1, MOM_ONLY_v1, IC_SHRUNK_v1, EW_HIER_NR_v1, EW_HIER_COV_v1 (D6/D7)
+    assert conn.execute("SELECT count(*) FROM models").fetchone()[0] == 6
     assert conn.execute("SELECT count(*) FROM factor_registry").fetchone()[0] >= 20
     n_hyp = conn.execute("SELECT count(*) FROM hypotheses").fetchone()[0]
     assert n_hyp > 0
@@ -34,7 +35,8 @@ def test_kb_bootstrap_seeds_launch_set_journaled_and_idempotent(tmp_path, monkey
     assert main(["kb", "bootstrap", "--db", str(db), "--as-of", "2026-09-30"]) == 0
     conn = connect(db, readonly=True)
     assert conn.execute("SELECT count(*) FROM hypotheses").fetchone()[0] == n_hyp
-    assert conn.execute("SELECT count(*) FROM models").fetchone()[0] == 4
+    # 6 launch models: EW_HIER_v1, EW_FLAT_v1, MOM_ONLY_v1, IC_SHRUNK_v1, EW_HIER_NR_v1, EW_HIER_COV_v1 (D6/D7)
+    assert conn.execute("SELECT count(*) FROM models").fetchone()[0] == 6
     conn.close()
 
 
