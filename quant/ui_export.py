@@ -298,8 +298,10 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
         base_sym = d.get("nse_symbol") or ticker.replace(".NS", "").replace(".BO", "")
         company_name = d.get("company_name") or base_sym
 
-        final_score = float(d.get("final") or 0.0)
-        composite = float(d.get("composite") or 0.0)
+        # Unscored names have no final/composite in the store: publish null, never a 0.0 that
+        # reads as a score and leaks into sector statistics.
+        final_score = float(d["final"]) if d.get("final") is not None else None
+        composite = float(d["composite"]) if d.get("composite") is not None else None
         eligible = bool(d.get("eligible"))
         dc_flag = int(d.get("dc_flag") or 0)
         sector_group = d.get("sector_group") or "Unknown"
@@ -349,7 +351,7 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
         if fcf_row is not None and fcf_row[1] is not None:
             fcf_raw_by_sid[sid] = float(fcf_row[1])
 
-        if eligible and final_score > 0:
+        if eligible and final_score is not None and final_score > 0:
             rank_counter += 1
             if rank_counter <= top_n:
                 accepted_ids.append(sid)
@@ -371,25 +373,27 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
     # Sector distribution
     sector_counts: dict[str, list[float]] = {}
     sector_tops: dict[str, tuple[str, float]] = {}
+    sector_members: dict[str, int] = {}
     for s in stocks:
         sec = s["sector_group"]
+        sector_members[sec] = sector_members.get(sec, 0) + 1
         score_val = s["final_score"]
-        if sec not in sector_counts:
-            sector_counts[sec] = []
-            sector_tops[sec] = (s["ticker"], score_val)
+        sector_counts.setdefault(sec, [])
+        if score_val is None:
+            continue
         sector_counts[sec].append(score_val)
-        if score_val > sector_tops[sec][1]:
+        if sec not in sector_tops or score_val > sector_tops[sec][1]:
             sector_tops[sec] = (s["ticker"], score_val)
 
     total_stocks = len(stocks) or 1
     sector_distribution = []
-    for sec, sc_list in sorted(sector_counts.items(), key=lambda x: len(x[1]), reverse=True):
+    for sec, sc_list in sorted(sector_counts.items(), key=lambda x: sector_members[x[0]], reverse=True):
         avg_sc = sum(sc_list) / len(sc_list) if sc_list else 0.0
-        top_sym, top_sc = sector_tops[sec]
+        top_sym, top_sc = sector_tops.get(sec, ("--", 0.0))
         sector_distribution.append({
             "sector": sec,
-            "count": len(sc_list),
-            "share_pct": round((len(sc_list) / total_stocks) * 100, 1),
+            "count": sector_members[sec],
+            "share_pct": round((sector_members[sec] / total_stocks) * 100, 1),
             "avg_score": round(avg_sc, 1),
             "top_stock": top_sym,
             "top_score": round(top_sc, 1),

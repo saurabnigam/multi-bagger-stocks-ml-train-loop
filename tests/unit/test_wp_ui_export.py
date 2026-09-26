@@ -291,3 +291,43 @@ def test_ui_export_factor_rows_are_compact_and_gates_come_from_the_cohort(tmp_pa
     assert isinstance(row, list) and len(row) == 4
     assert payload["factor_flags"][0] == ""
     assert payload["gates_audit"] == []
+
+
+def test_ui_export_unscored_names_publish_null_scores(tmp_path, cfg):
+    """Verification finding: unscored names (final NULL in the store) were exported as 0.0 and
+    counted in sector averages. They must publish null and stay out of the averages."""
+    db_path = tmp_path / "unscored.db"
+    conn = connect(db_path)
+    apply_schema(conn, kind="state")
+    with conn:
+        conn.execute("INSERT INTO runs (run_id, as_of, kind, track, attempt, started_at, status, git_sha, code_sha256, "
+                     "config_sha256, registry_sha256, is_clean) VALUES (1, ?, 'monthly', 'live', 1, ?, 'ok', 's', 'c', 'g', 'r', 1)",
+                     (AS_OF, CUTOFF))
+        conn.execute("INSERT INTO cohorts (cohort_id, as_of, track, knowledge_cutoff, definition_hash, membership_hash, "
+                     "source_refs_json, published_at, generated_at, is_clean, run_id) VALUES (?, ?, 'live', ?, 'd', 'm', '[]', ?, ?, 1, 1)",
+                     (COHORT_ID, AS_OF, CUTOFF, CUTOFF, CUTOFF))
+        conn.execute("INSERT INTO models (model_id, kind, role, description, params_json, registered_on) "
+                     "VALUES ('EW_HIER_v1', 'equal', 'champion', 'c', '{}', ?)", (AS_OF,))
+        conn.execute("INSERT INTO model_versions (model_id, version, factor_set_json, weights_json, valid_from) "
+                     "VALUES ('EW_HIER_v1', 1, '[]', '{}', ?)", (AS_OF,))
+        for sid, final, scored in ((1, 1.5, 1), (2, 0.5, 1), (3, None, 0)):
+            conn.execute("INSERT INTO securities (security_id, isin, name, first_seen, last_seen, status) "
+                         "VALUES (?, ?, ?, '2015-01-01', '2026-10-01', 'listed')", (sid, f"INE00000{sid}A01", f"Co {sid}"))
+            conn.execute("INSERT INTO symbol_history (security_id, nse_symbol, yahoo_ticker, valid_from, source) "
+                         "VALUES (?, ?, ?, '2015-01-01', 'nse_csv')", (sid, f"S{sid}", f"S{sid}.NS"))
+            conn.execute(
+                "INSERT INTO scores (cohort_id, as_of, security_id, model_id, model_version, sector_group, group_def_version, "
+                "family_scores_json, composite, composite_neutral, sector_tilt, final, rank_all, rank, rank_group, decile, "
+                "quintile, scored, eligible, exclusion_reason, liquidity_bucket, n_factors_used, dc_flag, input_hash, "
+                "generated_at, track, run_id) VALUES (?, ?, ?, 'EW_HIER_v1', 1, 'Industrials', 1, '{}', ?, ?, 0, ?, ?, ?, ?, "
+                "?, ?, ?, ?, ?, 'A', 8, 0, 'h', ?, 'live', 1)",
+                (COHORT_ID, AS_OF, sid, final, final, final, sid if scored else None, sid if scored else None,
+                 sid if scored else None, 10 if scored else None, 5 if scored else None, scored, scored,
+                 None if scored else "coverage", CUTOFF))
+    ui_out = tmp_path / "ui"
+    export(conn, cfg.with_paths(db=db_path, ui_dir=ui_out))
+    payload = json.loads((ui_out / "data.js").read_text(encoding="utf-8").split("=", 1)[1].rstrip(";\n"))
+    by_id = {s["security_id"]: s for s in payload["stocks"]}
+    assert by_id[3]["final_score"] is None and by_id[3]["composite"] is None
+    sector = next(d for d in payload["sector_distribution"] if d["sector"] == "Industrials")
+    assert sector["count"] == 3 and sector["avg_score"] == 1.0      # mean of 1.5 and 0.5 only

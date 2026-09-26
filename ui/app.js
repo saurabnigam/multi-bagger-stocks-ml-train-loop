@@ -146,11 +146,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentRankingSubtab === 'accepted') {
             stocksToRender = (data.accepted && data.accepted.length > 0)
                 ? resolveStockIds(data.accepted)
-                : (data.stocks || []).filter(s => s.eligible && s.final_score > 0).slice(0, 25);
+                : (data.stocks || []).filter(s => s.eligible && s.final_score !== null && s.final_score > 0).slice(0, 25);
         } else if (currentRankingSubtab === 'rejected') {
             stocksToRender = (data.rejected && data.rejected.length > 0)
                 ? resolveStockIds(data.rejected)
-                : (data.stocks || []).filter(s => !s.eligible || s.final_score === 0);
+                : (data.stocks || []).filter(s => !s.eligible || s.final_score === null);
         } else if (currentRankingSubtab === 'turnaround') {
             stocksToRender = resolveStockIds(data.turnaround);
         }
@@ -172,7 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (currentRankingSubtab === 'rejected') {
                 if (!stock.eligible) {
                     badge = '<span class="badge-refused" style="background:#ff3b30; color:white;">EXCLUDED</span>';
-                } else if (stock.final_score === 0) {
+                } else if (stock.final_score === null || stock.scored === false) {
                     badge = '<span class="badge-refused" style="background:#ff3b30; color:white;">UNSCORED</span>';
                 } else {
                     badge = `<span class="badge-unavailable">RANK #${stock.rank || '--'}</span>`;
