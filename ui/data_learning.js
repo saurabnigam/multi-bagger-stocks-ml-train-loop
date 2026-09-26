@@ -1,5 +1,1 @@
-window.QUANT_LEARNING = {
-  "as_of": "2026-09-03",
-  "evaluations": [],
-  "curves": []
-};
+window.QUANT_LEARNING = {"as_of":"2026-09-03","summary":{"mean_rank_ic":0.0548,"top_factor":"Smart Money / Moat (+0.0548)","total_evaluations":0,"evidence_curves_count":0,"learning_gate":"BOOTSTRAP_PENDING","n_eff":2.0,"confidence_level":"90% HAC"},"evaluations":[],"curves":[],"learning_points":[]};

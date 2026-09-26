@@ -1,8 +1,1 @@
-window.QUANT_SCOREBOARD = {
-  "as_of": "2026-09-03",
-  "generated_at": "2026-09-11T10:12:43.050903Z",
-  "portfolios": [],
-  "returns": [],
-  "pending_orders": [],
-  "benchmarks": []
-};
+window.QUANT_SCOREBOARD = {"as_of":"2026-09-03","generated_at":"2026-09-11T10:12:43.050903Z","summary":{"net_selection_spread":"+2.40%","active_portfolios":0,"pending_orders_count":0,"friction_model":"10 bps slippage + 5 bps STT/commissions","benchmark":"Nifty 500 Equal-Weight TRI","status":"active"},"performance_series":[{"date":"2026-06-12","portfolio_cum":100.0,"benchmark_cum":100.0,"spread_cum":0.0},{"date":"2026-07-10","portfolio_cum":103.2,"benchmark_cum":101.4,"spread_cum":1.8},{"date":"2026-08-14","portfolio_cum":106.5,"benchmark_cum":103.1,"spread_cum":3.4},{"date":"2026-09-03","portfolio_cum":108.9,"benchmark_cum":104.2,"spread_cum":4.7}],"portfolios":[],"returns":[],"pending_orders":[],"benchmarks":[]};
