@@ -1,11 +1,19 @@
 # Operator runbook: suspected corporate actions (D3 / T2)
 
-Context: `quant.data.actions.detect` (run during `data capture` / `run monthly`) flags an
+Context: `quant.data.actions.detect` (run by `run monthly` only; `data capture` does not
+detect) flags an
 unexplained one-day total-return jump outside `[1/1.40, 1.40]` as a `suspected` corporate
 action (MASTER_SPEC 2.3, 4.3). Until a human resolves it, `PriceStore.corporate_actions`
 truncates that security's history at the ex-date -- the jump is never read as a real or
 zero return. `data actions-list` / `data actions-resolve` are the operator path from
 "flagged and truncated" to "reviewed and restored".
+
+Timing: a resolution is stamped with the time you run it, and a cohort only sees
+resolutions stamped at or before its cutoff (23:59:59 IST on the as-of date). `run monthly`
+refuses to run before that cutoff has passed, so on the cohort evening no suspects exist
+yet: run `data capture` (prices must cover the ex-date), then `actions-resolve` directly.
+It measures the jump from the price store when no suspect row exists yet, and the later
+`run monthly` does not re-flag a resolved `(security, ex-date)`.
 
 ## 1. See what is truncated
 
