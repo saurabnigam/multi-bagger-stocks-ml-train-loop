@@ -15,6 +15,11 @@ yet: run `data capture` (prices must cover the ex-date), then `actions-resolve` 
 It measures the jump from the price store when no suspect row exists yet, and the later
 `run monthly` does not re-flag a resolved `(security, ex-date)`.
 
+Evidence triage ([triage.md](triage.md)) is an optional first step on the cohort evening. `quant triage` lists the
+anomalies, archives the documents you attach, and proposes a label, a factor and the exact
+`actions-resolve` command with its evidence and counter-evidence. It never resolves anything: sections 3 and
+below are still the only path, and they still need `--actor-kind human`.
+
 ## 1. See what is truncated
 
 ```bash
@@ -26,6 +31,8 @@ factor from the evidenced jump, the evidence's observation time, and whether the
 falls inside the trailing 13 months of that security's latest price bar (`yes` means it
 is still distorting the current live cohort, not just historical replays -- review those
 first).
+If the price store is missing the command still lists the rows, warns on stderr, and shows `?` in that
+column (unknown, not `no`). It never creates a price store.
 
 ```bash
 python3 -m quant data actions-list --db-path quant.db --all       # include already-resolved rows
@@ -56,6 +63,13 @@ python3 -m quant data actions-resolve --db-path quant.db \
 ```
 
 `--symbol TATAMOTORS` works in place of `--isin` if that is easier to look up.
+
+To bind the decision to a triage proposal, add `--proposal-id PT-... --confirm SHA8` (the command `triage show`
+prints has both). `--confirm` is the first 8 hex characters of the sha256 of the proposal's payload: it ties your decision
+to the exact version you read, and is refused if the proposal has since been superseded, rejected or approved, belongs to
+another security or ex-date, or if `--confirm` is wrong or given without `--proposal-id`. You still choose `--kind` and
+`--factor`; the decision's context records whether you accepted or modified the proposal. See
+[triage.md](triage.md) section 4.
 
 This must run with `--actor-kind human`; anything else is refused (`Refused(governance)`)
 -- a wrong value-transfer factor silently corrupts total return for every downstream

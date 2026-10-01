@@ -31,6 +31,7 @@ def _init_default_commands():
         "quant.commands.evaluate",
         "quant.commands.portfolio",
         "quant.commands.kb",
+        "quant.commands.triage",
         "quant.commands.migrate",
         "quant.commands.run",
         "quant.commands.verify",
@@ -38,12 +39,21 @@ def _init_default_commands():
         importlib.import_module(mod)
 
 
-def main(argv: list[str] | None = None) -> int:
-    """CLI main entry point with standardized return codes."""
-    if argv is None:
-        argv = sys.argv[1:]
+_PARSER_CACHE: dict[tuple, tuple[argparse.ArgumentParser, dict[str, argparse.ArgumentParser]]] = {}
 
-    _init_default_commands()
+
+def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.ArgumentParser]]:
+    """Build the argparse tree once per registry shape; a parser holds no per-parse state.
+
+    Rebuilding it costs about 30 ms per call (every command carries the full flag set), which a
+    test suite that calls ``main`` hundreds of times pays back in seconds. The cache key is the
+    command names only, so every flag and help text must be added unconditionally: nothing here
+    may vary with the environment, the clock or the arguments of a call.
+    """
+    key = tuple((grp, tuple(cmds)) for grp, cmds in _COMMAND_REGISTRY.items())
+    cached = _PARSER_CACHE.get(key)
+    if cached is not None:
+        return cached
 
     parser = argparse.ArgumentParser(prog="quant", description="V2 Quant Engine CLI")
     subparsers = parser.add_subparsers(dest="group", help="Command groups")
@@ -96,6 +106,32 @@ def main(argv: list[str] | None = None) -> int:
             cmd_p.add_argument("--event-id", dest="event_id", type=str, help="Data quality / corporate action event ID")
             cmd_p.add_argument("--months", type=int, help="Number of months to verify")
             cmd_p.add_argument("--verify", action="store_true", help="Perform verification (e.g. prices manifest --verify)")
+            # Evidence triage (docs/operations/triage.md)
+            cmd_p.add_argument("--since", type=str, help="Widen the triage anomaly window back to this date (YYYY-MM-DD)")
+            cmd_p.add_argument("--proposal-id", dest="proposal_id", type=str, help="Triage proposal ID (PT-...)")
+            cmd_p.add_argument("--confirm", type=str, help="First 8 hex of the proposal payload sha256 (data actions-resolve)")
+            cmd_p.add_argument("--file", type=str, help="Document body (triage attach) or proposal JSON (triage submit)")
+            cmd_p.add_argument("--url", type=str, help="Link to a document (triage attach); never fetched")
+            cmd_p.add_argument("--published-at", dest="published_at", type=str,
+                               help="When the source published the document: YYYY-MM-DD or a timestamp with timezone")
+            cmd_p.add_argument("--excerpt", type=str, help="Excerpt of the document, at most 50 words")
+            cmd_p.add_argument("--source-class", dest="source_class", type=str,
+                               help="exchange|regulator|company|news|other (triage attach)")
+            cmd_p.add_argument("--relevance", type=str, help="entity|sector|context (triage attach)")
+            cmd_p.add_argument("--field", action="append", help="Typed field KEY=VALUE, repeatable (triage attach)")
+            cmd_p.add_argument("--reason", type=str, help="Reason code, lower-case letters, digits and underscores (triage reject)")
+
+    _PARSER_CACHE[key] = (parser, group_parsers)
+    return parser, group_parsers
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI main entry point with standardized return codes."""
+    if argv is None:
+        argv = sys.argv[1:]
+
+    _init_default_commands()
+    parser, group_parsers = _build_parser()
 
     try:
         args = parser.parse_args(argv)

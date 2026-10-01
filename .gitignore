@@ -19,6 +19,10 @@ quant.db-shm
 # machine-specific, and reproducible from data/ledger + a fresh capture.
 data/prices_daily.sqlite*
 data/archive/
+# Human-attached document bodies (triage attach --file): private, content-addressed, hash-only in the
+# archived envelope. Already covered by data/archive/ above; kept explicit so narrowing that rule
+# cannot publish them by accident (docs/operations/triage.md).
+data/archive/triage_private/
 data/logs/
 data/.locks/
 .cache/

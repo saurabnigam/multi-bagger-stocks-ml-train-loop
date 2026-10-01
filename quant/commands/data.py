@@ -69,7 +69,12 @@ def data_actions_list_cmd(args) -> int:
     cfg = _actions_cfg(args)
     conn = connect(cfg.paths.db, readonly=True)
     try:
-        store = PriceStore(cfg.paths.prices_db, state_conn=conn)
+        try:
+            store = PriceStore.open_readonly(cfg.paths.prices_db, state_conn=conn)
+        except FileNotFoundError:
+            # A fresh install still lists its suspect rows; the window flag is unknown (None), not "no".
+            sys.stderr.write("Warning: price store not found: in-window flags unavailable\n")
+            store = None
         rows = actions.list_suspects(conn, price_store=store, include_resolved=bool(getattr(args, "all", False)))
     finally:
         conn.close()
@@ -139,15 +144,21 @@ def data_actions_resolve_cmd(args) -> int:
             return 1
         factor = float(factor_raw)
 
+    proposal_id = getattr(args, "proposal_id", None) or None
+    confirm = getattr(args, "confirm", None) or None
+
     with RunContext(as_of=as_of, kind="data_fix", track="live", cfg=cfg, clock=clock, actor=actor) as ctx:
         res = actions.resolve(
             ctx, isin=isin, symbol=symbol, ex_date=ex_date, kind=kind, factor=factor,
             evidence=evidence, title=getattr(args, "title", None) or None,
             force=bool(getattr(args, "force", False)),
+            proposal_id=proposal_id, confirm=confirm,
         )
         d = res.details
         print(f"Resolved {d['isin']} {d['ex_date']} as {d['kind']}={d['factor']} under decision {d['decision_id']}")
         print(f"  ADR: {d['adr_path']}")
+        if d.get("proposal_id"):
+            print(f"  Triage proposal {d['proposal_id']}: {d['triage_outcome']}")
         if d.get("warning"):
             print(f"  WARNING: {d['warning']}")
     return 0
@@ -158,4 +169,5 @@ register("data", "ingest-archive", data_ingest_archive_cmd, "Replay a retained b
 register("data", "actions-list", data_actions_list_cmd,
          "List unresolved suspected corporate actions (--all for resolved too, --json for machine output)")
 register("data", "actions-resolve", data_actions_resolve_cmd,
-         "Resolve a suspected corporate action under a human-approved Tier-1 decision")
+         "Resolve a suspected corporate action under a human-approved Tier-1 decision "
+         "(--proposal-id ID --confirm SHA8 binds it to a triage proposal)")

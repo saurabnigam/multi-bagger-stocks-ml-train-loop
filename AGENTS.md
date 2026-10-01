@@ -129,9 +129,20 @@ The rules that actually govern `quant/model` are:
   (MASTER_SPEC §2.2) — there is no scoring cohort without it.
 * **CLI groups** (see MASTER_SPEC §10.3 for the full command list; run any group
   with `--help` for its exact current subcommands): `db`, `status`, `universe`,
-  `prices`, `data`, `factors`, `model`, `evaluate`, `portfolio`, `kb`, `run`,
-  `verify`. Every command accepts `--db-path`, `--config`, `--actor-kind`, and
+  `prices`, `data`, `factors`, `model`, `evaluate`, `portfolio`, `kb`, `triage`,
+  `run`, `verify`. Every command accepts `--db-path`, `--config`, `--actor-kind`, and
   `--by` before or after the subcommand.
+* **Evidence triage (`quant/triage/`, CLI group `triage`) proposes; a human resolves.**
+  It is deterministic and runs with no LLM: it lists suspected corporate actions,
+  archives attached evidence into `captures`, and writes one `proposals` row per
+  anomaly (`rule_id` `TRIAGE_RULES_V1`, or `TRIAGE_AGENT_V1` for an optional agent).
+  It never changes a score or factor value and never writes `corporate_actions`;
+  only `data actions-resolve --actor-kind human` does that, optionally bound to a
+  proposal with `--proposal-id ID --confirm SHA8`. `collect`, `attach`, `build` and
+  `submit` refuse once the clock is past the cutoff of `--as-of`; `list` and `show`
+  are read-only. `--actor-kind` is a label, not authentication: an agent must use
+  `--actor-kind llm --by llm:<model id>`. Runbook:
+  [docs/operations/triage.md](docs/operations/triage.md).
 
 ---
 
@@ -159,6 +170,7 @@ The rules that actually govern `quant/model` are:
 │   ├── evaluation/               # Oriented Rank IC, HAC covariance, leakage audit
 │   ├── portfolio/                # Paper portfolios, costs, settlement, scoreboard
 │   ├── knowledge/                 # ADRs, proposals, review budget, lessons
+│   ├── triage/                    # Evidence triage: scan, features, rules, pack, validate (proposes only)
 │   ├── migrate/                    # Read-only legacy migration
 │   └── commands/                   # CLI command handlers
 │
@@ -222,3 +234,23 @@ python3 -m quant run monthly --dry-run
 # Execute the full monthly run (never pushes; logs to data/logs/, which is git-ignored)
 ./monthly_cron.sh
 ```
+
+### Playbook C: Triage a suspected corporate action (cohort evening)
+
+Full runbook with worked examples: [docs/operations/triage.md](docs/operations/triage.md).
+
+```bash
+python3 -m quant triage list    --as-of 2026-10-30                      # read-only
+python3 -m quant triage collect --as-of 2026-10-30 --all --actor-kind human --by human:<you>
+python3 -m quant triage attach  --as-of 2026-10-30 --isin I --ex-date X --title T --url U \
+    --published-at DATE --source-class regulator --relevance sector --excerpt "..." --actor-kind human --by human:<you>
+python3 -m quant triage build   --as-of 2026-10-30 --all                # no network; idempotent
+python3 -m quant triage show    --isin I --ex-date X                    # read-only; prints the resolve command
+# a human, never an agent, resolves:
+python3 -m quant data actions-resolve ... --proposal-id ID --confirm SHA8 --actor-kind human --by human:<you>
+```
+
+**Agents:** the `--actor-kind human --by human:<you>` labels above are for the human operator. An agent always uses
+`--actor-kind llm --by llm:<model id>`, may run only `triage list`, `show`, `submit` and `attach --url`, and
+never runs `triage build` (refused for llm actors), `data actions-resolve`, `triage reject` or `kb reject`. The label is not authentication; the contract is in
+`docs/operations/triage_agent_contract.md`.
