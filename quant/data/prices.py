@@ -140,6 +140,49 @@ def frames_from_download(df: pd.DataFrame, tickers: Iterable[str]) -> Dict[str, 
     return out
 
 
+VENDOR_NULL_CLOSE_SESSIONS = 3
+VENDOR_NULL_CLOSE_SAMPLE = 10
+_NULL_CLOSE_FIELDS = ("Close", "Open", "High", "Low", "Volume")
+
+
+def vendor_null_close_counts(raw: pd.DataFrame, tickers: Iterable[str],
+                             sessions: int = VENDOR_NULL_CLOSE_SESSIONS) -> Dict[str, List[str]]:
+    """Per date, for the last ``sessions`` dates of the raw download, the tickers whose Close is null while Open, High, Low
+    and Volume are all present: the vendor has the bar but not the close (observed on 2026-09-30: 175 of 526 tickers, and
+    still null on a refetch 16.5 hours later). ``normalize_source`` drops such a row, so this is the only place it is seen.
+
+    A row missing any other field too is not counted (it is a different gap), and a row that is empty in every field is
+    dropped by ``frames_from_download``. ``{}`` when the frame is empty or no ticker has all five fields: unknown, never
+    "none". This only counts. It never fills, imputes or changes a close.
+    """
+    if raw is None or raw.empty:
+        return {}
+    dates = sorted({str(d)[:10] for d in raw.index})[-sessions:]
+    out: Dict[str, List[str]] = {d: [] for d in dates}
+    seen_any = False
+    for ticker, frame in frames_from_download(raw, tickers).items():
+        if not all(f in frame.columns for f in _NULL_CLOSE_FIELDS):
+            continue
+        seen_any = True
+        hole = frame["Close"].isna() & frame["Open"].notna() & frame["High"].notna() & frame["Low"].notna() \
+            & frame["Volume"].notna()
+        for label in frame.index[hole.to_numpy()]:
+            day = str(label)[:10]
+            if day in out:
+                out[day].append(ticker)
+    if not seen_any:
+        return {}
+    return {d: sorted(set(v)) for d, v in out.items()}
+
+
+def vendor_null_close_verdict(count: int, requested: int, allowed_share: float) -> tuple[float, bool]:
+    """(share, above): ``count`` null closes of ``requested`` tickers, and whether the share exceeds ``allowed_share``
+    (``1 - [gates] price_coverage``). Exactly the allowance is not above it. Rounded to 9 places so 2 of 100 against
+    ``1 - 0.98`` is not tipped over by float noise. No tickers requested gives share 0.0 and False."""
+    share = count / requested if requested else 0.0
+    return share, round(share, 9) > round(allowed_share, 9)
+
+
 class PriceStore:
     """Isolated price cache manager using price_schema.sql."""
 
@@ -379,6 +422,7 @@ class PriceStore:
         fetched_at = str(raw.attrs.get("fetched_at", ctx.clock.iso()))
         capture_id, sha = self._archive_download(ctx, raw, start, end)
         frames = frames_from_download(raw, tickers)
+        null_close = self._vendor_null_close(ctx, raw, tickers)
 
         rows = accepted = quarantined = covered = 0
         for sid, ticker in ticker_map.items():
@@ -409,8 +453,36 @@ class PriceStore:
             status="ok",
             counts={"securities": covered, "requested": len(ticker_map), "rows": rows,
                     "accepted": accepted, "quarantined": quarantined},
-            details={"capture_id": capture_id, "sha256": sha, "start": start, "end": end},
+            details={"capture_id": capture_id, "sha256": sha, "start": start, "end": end,
+                     **({"vendor_null_close": null_close} if null_close else {})},
         )
+
+    @staticmethod
+    def _vendor_null_close(ctx: RunContext, raw: pd.DataFrame, tickers: List[str]) -> Dict[str, Any]:
+        """Count the vendor's null closes (see ``vendor_null_close_counts``) and warn when the latest session has too many.
+
+        The warning is a WARN data-quality event ``VENDOR_NULL_CLOSE``, recorded through ``gates.record_event`` when the
+        share of requested tickers with a null close on the latest session exceeds ``1 - [gates] price_coverage`` (read
+        through the accessor ``gates.py`` uses). Nothing is filled: the rows stay out of the store, so gate G3 still sees the
+        missing coverage and blocks, which is the engine working correctly.
+        """
+        from quant.data.gates import _cfg, record_event
+
+        by_date = vendor_null_close_counts(raw, tickers)
+        if not by_date:
+            return {}
+        latest = max(by_date)
+        names = by_date[latest]
+        requested = len(tickers)
+        allowed = 1.0 - float(_cfg(ctx, "gates", "price_coverage", 0.98))
+        share, above = vendor_null_close_verdict(len(names), requested, allowed)
+        if above:
+            record_event(ctx, code="VENDOR_NULL_CLOSE", severity="WARN",
+                         detail={"date": latest, "count": len(names), "share": round(share, 6),
+                                 "sample_tickers": names[:VENDOR_NULL_CLOSE_SAMPLE]})
+        return {"requested": requested, "latest_session": latest, "latest_count": len(names),
+                "latest_share": round(share, 6), "threshold_share": round(allowed, 9), "above_threshold": above,
+                "counts": {d: len(v) for d, v in by_date.items()}}
 
     def backfill(self, ctx: RunContext, client: YahooClient, tickers: Dict[int, str], start: str, end: str) -> Result:
         """Download and reconcile the full history window for the given securities."""

@@ -14,6 +14,21 @@ from quant.run import RunContext
 from quant.types import Actor, SystemClock
 
 
+def vendor_null_close_line(details) -> str | None:
+    """One line for ``data capture`` when the latest session has more null vendor closes than gate G3 allows, else None.
+
+    Reads ``details["price_capture"]["vendor_null_close"]`` (``PriceStore._acquire``). It states the count, the gate and
+    that a later re-run may or may not fill them: the engine never fills a close itself.
+    """
+    info = ((details or {}).get("price_capture") or {}).get("vendor_null_close") or {}
+    if not info.get("above_threshold"):
+        return None
+    need = 1.0 - float(info.get("threshold_share", 0.02))
+    return (f"Vendor null close: {info['latest_count']} of {info['requested']} requested tickers have no Close for "
+            f"{info['latest_session']} (Open, High, Low and Volume are present). Gate G3 needs {need:.0%} as-of close "
+            "coverage; re-running capture later may or may not fill them.")
+
+
 def data_capture_cmd(args) -> int:
     cfg = load_config()
     clock = SystemClock()
@@ -25,6 +40,9 @@ def data_capture_cmd(args) -> int:
     with RunContext(as_of=as_of, kind="capture", track="live", cfg=cfg, clock=clock, actor=actor) as ctx:
         res = capture_run(ctx, client)
         print(f"Data capture completed: {res.counts.get('bundles', 0)} bundles")
+        line = vendor_null_close_line(res.details)
+        if line:
+            print(line)
     return 0
 
 
