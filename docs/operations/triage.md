@@ -31,7 +31,7 @@ validation failed, wrong `--confirm`).
 
 | Command | Who | What it does |
 |---|---|---|
-| `triage list --as-of D [--since DATE] [--symbol S] [--json]` | anyone | Lists the anomalies triage covers for cohort D with their status: `new`, `proposed`, `wait` and `rejected`. Older unresolved suspect rows are hidden and counted on one line (section 3). `rejected` means you rejected the latest proposal: nothing was resolved, the anomaly is still truncated and still open, so it stays on the list until you resolve it or a rebuild with new evidence proposes again. An anomaly you have resolved leaves the list (`resolved` shows only for a proposal you approved after this cohort's cutoff). Warns if the window has closed. |
+| `triage list --as-of D [--since DATE] [--symbol S] [--json]` | anyone | Lists the anomalies triage covers for cohort D with their status: `new`, `proposed`, `wait` and `rejected`. Older unresolved suspect rows are hidden and counted on one line (section 3). `rejected` means you rejected the latest proposal: nothing was resolved, the anomaly is still truncated and still open, so it stays on the list until you resolve it or a rebuild with new evidence proposes again. An anomaly you have resolved leaves the list (`resolved` shows only for a proposal you approved after this cohort's cutoff). Warns if the window has closed. Its first line is the as-of bar coverage (section 12). |
 | `triage collect --as-of D (--isin I --ex-date X \| --all) [--dry-run]` | human or system | Asks Yahoo for corporate actions and news per anomaly (and polls any enabled feed), archives each answer as evidence. Source status (`ok`, `empty`, `error`, `skipped`) is printed and kept in the run notes. Refused for llm actors. |
 | `triage attach --as-of D (--isin I \| --symbol S) --ex-date X --title T (--file PATH \| --url URL) --source-class C --relevance R [--published-at DATE] [--excerpt TEXT] [--field k=v ...] [--dry-run]` | human; llm with `--url` only | Archives one document as evidence. `--file` copies the body to `data/archive/triage_private/` (git-ignored, content-addressed). `--field` stores typed values such as `prev_close=660.75`. |
 | `triage build --as-of D (--isin I --ex-date X \| --all) [--dry-run]` | human or system | Pure: features from the stores, admissible evidence, rules, pack, proposal, sheet. No network. Refused for llm actors: the rows it writes are engine rows, which the validator never sees. |
@@ -76,7 +76,7 @@ not done in a hurry.
               ~60 minutes. Prices cover the ex-dates once it ends.
 
  ~19:00       capture finished
-              check the as-of bar coverage: see section <X> (coverage check)
+              check the as-of bar coverage: the first line of `triage list` (section 12)
 
  19:00        python3 -m quant triage list    --as-of 2026-10-30
               python3 -m quant triage collect --as-of 2026-10-30 --all --actor-kind human --by human:<you>
@@ -114,10 +114,20 @@ store does not need a suspect row for an anomaly to be listed. This replaces the
 whatever their date.
 
 A placeholder that the exchange index file lists for a spin-off is folded into its parent's jump row and not listed
-separately. The link is the parent symbol (the event's day within 45 days before to 15 days after the ex-date) or, when the
-event has no parent symbol, the ISIN suffix: a placeholder ISIN that starts `DUM` and has the same characters from position 4
-as the parent ISIN (`DUM545A01024` and `INE545A01024`) links within 45 days before to **60 days after** the ex-date,
-because the event's day is the day the engine first captured the placeholder, which lags the jump.
+separately. There are two links, and either one folds it. The symbol link is the event's `parent_symbol` (or the event's own
+security) naming the parent, with the event's day within 45 days before to 15 days after the ex-date. The ISIN-suffix link
+applies **whatever `parent_symbol` says**, whether it is empty, the parent's symbol, a historical symbol or a name that
+matches nothing: a placeholder ISIN that starts `DUM` and has the same characters from position 4 as the parent ISIN
+(`DUM545A01024` and `INE545A01024`) links within 45 days before to **60 days after** the ex-date, because the event's day is
+the day the engine first captured the placeholder, which lags the jump. A `parent_symbol` that names another security does
+not block the ISIN-suffix link and does not widen the shorter symbol window.
+
+`triage show` names the folded placeholder on the parent row (its symbol, its ISIN and the day the engine first saw it), in a
+`FOLDED PLACEHOLDER` line above the lookalike warning, and `--json` carries it as `subject.folded_placeholders`. If an
+earlier build had proposed the placeholder as a standalone row (its key was `DUM545A01024@2026-10-01`) and a later scan folds
+it into its parent, the **next `triage build` that covers the parent supersedes that open standalone proposal** and prints
+`superseded: the placeholder ... is folded into <parent key>` (`--dry-run` prints `would supersede`). A standalone proposal
+you already rejected or approved is not touched.
 
 Late for the cohort: if the clock is past the cutoff, `collect`, `attach`, `build` and `submit` exit 3 and `list`
 warns. The anomaly stays unresolved and its history stays truncated, which fails safe. Triage it for the next
@@ -241,7 +251,7 @@ They are expectations, not runs against the real database.
 
 **HEG (INE545A01024, listed as HEGAM), ex-date 2026-09-07, gross factor 0.3738.** NSE's index file carries a placeholder,
 `DUMMYHEG` with ISIN `DUM545A01024`, which the engine first captured on 2026-10-01. The event has no parent symbol (the
-parent now trades as HEGAM, not HEG), so the link is the ISIN suffix: `DUM545A01024` and `INE545A01024` share `545A01024`.
+parent now trades as HEGAM, not HEG), so the link is the ISIN suffix (it would be the link whatever the parent symbol said): `DUM545A01024` and `INE545A01024` share `545A01024`.
 The event's day, 2026-10-01, is 24 days after the jump, inside the ISIN-linked window (45 days before to 60 days after).
 `triage list` shows **one** row, `INE545A01024@2026-09-07`, not two. Rule R1 fires: label `pending_listing`, subtype
 `index_placeholder`, action `wait`, a re-check 7 days after the cohort date, and no resolve command. The wait is the point:
@@ -250,14 +260,34 @@ with `triage list --as-of D --symbol HEG` (a historical symbol of that security 
 
 **TRENT, ex-date 2026-01-01, gross factor 0.6695** (the store's close fell from 6418.5 to 4297.4). Yahoo and the price store
 both record a split of ratio 1.5 dated 2026-06-04, five months after the jump, and the store shows no jump on 2026-06-04.
-`1 / 0.6695 = 1.4937`, and 1.5 is within 3% of it. Rule R4 now considers vendor splits up to 400 days from the jump (it used
+`1 / 0.6695 = 1.4937`, and 1.5 is within 3% of it. Rule R4 considers vendor splits up to 400 days from the jump (it used
 to look 5 days either side) and fires: label `vendor_error_other`, subtype `misdated_adjustment`, **medium**, resolve call
-`split` with ratio 1.5 (`factor_basis vendor_ratio`), `needs_primary` true. The proposal says the vendor applied the split on
-the wrong day; `show` prints `needs an exchange or company document before you rely on this`, and the command is
-`--kind split --ratio 1.5`. Because `gross x 1.5 = 1.004` is inside the band, no `--force` is needed. R4 does **not** fire
-when the split is within one session of the jump, when its ratio is more than 3% from the target, or when the price store
-shows a jump on the split date that cancels this one (the pair is then one vendor glitch, which rule R6 or your own review
-handles). Confirm the split date against the exchange record before you resolve.
+`manual_adj` with factor 1.5 (`factor_basis vendor_ratio`, the input is the vendor's ratio 1.5), `needs_primary` true. The
+proposal says the vendor applied the split on the wrong day; `show` prints `needs an exchange or company document before
+you rely on this`, and the command is `--kind manual_adj --factor 1.5`. Because `gross x 1.5 = 1.004` is inside the band, no
+`--force` is needed.
+
+**Why `manual_adj` and not `split`.** The real share change is already recorded in the price store at the vendor's own date
+(2026-06-04 here). A `split` record would also feed the split events that the earnings-per-share share-basis logic reads
+(`PriceStore.split_events`, used by `quant/factors/growth.py`), and it would count the one real split a second time.
+`manual_adj` only changes the return on the ex-date. For an upward jump the factor is the reciprocal of the vendor ratio
+(vendor ratio 1.8 on a jump of 1.8 gives `--factor 0.555556`), so `gross x factor` is near 1 and `--force` is not needed
+there either.
+
+R4 does **not** fire, and `show` lists why under counter-evidence, in these cases:
+
+- The split is within one session of the jump. "Session" counts the security's own bars in the price store between the two
+  dates, not weekdays: a market holiday has no bar. Jump on Thursday, split on the next Monday with the Friday a holiday:
+  the bars are Thursday then Monday, so the split is the next bar, one session, and R4 stays out.
+- The ratio is more than 3% from the target (1/gross for a downward jump, gross for an upward one).
+- The price store shows a jump on the split date that cancels this one (the pair is then one vendor glitch, which rule R6 or
+  your own review handles).
+- The price store has **no bar on the split date**. Whether a cancelling jump exists there is then unknown (not "no jump"),
+  R4 abstains, and the proposal's "needs a human" lines say that the vendor split matches the jump but the price store has no
+  price bar on that date. The same holds when the security's bars were not read at all: the session count and the
+  cancelling-jump test are both unknown, and there is no weekday guess in their place.
+
+Confirm the split date against the exchange record before you resolve.
 
 ## 6. Worked example: TMPV (INE155A01022), ex-date 2025-10-14
 
@@ -416,7 +446,46 @@ Triage measures every jump from the last session's bar. If that bar is partial, 
 directions: securities with no bar on the as-of date cannot show a jump, and the cross-section (the count of securities that
 jumped on one date, and the market median) is computed over fewer securities than exist.
 
-This was observed on **2026-10-01**: the last session's bar held **351 of 526 securities**. **Before you run `triage list`, confirm that the as-of date's bar covers the universe.**
-If it does not, wait and capture again (prices are one batch call), then check again; do not triage on a partial bar.
+**Before you run `triage collect` or `triage build`, confirm that the as-of date's bar covers the universe.** The check is
+the first line `triage list` prints. It is read-only (no run, nothing written):
 
-Command: `<to be filled in by the orchestrator>`
+```bash
+python3 -m quant triage list --as-of 2026-10-30
+```
+
+```
+As-of bar coverage: 351 of 526 Nifty 500 members have a close on 2026-10-01, 66.7%; G3 needs 98%.
+```
+
+Read it as: for the latest session in the price store at or before the as-of date, how many members of the Nifty 500
+snapshot at that date have a non-null close, out of all members, and the share gate G3 needs (`[gates] price_coverage`,
+0.98). If the as-of date has no bar, the line names the latest session and says so. `unknown` means the store has no bar at
+or before the as-of date or there is no usable Nifty 500 snapshot; it is not zero coverage. `triage list --json` carries the
+same numbers as `bar_coverage` (`null` when unknown).
+
+Fallback, if `triage list` cannot run: a read-only query against the price store. Replace the date and the Nifty 500 member
+count (the snapshot size on the cohort date) and run it with the database opened read-only:
+
+```bash
+sqlite3 "file:<path to the price store>?mode=ro" -cmd ".mode column" \
+  "SELECT date, count(DISTINCT security_id) AS securities_with_a_close FROM prices_daily \
+   WHERE date = '2026-10-30' AND close_raw IS NOT NULL GROUP BY date;"
+```
+
+Divide that count by the number of Nifty 500 members at the date. This query counts every security in the store, so it can
+overstate coverage if the store holds securities that are not members; the `triage list` line counts members only.
+
+**Why a bar can be short, and what it means.**
+
+- Yahoo can leave a close null for days. On 2026-09-30 it returned the bar with Open, High, Low and Volume but a null Close
+  for 175 of 526 tickers, and a refetch 16.5 hours later was still null. The hole on 2026-09-07 lasted at least 4 days.
+  The engine does not store a bar without a close, and it never fills or imputes one. `data capture` prints one line with the
+  count when the latest session is over the allowance, and records a WARN data-quality event `VENDOR_NULL_CLOSE` (date,
+  count, share, up to 10 sample tickers). Re-running capture later may or may not fill them.
+- A gate G3 block on such a day is the engine working correctly. G3 needs the as-of close for at least 98% of members; a
+  cohort scored on 66% of the universe would rank a different universe than the one it claims. Do not work around it.
+- The remedy is an owner decision, not an operator one: another close source for the missing tickers, or a change to the
+  `price_coverage` threshold. Neither is part of triage.
+
+If the line is below 98%, wait and capture again (prices are one batch call), then check again; do not triage on a partial
+bar.

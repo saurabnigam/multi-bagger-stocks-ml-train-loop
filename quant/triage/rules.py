@@ -268,31 +268,65 @@ def _r3_demerger_doc(c: _Ctx) -> Decision | None:
     return None
 
 
+def _r4_unknown_notes(candidates: Any, gross: float | None) -> list[str]:
+    """Reviewer notes for a vendor split that matches the jump but whose compensating-jump test could not run."""
+    target = validate.r4_target(gross)
+    if target is None or not isinstance(candidates, (list, tuple)):
+        return []
+    notes = []
+    for row in candidates:
+        ratio, sessions = row.get("ratio"), row.get("sessions_from_jump")
+        if not is_number(ratio) or ratio <= 0 or row.get("compensating_jump") is not None \
+                or abs(float(ratio) - target) / target > R4_RATIO_TOLERANCE \
+                or (isinstance(sessions, int) and abs(sessions) < R4_MIN_SESSIONS):
+            continue
+        why = row.get("compensating_jump_why")
+        if why == "no_price_bar_on_split_date":
+            notes.append(f"R4: the vendor split dated {row.get('date')} (ratio {float(ratio):g}) matches the jump, but the price "
+                         "store has no price bar on that date, so a cancelling jump cannot be ruled out; R4 abstains")
+        else:
+            notes.append(f"R4: the vendor split dated {row.get('date')} (ratio {float(ratio):g}) matches the jump, but its "
+                         f"compensating-jump test could not run ({why or 'unknown'}); R4 abstains")
+    return notes
+
+
 def _r4_vendor_split(c: _Ctx) -> Decision | None:
     """R4: a vendor split dated on another day explains the jump (design D1).
 
     The split may be dated up to ``features.VENDOR_SPLIT_LOOKBACK_DAYS`` (400) from the jump. It must be more than one
     session from the jump date, its ratio within 3% of 1/gross (downward jump) or of gross (upward jump), and the price
-    store must show no compensating jump on its date. ``validate.r4_row`` holds the test; the agent validator calls it too.
+    store must show no compensating jump on its date, which needs a price bar on that date: without one the answer is
+    unknown and R4 abstains with a note. "Within one session" counts the security's own bars, not weekdays.
+    ``validate.r4_row`` holds the test; the agent validator calls it too.
+
+    The call is ``manual_adj``, never ``split``. The vendor's real share change is already in the store at the vendor's own
+    date, and a ``split`` record would also feed ``PriceStore.split_events`` (the EPS share basis in factors/growth.py), so a
+    second split would count it twice. A downward jump takes the vendor ratio as the factor; an upward jump takes 1/ratio,
+    so ``gross * factor`` is near 1 either way. The factor input stays the vendor's ratio.
     """
     f, fl = c.f, c.flat
     g = f.gross_factor
-    row = validate.r4_row(fl.get("vendor_split_candidates"), g)
+    candidates = fl.get("vendor_split_candidates")
+    row = validate.r4_row(candidates, g)
     if row is None:
+        c.warnings.extend(_r4_unknown_notes(candidates, g))
         return None
     target = validate.r4_target(g)
     ratio = round(float(row["ratio"]), 6)
+    factor = validate.r4_factor(ratio, g)
     ref = row.get("capture_id") or "f:vendor_split_ratio"
     sessions = abs(int(row["sessions_from_jump"]))
     return Decision(
         "vendor_error_other", "R4", grade.grade("vendor_error_other", rule_id="R4"), subtype="misdated_adjustment",
-        action="resolve", resolve_kind="split", factor=ratio, factor_basis="vendor_ratio",
-        needs_force=_needs_force(g, ratio), needs_primary=True, factor_inputs=(("ratio", ratio, ref),),
+        action="resolve", resolve_kind="manual_adj", factor=factor, factor_basis="vendor_ratio",
+        needs_force=_needs_force(g, factor), needs_primary=True, factor_inputs=(("ratio", ratio, ref),),
         claims=(_gross_claim(f),
                 ("fact", f"The vendor records a split of ratio {ratio:g} dated {row['date']}, {sessions} sessions from the "
                          f"ex-date {f.ex_date}, and the price store shows no jump on that date that cancels this one.", (ref,)),
                 ("inference", f"The vendor applied the split on the wrong day; its ratio is within "
-                              f"{R4_RATIO_TOLERANCE:.0%} of {target:.4f} ({'1/gross' if g < 1.0 else 'gross'}).",
+                              f"{R4_RATIO_TOLERANCE:.0%} of {target:.4f} ({'1/gross' if g < 1.0 else 'gross'}). The real share "
+                              "change is already in the store at the vendor's date, so the call is a manual return adjustment, "
+                              "not a second split.",
                  ("f:gross_factor", ref))),
         missing_evidence=_cap(("exchange or company document confirming the split date",
                                f"review the vendor split dated {row['date']} for a mirror-image jump")),
@@ -384,7 +418,9 @@ def _r5_cross_section(c: _Ctx) -> Decision | None:
     conf = grade.grade("vendor_error_other", rule_id="R5")
     if ratio is None:
         return Decision("vendor_error_other", "R5", conf, action="none", **base)
-    return Decision("vendor_error_other", "R5", conf, action="resolve", resolve_kind="split", factor=ratio,
+    # manual_adj, not split: the vendor already records the real share change on its own date, and a
+    # split row would also feed split_events (EPS share basis) and count that change twice.
+    return Decision("vendor_error_other", "R5", conf, action="resolve", resolve_kind="manual_adj", factor=ratio,
                     factor_basis="round_ratio", needs_force=_needs_force(g, ratio), **base)
 
 

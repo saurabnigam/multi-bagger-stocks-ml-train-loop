@@ -70,7 +70,7 @@ LABEL_RESOLVE_KINDS: dict[str, tuple[str, ...]] = {
     "scheme": ("scheme",),
     "rights": ("rights",),
     "split_or_bonus_missed_by_vendor": ("split", "bonus"),
-    "vendor_error_other": ("manual_adj", "split", "bonus"),
+    "vendor_error_other": ("manual_adj",),          # a vendor that missed a split entirely is split_or_bonus_missed_by_vendor
 }
 
 SOURCE_CLASSES = ("exchange", "regulator", "company", "news", "other")

@@ -69,6 +69,22 @@ def _state_template(tmp_path_factory):
     _TEMPLATE.clear()
 
 
+def test_the_state_template_equals_a_fresh_apply_schema_build(tmp_path):
+    """Every guard world copies the template. It must hold the schema, tables and journal triggers, a fresh build gives."""
+    def schema(path):
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            return sorted((r[0], r[1], r[2], r[3]) for r in conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_master"))
+        finally:
+            conn.close()
+
+    fresh = tmp_path / "fresh.db"
+    conn = connect(fresh)
+    apply_schema(conn, kind="state")
+    conn.close()
+    assert schema(_TEMPLATE["db"]) == schema(fresh) and len(schema(fresh)) > 50
+
+
 def _world(tmp_path):
     db = tmp_path / "state.db"
     tmp_path.mkdir(parents=True, exist_ok=True)

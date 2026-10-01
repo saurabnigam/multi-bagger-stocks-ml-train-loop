@@ -129,6 +129,15 @@ def r4_target(gross: float | None) -> float | None:
     return 1.0 / gross if gross < 1.0 else gross
 
 
+def r4_factor(ratio: float, gross: float | None) -> float:
+    """The ``manual_adj`` factor for a misdated vendor split of ``ratio``: the ratio itself for a downward jump, its
+    reciprocal for an upward one, so ``gross * factor`` is near 1. It is not a split record (the share change is already
+    in the store at the vendor's date; a split would be counted twice by ``PriceStore.split_events``)."""
+    if gross is not None and gross > 1.0:
+        return round(1.0 / ratio, 6)
+    return round(ratio, 6)
+
+
 def r4_row(candidates: Any, gross: float | None) -> Mapping[str, Any] | None:
     """The vendor split R4 acts on, from the pack's ``vendor_split_candidates``; None when none qualifies.
 
@@ -452,6 +461,9 @@ def _check_factor(p: Mapping[str, Any], features: Mapping[str, Any],
     elif basis in ("vendor_ratio", "round_ratio"):
         if "ratio" not in inputs:
             errors.append(f"V6:factor_input: {basis} needs a factor_input named ratio")
+        elif basis == "vendor_ratio" and kind == "manual_adj":
+            # a misdated vendor split resolved as a manual adjustment (rule R4): the reciprocal for an upward jump
+            recomputed = r4_factor(inputs["ratio"], _num(features, "gross_factor"))
         else:
             recomputed = inputs["ratio"]
     else:  # market_implied
@@ -493,6 +505,12 @@ def _check_label(p: Mapping[str, Any], label: str, cited_envs: list[dict[str, An
     res = p["resolution"]
     if res["action"] == "resolve" and res["resolve_kind"] not in LABEL_RESOLVE_KINDS.get(label, ()):
         errors.append(f"V7:resolve_kind: label {label} cannot resolve as {res['resolve_kind']}")
+    if label == "vendor_error_other" and res["action"] == "resolve" and res["factor_basis"] == "vendor_ratio" \
+            and res["resolve_kind"] in ("split", "bonus"):
+        # A split record also feeds PriceStore.split_events and the EPS share basis; the real share change is already
+        # recorded at the vendor's date, so a second split would count it twice. A misdated vendor adjustment is manual_adj.
+        errors.append("V7:vendor_ratio_needs_manual_adj: a misdated vendor adjustment resolves as manual_adj, "
+                      f"not {res['resolve_kind']}, or the share change is counted twice")
 
 
 def _check_entities(p: Mapping[str, Any], cited: Mapping[str, _Cited], isin: str, ex_date: str,
@@ -585,12 +603,15 @@ def _derive_rule(label: str, res: Mapping[str, Any], factor: float | None, cited
         return None, False, bool(primary)
     if label == "vendor_error_other":
         gross = _num(features, "gross_factor")
-        if basis == "vendor_ratio" and gross is not None and gross > 0 and factor is not None:
+        if basis == "vendor_ratio" and res["resolve_kind"] == "manual_adj" and gross is not None and gross > 0 \
+                and factor is not None:
             candidates = features.get("vendor_split_candidates")
             if isinstance(candidates, (list, tuple)):         # a pack from the current engine: the same test as rule R4
                 met, target = r4_row(candidates, gross) is not None, r4_target(gross)
             else:                                             # an older pack or a recorded row: the five-day rows only
                 met, target = bool(vendor_split_rows(features)), 1.0 / gross
+            if isinstance(candidates, (list, tuple)) and gross > 1.0:
+                target = 1.0 / gross                           # the manual_adj factor of an upward jump is 1/ratio, near 1/gross
             if met and abs(factor - target) / target <= R4_RATIO_TOLERANCE:
                 return "R4", False, bool(primary)
         return None, False, bool(primary)

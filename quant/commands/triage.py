@@ -220,6 +220,54 @@ def _select(result, args) -> list[Any]:
 
 # ------------------------------------------------------------------ triage list
 
+def _g3_min_share(cfg) -> float:
+    """The close-coverage share gate G3 needs, read through the accessor ``gates.py`` uses (default 0.98)."""
+    from types import SimpleNamespace
+
+    from quant.data.gates import _cfg as gates_cfg
+
+    return float(gates_cfg(SimpleNamespace(cfg=cfg), "gates", "price_coverage", 0.98))
+
+
+def _bar_coverage(cfg, conn, store, as_of: str, cutoff: str) -> dict[str, Any] | None:
+    """As-of bar coverage, read-only: members of the Nifty 500 snapshot with a non-null close on the latest store session
+    at or before ``as_of``, over all members at that date (the share gate G3 checks at the cutoff vintage).
+
+    None means unknown, not zero: the store has no bar at or before ``as_of`` (at the cutoff vintage), or there is no
+    usable Nifty 500 snapshot at that date. The G3 threshold is read through the accessor ``gates.py`` uses.
+    """
+    from quant.data.universe import members_at
+    from quant.errors import Blocked
+
+    g3 = _g3_min_share(cfg)
+    with store.conn() as pc:
+        row = pc.execute("SELECT max(date) FROM prices_daily WHERE date <= ? AND observed_at <= ?", (as_of, cutoff)).fetchone()
+    session = row[0] if row and row[0] else None
+    if session is None:
+        return None
+    try:
+        members = members_at(conn, session)
+    except Blocked:
+        return None
+    sids = sorted({int(x) for x in members["security_id"]}) if len(members) else []
+    if not sids:
+        return None
+    closes = store.close_raw(sids, start=session, end=session, vintage_at=cutoff)
+    with_close = int(closes.iloc[-1].reindex(sids).notna().sum()) if not closes.empty else 0
+    share = with_close / len(sids)
+    return {"session": session, "members": len(sids), "with_close": with_close, "share": round(share, 6),
+            "g3_min_share": g3, "meets_g3": share >= g3}
+
+
+def _coverage_line(cov: dict[str, Any] | None, as_of: str, g3: float) -> str:
+    if cov is None:
+        return (f"As-of bar coverage: unknown (no price bar or no Nifty 500 snapshot at or before {as_of}); "
+                f"G3 needs {g3:.0%}.")
+    where = "" if cov["session"] == as_of else f" (latest store session at or before {as_of})"
+    return (f"As-of bar coverage: {cov['with_close']} of {cov['members']} Nifty 500 members have a close on "
+            f"{cov['session']}{where}, {cov['share']:.1%}; G3 needs {cov['g3_min_share']:.0%}.")
+
+
 @_command
 def triage_list_cmd(args) -> int:
     from quant.triage import pit
@@ -230,7 +278,8 @@ def triage_list_cmd(args) -> int:
     conn = connect(cfg.paths.db, readonly=True)
     try:
         symbol_isin = _isin_from_args(conn, args) if getattr(args, "symbol", None) else None
-        result, _store = _scan(cfg, conn, as_of, since)
+        result, store = _scan(cfg, conn, as_of, since)
+        coverage = _bar_coverage(cfg, conn, store, as_of, result.cutoff)
     finally:
         conn.close()
     window_open = _clock().now() <= pit.parse_instant(result.cutoff)
@@ -244,10 +293,11 @@ def triage_list_cmd(args) -> int:
         _json({"as_of": as_of, "cutoff_utc": result.cutoff, "window_start": result.window_start,
                "window_open": window_open, "n_measured": result.n_measured,
                "n_suspect_rows": result.n_suspect_rows, "n_hidden": len(hidden), "hidden_since": hidden_since,
-               "anomalies": rows})
+               "bar_coverage": coverage, "anomalies": rows})
         return 0
 
     print(f"Triage anomalies for cohort {as_of} (cutoff {result.cutoff}; window from {result.window_start})")
+    print(_coverage_line(coverage, as_of, _g3_min_share(cfg)))
     if not window_open:
         print("WARNING: the cutoff has passed. Evidence captured now is invisible to this cohort; "
               "triage these anomalies for the next cohort.")
@@ -564,6 +614,10 @@ def triage_build_cmd(args) -> int:
                 failures.append((a.key, f"{exc.code}: {exc.detail}"))
         todo = [b for b in builts if _needs_write(conn, cfg, b)]
         latest = {b.key: _latest_engine(conn, b) for b in builts}
+        # X6: an open proposal under the key a placeholder had before it folded into a parent row that this build covers
+        built_keys = {a.key for a in anomalies}
+        folded = [(f, ids) for f in result.folded if f.parent_key in built_keys
+                  for ids in [triage_store.open_proposal_ids(conn, f.isin, f.first_seen)] if ids]
     finally:
         conn.close()
 
@@ -571,6 +625,10 @@ def triage_build_cmd(args) -> int:
         c = b.proposal["classification"]
         return (f"{b.key}  {pid or '-':<19}  {state}  {c['label']}/{c['confidence']}  rule={c['rule_id'] or '-'}  "
                 f"pack={b.pack_sha256[:8]}")
+
+    def folded_line(f, ids: list[str], verb: str) -> str:
+        return (f"{f.key}  {','.join(ids)}  {verb}: the placeholder {f.placeholder_symbol or '?'} "
+                f"({f.placeholder_isin or '?'}) is folded into {f.parent_key}")
 
     if not anomalies:
         print(f"No anomalies to build for {as_of}.")
@@ -583,11 +641,14 @@ def triage_build_cmd(args) -> int:
             else:
                 state = "would create" if old is None else f"would supersede {old['proposal_id']}"
                 print(line(b, state, None))
+        for f, ids in folded:
+            print(folded_line(f, ids, "would supersede"))
         print("Dry run: nothing was written.")
     else:
         stored: dict[str, Any] = {}
+        superseded_folded: list[tuple[Any, list[str]]] = []
         built_by_key = {b.key: b for b in todo}
-        if todo:
+        if todo or folded:
             with RunContext(as_of=as_of, kind="triage", track="live", cfg=cfg, clock=clock, actor=actor) as ctx:
                 for b in todo:
                     try:
@@ -596,6 +657,13 @@ def triage_build_cmd(args) -> int:
                     except Refused as exc:
                         ctx.rollback_staging()
                         failures.append((b.key, f"{exc.code}: {exc.detail}"))
+                for f, _ids in folded:
+                    done = triage_store.supersede_open(ctx, f.isin, f.first_seen)
+                    if done:
+                        superseded_folded.append((f, done))
+                        ctx.checkpoint()
+                if superseded_folded:
+                    ctx.notes["superseded_folded_placeholders"] = {f.key: ids for f, ids in superseded_folded}
             # Files appear only once the rows are committed, so a rolled-back run leaves no orphan pack or
             # sheet that names a proposal id that does not exist. A crash between the commit and this loop
             # leaves rows without files, which the next build restores (_needs_write).
@@ -619,6 +687,8 @@ def triage_build_cmd(args) -> int:
             elif b.key not in {k for k, _ in failures}:
                 old = latest[b.key]
                 print(line(b, "unchanged", old["proposal_id"] if old else None))
+        for f, ids in superseded_folded:
+            print(folded_line(f, ids, "superseded"))
     for key, why in failures:
         _stderr(f"Refused: {key}: {why}")
     return 3 if failures else 0
@@ -790,6 +860,36 @@ def _counter_evidence(proposals: list[dict[str, Any]], evidence_items: list[dict
     return out
 
 
+def _folded_placeholders(conn, isin: str, ex_date: str, cutoff: str) -> list[dict[str, Any]]:
+    """Index placeholders folded into this jump: (symbol, ISIN, first-seen day), the same link test the scan and the pack use.
+
+    Read-only. A placeholder is one the exchange index file lists for a spin-off; the parent's features say
+    ``placeholder: true`` because of it. Events recorded against the subject itself are not another security, and a
+    standalone placeholder row is never folded into itself. ``first_seen`` is the IST day of its earliest event at or
+    before the cutoff.
+    """
+    from quant.triage import features as feat
+
+    ident = _identity(conn, isin)
+    events = feat.placeholder_events(conn, cutoff)
+    if not events:
+        return []
+    sid = None if ident is None else ident["security_id"]
+    symbol = None if ident is None else ident["symbol"]
+    found: dict[tuple[Any, Any], dict[str, Any]] = {}
+    for ev in events:
+        detail = ev["detail"]
+        if detail.get("placeholder_isin") == isin or (sid is not None and ev["security_id"] == sid):
+            continue
+        if not feat.placeholder_links(ev, security_id=sid, isin=isin, symbol=symbol, ex_date=ex_date):
+            continue
+        key = (detail.get("placeholder_isin"), detail.get("placeholder_symbol"))
+        if key not in found or ev["day"] < found[key]["first_seen"]:
+            found[key] = {"symbol": detail.get("placeholder_symbol"), "isin": detail.get("placeholder_isin"),
+                          "first_seen": ev["day"]}
+    return sorted(found.values(), key=lambda r: (r["first_seen"], str(r["isin"]), str(r["symbol"])))
+
+
 def _view(conn, cfg, *, proposal_id: str | None = None, isin: str | None = None,
           ex_date: str | None = None, cohort: str | None = None) -> dict[str, Any]:
     """Everything ``show`` prints, from the database and the archive. Reads only; the captures rows win over the pack."""
@@ -863,7 +963,8 @@ def _view(conn, cfg, *, proposal_id: str | None = None, isin: str | None = None,
     labels = [((p["payload"] or {}).get("classification") or {}).get("label") for p in proposals]
     return {
         "subject": {"key": f"{isin}@{ex_date}", "isin": isin, "ex_date": ex_date, "as_of": as_of, "cutoff_utc": cutoff,
-                    "symbol": ((pack.get("data") or {}).get("subject") or {}).get("symbol")},
+                    "symbol": ((pack.get("data") or {}).get("subject") or {}).get("symbol"),
+                    "folded_placeholders": _folded_placeholders(conn, isin, ex_date, cutoff)},
         "notice": NOTICE,
         "lookalike_warning": _lookalike(features.get("gross_factor"), labels),
         "counter_evidence": _counter_evidence(proposals, items, pack),
@@ -914,6 +1015,9 @@ def render(view: dict[str, Any]) -> str:
     s = view["subject"]
     out = [f"TRIAGE {s['key']}" + (f"  ({s['symbol']})" if s.get("symbol") else "")
            + f"   cohort {s['as_of']}   cutoff {s['cutoff_utc']}", ""]
+    for ph in s.get("folded_placeholders") or []:
+        out += [f"FOLDED PLACEHOLDER  {_cell(ph.get('symbol'))} ({_cell(ph.get('isin'))}), first seen {_cell(ph.get('first_seen'))}: "
+                "the exchange index file lists it for this spin-off, so it is part of this row and not a separate anomaly", ""]
     out += ["LOOKALIKE WARNING", f"  {view['lookalike_warning']}", ""]
     out += ["COUNTER-EVIDENCE AND GAPS"]
     out += [f"  - {_safe(line)}" for line in view["counter_evidence"]] or ["  (none recorded)"]

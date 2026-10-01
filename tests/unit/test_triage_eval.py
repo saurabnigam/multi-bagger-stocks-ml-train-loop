@@ -57,15 +57,29 @@ def _fast_run_context(monkeypatch):
     monkeypatch.setattr(RunContext, "_get_git_sha", staticmethod(lambda: "test"))
 
 
-_STATE_TEMPLATE: list[sqlite3.Connection] = []
+def _schema_sql(conn: sqlite3.Connection) -> list[tuple]:
+    """Every schema object (tables, indexes, journal triggers) as (type, name, table, sql), in a fixed order."""
+    return sorted((r[0], r[1], r[2], r[3]) for r in conn.execute("SELECT type, name, tbl_name, sql FROM sqlite_master"))
+
+
+@pytest.fixture(scope="module")
+def _state_template_conn():
+    """One state schema for the module, built with the real ``apply_schema`` and closed when the module ends."""
+    template = sqlite3.connect(":memory:", isolation_level=None)
+    template.row_factory = sqlite3.Row
+    apply_schema(template, kind="state")          # the name imported at the top is the real function, never the patched one
+    try:
+        yield template
+    finally:
+        template.close()
 
 
 @pytest.fixture(autouse=True)
-def _state_schema_from_template(monkeypatch):
+def _state_schema_from_template(monkeypatch, _state_template_conn):
     """The replay worlds build the state schema about 45 times; build it once and copy the pages instead.
 
     The copy is the page image of what ``apply_schema`` produced (tables and journal triggers), so the
-    databases the tests read are the same ones.
+    databases the tests read are the same ones (``test_the_state_template_equals_a_fresh_apply_schema_build``).
     """
     import quant.db.core as dbcore
     real = dbcore.apply_schema
@@ -73,14 +87,25 @@ def _state_schema_from_template(monkeypatch):
     def fast(conn, *, kind="state", journal=True):
         if kind != "state" or not journal:
             return real(conn, kind=kind, journal=journal)
-        if not _STATE_TEMPLATE:
-            template = sqlite3.connect(":memory:", isolation_level=None)
-            template.row_factory = sqlite3.Row
-            real(template, kind="state")
-            _STATE_TEMPLATE.append(template)
-        _STATE_TEMPLATE[0].backup(conn)
+        _state_template_conn.backup(conn)
 
     monkeypatch.setattr(dbcore, "apply_schema", fast)
+
+
+def test_the_state_template_equals_a_fresh_apply_schema_build(_state_template_conn, tmp_path):
+    """The speed-up copies a template instead of building the schema. It must be the schema a fresh build gives."""
+    fresh = connect(tmp_path / "fresh.db")
+    apply_schema(fresh, kind="state")
+    try:
+        assert _schema_sql(_state_template_conn) == _schema_sql(fresh)
+        assert len(_schema_sql(fresh)) > 50                       # tables and journal triggers, not an empty comparison
+        copy = connect(tmp_path / "copy.db")
+        import quant.db.core as dbcore
+        dbcore.apply_schema(copy, kind="state")                   # the patched function: a page copy of the template
+        assert _schema_sql(copy) == _schema_sql(fresh)
+        copy.close()
+    finally:
+        fresh.close()
 
 
 GROUND_TRUTH = ("TMPV_2025-10-14", "VEDL_2026-04-30", "TRENT_2026-01-01", "HEG_2026-09-07", "POLICYBZR_2026-09-24")

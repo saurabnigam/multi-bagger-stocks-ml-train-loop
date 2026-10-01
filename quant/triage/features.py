@@ -116,6 +116,9 @@ class Features:
     store_splits_wide: tuple[Mapping[str, Any], ...] | None = None
     #: (date, gross) of this security's other one-day jumps within VENDOR_SPLIT_LOOKBACK_DAYS; None = no bars read.
     store_jumps: tuple[tuple[str, float], ...] | None = None
+    #: Dates of this security's own bars within VENDOR_SPLIT_LOOKBACK_DAYS of the ex-date (cutoff vintage, never past
+    #: as_of); None = no bars read. R4 counts sessions and looks for a compensating jump from these, not from weekdays.
+    store_bar_dates: tuple[str, ...] | None = None
     cross_section_count: int | None = None
     #: (session offset from the ex-date, date, gross) of other jumps of this security; offset < 0 is before.
     nearby_jumps: tuple[tuple[int, str, float], ...] = ()
@@ -177,10 +180,19 @@ def merged_vendor_rows(f: Features, items: Iterable[Any] = ()) -> list[dict[str,
     return rows
 
 
-def sessions_between(first: str, last: str) -> int:
-    """Signed weekday count from ``first`` to ``last`` (negative when ``last`` is earlier). No holiday calendar."""
-    a, b = np.datetime64(first[:10]), np.datetime64(last[:10])
-    return int(np.busday_count(a, b)) if b >= a else -int(np.busday_count(b, a))
+def sessions_between(first: str, last: str, bar_dates: Iterable[str] | None) -> int | None:
+    """Signed count of the security's own bars in the store from ``first`` to ``last``: the bars dated after the earlier
+    date, up to and including the later one (negative when ``last`` is earlier, 0 when the dates are equal).
+
+    A market holiday has no bar, so it adds nothing; a weekday count would overstate the gap by one. None when no bars
+    were read: the gap is unknown, and a weekday guess would be a number nobody observed.
+    """
+    if bar_dates is None:
+        return None
+    a, b = first[:10], last[:10]
+    lo, hi = (a, b) if b >= a else (b, a)
+    n = sum(1 for d in bar_dates if lo < d <= hi)
+    return n if b >= a else -n
 
 
 def split_candidates(f: Features, items: Iterable[Any] = (),
@@ -190,8 +202,11 @@ def split_candidates(f: Features, items: Iterable[Any] = (),
     Union of the price store's split rows and Yahoo's, nearest-in-time first within a source, each carrying
     ``sessions_from_jump`` (signed weekday count from the ex-date) and ``compensating_jump``: True when the store shows
     a one-day jump of this security on the split date whose product with this jump's gross factor is within
-    ``product_range`` (the two cancel), False when it shows none, None when it could not tell (no bars read, or no gross
-    factor). None for the whole list means no source answered at all: unknown, not "no split".
+    ``product_range`` (the two cancel), False when it shows none, None when it could not tell. A jump on the split date
+    needs a bar on that date, so a split date with no bar of this security is unknown too (``compensating_jump_why``
+    names the reason: ``price_store_not_read``, ``no_gross_factor`` or ``no_price_bar_on_split_date``). ``sessions_from_jump``
+    counts the security's own bars (None when no bars were read). None for the whole list means no source answered at
+    all: unknown, not "no split".
     """
     yahoo = yahoo_split_rows(items, f.ex_date, VENDOR_SPLIT_LOOKBACK_DAYS)
     if f.vendor_split_rows is None and f.store_splits_wide is None and not yahoo:
@@ -205,12 +220,20 @@ def split_candidates(f: Features, items: Iterable[Any] = (),
         if not isinstance(day, str) or not ratio or key in seen:
             continue
         seen.add(key)
-        if f.store_jumps is None or f.gross_factor is None:
-            compensating: bool | None = None
+        compensating: bool | None = None
+        why: str | None = None
+        if f.store_jumps is None or f.store_bar_dates is None:
+            why = "price_store_not_read"
+        elif f.gross_factor is None:
+            why = "no_gross_factor"
+        elif day not in f.store_bar_dates:
+            why = "no_price_bar_on_split_date"
         else:
             compensating = any(d == day and lo <= f.gross_factor * g <= hi for d, g in f.store_jumps)
         row = dict(r)
-        row.update(sessions_from_jump=sessions_between(f.ex_date, day), compensating_jump=compensating)
+        row.update(sessions_from_jump=sessions_between(f.ex_date, day, f.store_bar_dates), compensating_jump=compensating)
+        if why is not None:
+            row["compensating_jump_why"] = why
         rows.append(row)
     rows.sort(key=lambda r: (str(r["date"]), str(r.get("source")), float(r["ratio"] or 0), str(r.get("capture_id") or "")))
     return rows
@@ -451,18 +474,20 @@ class Reader:
         return SubjectBars(df, sha256_hex(canonical_bytes(rows)), str(df["date"].iloc[-1]), len(df))
 
     def wide_store_facts(self, sid: int, ex_date: str) -> tuple[tuple[dict[str, Any], ...] | None,
-                                                               tuple[tuple[str, float], ...] | None]:
-        """(split rows, other one-day jumps) of one security within ``VENDOR_SPLIT_LOOKBACK_DAYS`` of the ex-date.
+                                                               tuple[tuple[str, float], ...] | None,
+                                                               tuple[str, ...] | None]:
+        """(split rows, other one-day jumps, bar dates) of one security within ``VENDOR_SPLIT_LOOKBACK_DAYS`` of the ex-date.
 
-        Bars are read at the cutoff vintage and never past the ``as_of`` date. ``(None, None)`` when the store has no
-        bar in the range: unknown, not "no split and no jump". The ex-date's own jump is left out of the second list.
+        Bars are read at the cutoff vintage and never past the ``as_of`` date. ``(None, None, None)`` when the store has
+        no bar in the range: unknown, not "no split and no jump". The ex-date's own jump is left out of the second list.
+        The bar dates are the security's own sessions, which R4 counts instead of weekdays.
         """
         ex = _day(ex_date)
         start = (ex - timedelta(days=VENDOR_SPLIT_LOOKBACK_DAYS)).isoformat()
         end = min(self.as_of, (ex + timedelta(days=VENDOR_SPLIT_LOOKBACK_DAYS)).isoformat())
         df = self._bars([sid], start, end, "close_raw, dividend_raw, split_ratio")
         if df.empty:
-            return None, None
+            return None, None, None
         df = df.sort_values("date").reset_index(drop=True)
         dates = [str(d) for d in df["date"]]
         c, d, sp = (df[col].to_numpy(float) for col in ("close_raw", "dividend_raw", "split_ratio"))
@@ -473,7 +498,7 @@ class Reader:
                        for k in range(len(c)) if abs(sp[k] - 1.0) > 1e-9)
         jumps = tuple((dates[k], round(float(g[k]), 6)) for k in range(1, len(c))
                       if dates[k] != ex_date and is_jump(float(g[k]), self.jump_ratio))
-        return splits, jumps
+        return splits, jumps, tuple(dates)
 
     # -- state database
     def industries(self) -> dict[int, str] | None:
@@ -664,7 +689,7 @@ def build(reader: Reader, anomaly: Any) -> Features:
             for k in range(len(c))
             if abs(sp[k] - 1.0) > 1e-9 and abs((_day(dates[k]) - ex).days) <= VENDOR_SPLIT_WINDOW_DAYS)
 
-    store_splits, store_jumps = reader.wide_store_facts(sid, anomaly.ex_date)
+    store_splits, store_jumps, store_bar_dates = reader.wide_store_facts(sid, anomaly.ex_date)
     xs = reader.cross_section(anomaly.ex_date)
     grp, n_peers, peer_median, moved, universe = reader.peers(sid, anomaly.ex_date, gross)
     return Features(
@@ -672,6 +697,7 @@ def build(reader: Reader, anomaly: Any) -> Features:
         n_post_bars=n_post, sector_group=grp, n_peers=n_peers, sector_peer_median_move_pct=peer_median,
         market_median_move_pct=xs.market_median_move_pct if xs.gross else None, n_peers_moved=moved,
         vendor_split_rows=vendor_rows, store_splits_wide=store_splits, store_jumps=store_jumps,
+        store_bar_dates=store_bar_dates,
         cross_section_count=xs.n_jumps if xs.gross else None, nearby_jumps=tuple(nearby), peer_universe=universe)
 
 

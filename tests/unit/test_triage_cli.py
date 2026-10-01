@@ -1082,6 +1082,187 @@ def test_list_shows_a_rejected_proposal_as_rejected_and_still_open(world, capsys
     assert "rejected" in text and "resolved" not in text.replace("unresolved", "")
 
 
+# ----------------------------------------------------------------------------- X6: a folded placeholder
+
+PARENT_ISIN, PARENT_SYMBOL, PARENT_JUMP = "INE000000006", "PARENT6", "2026-09-07"
+DUMMY_ISIN, DUMMY_SYMBOL, DUMMY_FIRST_SEEN = "DUM000000006", "DUMMYPARENT6", "2026-10-01"
+STANDALONE_KEY = f"{DUMMY_ISIN}@{DUMMY_FIRST_SEEN}"
+PARENT_KEY = f"{PARENT_ISIN}@{PARENT_JUMP}"
+
+
+def _seed_placeholder_event(w, *, parent_symbol=None):
+    """The NSE index file lists DUMMYPARENT6 (DUM000000006): security 7 and one INDEX_PLACEHOLDER event, first seen 2026-10-01."""
+    with RunContext(as_of=AS_OF, kind="test", track="live", cfg=w.cfg, clock=FrozenClock(EVENING),
+                    actor=Actor(kind="human", name="owner")) as ctx:
+        ctx.conn.execute("INSERT INTO securities (security_id, isin, name, first_seen, last_seen, status) "
+                         "VALUES (7, ?, 'Dummy Parent6', '2026-10-01', ?, 'listed')", (DUMMY_ISIN, AS_OF))
+        ctx.conn.execute(
+            "INSERT INTO data_quality_events (run_id, as_of, created_at, severity, code, security_id, detail_json) "
+            "VALUES (?, ?, '2026-10-01T10:00:00.000000Z', 'WARN', 'INDEX_PLACEHOLDER', 7, ?)",
+            (ctx.run_id, AS_OF, json.dumps({"placeholder_symbol": DUMMY_SYMBOL, "placeholder_isin": DUMMY_ISIN,
+                                            "parent_symbol": parent_symbol})))
+
+
+def _add_parent_with_jump(w):
+    """PARENT6 (INE000000006) falls to 0.3738 of its close on 2026-09-07: the jump the placeholder belongs to."""
+    dates = pd.bdate_range("2025-06-02", AS_OF).strftime("%Y-%m-%d")
+    series = np.where(np.array(dates) < PARENT_JUMP, 600.0, 224.28)
+    with RunContext(as_of=AS_OF, kind="test", track="live", cfg=w.cfg, clock=FrozenClock(EVENING),
+                    actor=Actor(kind="human", name="owner")) as ctx:
+        ctx.conn.execute("INSERT INTO securities (security_id, isin, name, first_seen, last_seen, status) "
+                         "VALUES (6, ?, 'Parent6 Limited', '2025-01-01', ?, 'listed')", (PARENT_ISIN, AS_OF))
+        ctx.conn.execute("INSERT INTO symbol_history (security_id, nse_symbol, yahoo_ticker, valid_from, source) "
+                         "VALUES (6, ?, 'PARENT6.NS', '2025-01-01', 'test')", (PARENT_SYMBOL,))
+        ctx.store = PriceStore(w.cfg.paths.prices_db, state_conn=ctx.conn)
+        ctx.store.ingest(ctx, pd.DataFrame({"date": dates, "close": series, "volume": 1e5}),
+                         {"security_id": 6, "close_basis": "raw", "observed_at": OBSERVED})
+
+
+def _statuses(w):
+    return {json.loads(r[2])["key"]: r[1] for r in engine_rows(w)}
+
+
+def test_show_names_the_folded_placeholder_on_the_parent_row(world, capsys):
+    _add_parent_with_jump(world)
+    _seed_placeholder_event(world)
+    assert run(world, "triage", "build", "--as-of", AS_OF, "--isin", PARENT_ISIN, "--ex-date", PARENT_JUMP) == 0
+    capsys.readouterr()
+    assert run(world, "triage", "show", "--isin", PARENT_ISIN, "--ex-date", PARENT_JUMP) == 0
+    text = capsys.readouterr().out
+    line, = [ln for ln in text.splitlines() if "FOLDED PLACEHOLDER" in ln]
+    assert DUMMY_SYMBOL in line and DUMMY_ISIN in line and f"first seen {DUMMY_FIRST_SEEN}" in line
+    assert run(world, "triage", "show", "--isin", PARENT_ISIN, "--ex-date", PARENT_JUMP, "--json") == 0
+    view = json.loads(capsys.readouterr().out)
+    assert view["subject"]["folded_placeholders"] == [
+        {"symbol": DUMMY_SYMBOL, "isin": DUMMY_ISIN, "first_seen": DUMMY_FIRST_SEEN}]
+
+
+def test_show_has_no_folded_placeholder_line_for_a_jump_with_no_placeholder(world, capsys):
+    assert build_all(world) == 0
+    capsys.readouterr()
+    assert run(world, "triage", "show", "--isin", ISIN, "--ex-date", EX) == 0
+    assert "FOLDED PLACEHOLDER" not in capsys.readouterr().out
+    assert run(world, "triage", "show", "--isin", ISIN, "--ex-date", EX, "--json") == 0
+    assert json.loads(capsys.readouterr().out)["subject"]["folded_placeholders"] == []
+
+
+def test_show_does_not_fold_a_standalone_placeholder_into_itself(world, capsys):
+    _seed_placeholder_event(world)
+    assert build_all(world) == 0
+    capsys.readouterr()
+    assert run(world, "triage", "show", "--isin", DUMMY_ISIN, "--ex-date", DUMMY_FIRST_SEEN) == 0
+    assert "FOLDED PLACEHOLDER" not in capsys.readouterr().out
+
+
+def test_a_standalone_proposal_for_a_now_folded_placeholder_is_superseded_by_the_next_build(world, capsys):
+    _seed_placeholder_event(world)
+    assert build_all(world) == 0                                       # the placeholder is listed on its own
+    capsys.readouterr()
+    assert _statuses(world)[STANDALONE_KEY] == "proposed"
+    _add_parent_with_jump(world)                                       # the parent's jump arrives: the event now folds into it
+    assert run(world, "triage", "list", "--as-of", AS_OF, "--json") == 0
+    keys = {a["key"] for a in json.loads(capsys.readouterr().out)["anomalies"]}
+    assert PARENT_KEY in keys and STANDALONE_KEY not in keys
+
+    before = world.fingerprint()
+    assert build_all(world, "--dry-run") == 0
+    out = capsys.readouterr().out
+    assert f"would supersede" in out and STANDALONE_KEY in out and "folded" in out
+    assert world.fingerprint() == before and _statuses(world)[STANDALONE_KEY] == "proposed"
+
+    assert build_all(world) == 0
+    out = capsys.readouterr().out
+    assert STANDALONE_KEY in out and "superseded" in out and PARENT_ISIN in out
+    statuses = _statuses(world)
+    assert statuses[STANDALONE_KEY] == "superseded" and statuses[PARENT_KEY] == "proposed"
+    assert build_all(world) == 0                                       # idempotent: nothing more to supersede or write
+    assert _statuses(world) == statuses
+    assert "supersede" not in capsys.readouterr().out
+
+
+def test_a_rejected_standalone_placeholder_proposal_is_not_touched_when_it_folds(world):
+    _seed_placeholder_event(world)
+    assert build_all(world) == 0
+    pid = next(r[0] for r in engine_rows(world) if json.loads(r[2])["key"] == STANDALONE_KEY)
+    assert run(world, "triage", "reject", "--proposal-id", pid, "--reason", "other", *HUMAN) == 0
+    _add_parent_with_jump(world)
+    assert build_all(world) == 0
+    assert _statuses(world)[STANDALONE_KEY] == "rejected"             # a human decision is never overwritten
+
+
+def test_a_build_of_another_anomaly_leaves_the_standalone_proposal_alone(world):
+    _seed_placeholder_event(world)
+    assert build_all(world) == 0
+    _add_parent_with_jump(world)
+    assert run(world, "triage", "build", "--as-of", AS_OF, "--isin", ISIN, "--ex-date", EX) == 0
+    assert _statuses(world)[STANDALONE_KEY] == "proposed"             # only a build that covers the parent supersedes
+
+
+# ----------------------------------------------------------------------------- X8: as-of bar coverage on list
+
+def _seed_universe(w, *, extra_members=(), session_stamp="2026-10-29T10:00:00.000000Z"):
+    """A NIFTY500 snapshot of securities 1-5 plus ``extra_members`` (ids with no bars in the store)."""
+    with RunContext(as_of=AS_OF, kind="test", track="live", cfg=w.cfg, clock=FrozenClock(EVENING),
+                    actor=Actor(kind="human", name="owner")) as ctx:
+        for sid in extra_members:
+            ctx.conn.execute("INSERT INTO securities (security_id, isin, name, first_seen, last_seen, status) "
+                             "VALUES (?, ?, ?, '2025-01-01', ?, 'listed')", (sid, f"INE0000000{sid:02d}", f"Extra {sid}", AS_OF))
+        ctx.conn.execute("INSERT INTO captures (capture_id, captured_at, kind, archive_path, sha256, source_version, run_id) "
+                         "VALUES ('cap_n500_test', ?, 'nifty500', 'x', ?, 'test', ?)", (session_stamp, "0" * 64, ctx.run_id))
+        for sid in (1, 2, 3, 4, 5, *extra_members):
+            ctx.conn.execute(
+                "INSERT INTO universe_membership (as_of, observed_at, security_id, index_name, nse_symbol, nse_sector, series, "
+                "source, source_sha256) VALUES ('2026-10-29', ?, ?, 'NIFTY500', ?, 'Industrials', 'EQ', 'nse_csv', 'sha')",
+                (session_stamp, sid, f"SYM{sid}"))
+
+
+def test_list_prints_the_as_of_bar_coverage_and_the_g3_threshold(world, capsys, request):
+    _seed_universe(world, extra_members=(8, 9))                     # 7 members, 5 of them have a bar on 2026-10-30
+    request.getfixturevalue("no_run_context")                       # from here on, opening a RunContext fails the test
+    before = world.fingerprint()
+    assert run(world, "triage", "list", "--as-of", AS_OF) == 0
+    lines = capsys.readouterr().out.splitlines()
+    line, = [ln for ln in lines if ln.startswith("As-of bar coverage")]
+    assert "2026-10-30" in line and "5 of 7" in line and "71.4%" in line and "G3 needs 98%" in line
+    assert lines.index(line) < min(i for i, ln in enumerate(lines) if ln.startswith("KIND"))     # a header: before the table
+    assert world.fingerprint() == before and world.files() == []
+
+
+def test_list_json_carries_the_bar_coverage(world, capsys):
+    _seed_universe(world, extra_members=(8, 9))
+    assert run(world, "triage", "list", "--as-of", AS_OF, "--json") == 0
+    cov = json.loads(capsys.readouterr().out)["bar_coverage"]
+    assert cov == {"session": "2026-10-30", "members": 7, "with_close": 5, "share": pytest.approx(5 / 7, abs=1e-4),
+                   "g3_min_share": 0.98, "meets_g3": False}
+
+
+def test_list_full_coverage_meets_g3(world, capsys):
+    _seed_universe(world)
+    assert run(world, "triage", "list", "--as-of", AS_OF, "--json") == 0
+    cov = json.loads(capsys.readouterr().out)["bar_coverage"]
+    assert (cov["members"], cov["with_close"], cov["meets_g3"]) == (5, 5, True)
+
+
+def test_list_uses_the_latest_session_at_or_before_as_of(world, capsys):
+    _seed_universe(world)
+    assert run(world, "triage", "list", "--as-of", "2026-10-31", "--json") == 0      # a Saturday: the 30th is the session
+    assert json.loads(capsys.readouterr().out)["bar_coverage"]["session"] == "2026-10-30"
+
+
+def test_list_coverage_is_unknown_not_zero_without_a_universe_snapshot(world, capsys):
+    assert run(world, "triage", "list", "--as-of", AS_OF, "--json") == 0
+    assert json.loads(capsys.readouterr().out)["bar_coverage"] is None
+    assert run(world, "triage", "list", "--as-of", AS_OF) == 0
+    line, = [ln for ln in capsys.readouterr().out.splitlines() if ln.startswith("As-of bar coverage")]
+    assert "unknown" in line and "0 of" not in line and "G3 needs 98%" in line
+
+
+def test_list_coverage_is_unknown_when_the_store_has_no_bar_at_or_before_as_of(world, capsys):
+    _seed_universe(world, session_stamp="2025-01-01T10:00:00.000000Z")       # a snapshot exists; the store's first bar is 2025-06-02
+    assert run(world, "triage", "list", "--as-of", "2025-01-15", "--json") == 0
+    assert json.loads(capsys.readouterr().out)["bar_coverage"] is None
+
+
 # ----------------------------------------------------------------------------- plumbing
 
 def test_the_triage_group_is_registered_with_every_command(capsys):

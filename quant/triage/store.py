@@ -186,6 +186,26 @@ def write_proposal(ctx: Any, proposal: Mapping[str, Any], evidence: Iterable[Map
     return Stored(pid, True, confirm_code(payload_json), md_path, superseded)
 
 
+def open_proposal_ids(conn: sqlite3.Connection, isin: str, ex_date: str) -> list[str]:
+    """Ids of the open (``proposed``) triage proposals, engine or agent, for one anomaly key, oldest first."""
+    return [str(r[0]) for r in conn.execute(
+        "SELECT proposal_id FROM proposals WHERE subject_id = ? AND rule_id LIKE 'TRIAGE\\_%' ESCAPE '\\' "
+        "AND status = 'proposed' ORDER BY rowid", (subject_id(isin, ex_date),)).fetchall()]
+
+
+def supersede_open(ctx: Any, isin: str, ex_date: str) -> list[str]:
+    """Mark every open triage proposal for one anomaly key ``superseded`` (a control update, as ``write_proposal`` does).
+
+    Used when the key no longer exists as an anomaly of its own, for example a placeholder that now folds into its parent's
+    jump. Proposals a human has already decided (``rejected``, ``approved``) are not touched.
+    """
+    done: list[str] = []
+    for pid in open_proposal_ids(ctx.conn, isin, ex_date):
+        update_control(ctx, "proposals", {"proposal_id": pid}, {"status": "superseded"})
+        done.append(pid)
+    return done
+
+
 def _hydrate(row: dict[str, Any]) -> dict[str, Any]:
     try:
         row["payload"] = json.loads(row["payload_json"])

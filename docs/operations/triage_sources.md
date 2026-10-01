@@ -61,7 +61,7 @@ runs with only an undated `yahoo_actions` envelope.
 | `dividend_<k>_date`, `dividend_<k>_amount` | k = 1 to 2, nearest first. |
 
 The window is wide because, in the recorded cases, a vendor split sits 64 to 277 days from the jump it
-explains (CGCL, GPIL, MOTILALOFS, TRENT). Rule R4 reads splits in that whole 400-day window and applies its own tests: the ratio is within 3% of 1/gross (downward jump) or of gross (upward jump), the split is more than one session from the jump, and the price store shows no cancelling jump on the split date. Rule R3's demerger check keeps its own five-day window.
+explains (CGCL, GPIL, MOTILALOFS, TRENT). Rule R4 reads splits in that whole 400-day window and applies its own tests: the ratio is within 3% of 1/gross (downward jump) or of gross (upward jump), the split is more than one session from the jump (counted in the security's own bars in the price store, not weekdays), and the price store shows a bar on the split date and no cancelling jump on it (no bar there means unknown, and R4 abstains). R4 resolves as `manual_adj`, never `split`: the factor is the vendor ratio for a downward jump and its reciprocal for an upward one, because the real share change is already in the store at the vendor's date and a `split` record would be counted twice by the share-basis logic. Rule R3's demerger check keeps its own five-day window.
 
 ## Yahoo news envelope
 

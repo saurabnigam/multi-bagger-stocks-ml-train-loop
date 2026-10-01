@@ -17,8 +17,12 @@ not hide an anomaly from an earlier cohort.
 A placeholder event for a security that also has a listed jump is folded into that jump (its
 features say ``placeholder: true``) instead of being listed twice, when ``features.placeholder_links``
 says so: by the parent symbol or security, with the event's day in ``[ex - 45, ex + 15]``, or by ISIN
-suffix (``DUM545A01024`` for ``INE545A01024``), with the event's day in ``[ex - 45, ex + 60]``. An event
+suffix (``DUM545A01024`` for ``INE545A01024``), with the event's day in ``[ex - 45, ex + 60]``. The ISIN
+suffix link applies whatever ``parent_symbol`` says (null, the parent's symbol, or another one). An event
 outside every jump's window is listed on its own.
+
+A folded placeholder is also returned in ``ScanResult.folded`` with the key it would have had as a
+standalone anomaly, so a build can supersede an open proposal that an earlier scan made for that key.
 
 The scan is read-only: it takes a state connection and a price store and writes nothing.
 """
@@ -69,6 +73,17 @@ class Anomaly:
 
 
 @dataclass(frozen=True)
+class Folded:
+    """A placeholder event that a listed jump claims. ``key`` is what it was listed as before it folded."""
+    key: str                      # <isin or placeholder isin>@<first-seen day>: a standalone anomaly's key
+    isin: str
+    first_seen: str               # the IST day the engine first captured the placeholder
+    placeholder_symbol: str | None
+    placeholder_isin: str | None
+    parent_key: str               # the listed jump that claims it
+
+
+@dataclass(frozen=True)
 class ScanResult:
     as_of: str
     cutoff: str
@@ -78,6 +93,8 @@ class ScanResult:
     n_suspect_rows: int
     #: Unresolved suspect rows older than the window with no open proposal (D4). Not in ``anomalies``.
     hidden: list[Anomaly] = field(default_factory=list)
+    #: Placeholders folded into a listed jump (X6); their standalone proposals are superseded by the next build.
+    folded: list[Folded] = field(default_factory=list)
 
     @property
     def n_hidden(self) -> int:
@@ -226,14 +243,18 @@ def scan(conn: sqlite3.Connection, store: Any, as_of: str, *, since: str | None 
 
     hidden = [a for a in anomalies if a.source == "suspect_row" and not a.in_window and a.status not in OPEN_STATUSES]
     shown = [a for a in anomalies if a not in hidden]
-    shown.extend(_placeholder_anomalies(conn, cutoff, shown))
+    standalone, folded = _placeholder_anomalies(conn, cutoff, shown)
+    shown.extend(standalone)
     shown.sort(key=lambda a: (a.ex_date, a.isin or "", a.kind))
     hidden.sort(key=lambda a: (a.ex_date, a.isin or "", a.kind))
-    return ScanResult(as_of, cutoff, window_start, shown, len(measured), len(suspects), hidden)
+    folded.sort(key=lambda f: (f.parent_key, f.key))
+    return ScanResult(as_of, cutoff, window_start, shown, len(measured), len(suspects), hidden, folded)
 
 
-def _placeholder_anomalies(conn: sqlite3.Connection, cutoff: str, jumps: Sequence[Anomaly]) -> list[Anomaly]:
-    """One anomaly per placeholder (its first event in the lookback), unless a listed jump claims it.
+def _placeholder_anomalies(conn: sqlite3.Connection, cutoff: str,
+                           jumps: Sequence[Anomaly]) -> tuple[list[Anomaly], list[Folded]]:
+    """(standalone anomalies, folded placeholders): one anomaly per placeholder (its first event in the lookback),
+    unless a listed jump claims it, and then it is a ``Folded`` record instead.
 
     ``jumps`` are the listed jump anomalies. The event is claimed (folded into the jump) when
     ``features.placeholder_links`` says it points at that jump's security, the same test
@@ -241,7 +262,7 @@ def _placeholder_anomalies(conn: sqlite3.Connection, cutoff: str, jumps: Sequenc
     """
     events = feat.placeholder_events(conn, cutoff)
     if not events:
-        return []
+        return [], []
     floor = (pd.Timestamp(pit.ist_date(pit.parse_instant(cutoff)).isoformat())
              - timedelta(days=feat.PLACEHOLDER_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
     first: dict[tuple[Any, Any], dict[str, Any]] = {}
@@ -250,18 +271,23 @@ def _placeholder_anomalies(conn: sqlite3.Connection, cutoff: str, jumps: Sequenc
             continue
         first.setdefault((ev["security_id"], ev["detail"].get("placeholder_isin")), ev)
     out: list[Anomaly] = []
+    folded: list[Folded] = []
     for (sid, _placeholder_isin), ev in first.items():
-        if any(feat.placeholder_links(ev, security_id=j.security_id, isin=j.isin, symbol=j.symbol, ex_date=j.ex_date)
-               for j in jumps if j.kind == KIND_JUMP):
-            continue
         isin, symbol = (None, None) if sid is None else _identities(conn, [int(sid)])[int(sid)]
         isin = isin or ev["detail"].get("placeholder_isin")
+        parent = next((j for j in jumps if j.kind == KIND_JUMP and feat.placeholder_links(
+            ev, security_id=j.security_id, isin=j.isin, symbol=j.symbol, ex_date=j.ex_date)), None)
+        if parent is not None:
+            if isin is not None:
+                folded.append(Folded(subject_key(isin, ev["day"]), isin, ev["day"], ev["detail"].get("placeholder_symbol"),
+                                     ev["detail"].get("placeholder_isin"), parent.key))
+            continue
         if isin is None:
             continue
         status, pid = _proposal_status(conn, isin, ev["day"])
         out.append(Anomaly(KIND_PLACEHOLDER, isin, ev["day"], None if sid is None else int(sid), symbol, None,
                            ev["created_at"], "placeholder_event", True, status, pid))
-    return out
+    return out, folded
 
 
 def select(result: ScanResult, *, isin: str | None = None, ex_date: str | None = None) -> list[Anomaly]:

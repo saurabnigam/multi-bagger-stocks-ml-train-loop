@@ -925,6 +925,61 @@ def test_rule9_vendor_with_a_vendor_split_ratio_near_one_over_gross_is_medium_el
     assert res.ok and res.proposal["classification"]["confidence"] == "low"
 
 
+UP_CAND = {"date": "2026-06-04", "ratio": 1.8, "source": "yahoo_actions", "sessions_from_jump": 100, "compensating_jump": False}
+
+
+def _upward_vendor(w, factor):
+    """A misdated vendor split on an upward jump (gross 1.8), resolved as manual_adj (X1)."""
+    p = _vendor(w)
+    p["resolution"].update(factor=factor, factor_inputs=[{"name": "ratio", "value": 1.8, "citation": "f:vendor_split_ratio"}])
+    p["claims"] = [claim("k1", "The vendor lists a split ratio of 1.8 on another date than the jump.", ["f:vendor_split_ratio"])]
+    return p
+
+
+def _upward_pack():
+    return pack(base_features(gross_factor=1.8, vendor_split_rows=[], vendor_split_candidates=[UP_CAND], vendor_split_ratio=1.8))
+
+
+def test_r4_upward_manual_adj_the_engine_recomputes_the_factor_as_one_over_the_vendor_ratio(w):
+    res = w.validate(_upward_vendor(w, factor=None), pk=_upward_pack())
+    assert res.ok, res.errors
+    r = res.proposal["resolution"]
+    assert r["factor"] == pytest.approx(1 / 1.8, abs=1e-6) and r["needs_force"] is False
+    assert res.proposal["classification"]["rule_id"] == "R4" and res.proposal["classification"]["confidence"] == "medium"
+    same = w.validate(_upward_vendor(w, factor=round(1 / 1.8, 6)), pk=_upward_pack())
+    assert same.ok, same.errors
+
+
+def test_r4_upward_manual_adj_with_the_raw_ratio_as_the_factor_is_refused(w):
+    res = w.validate(_upward_vendor(w, factor=1.8), pk=_upward_pack())
+    assert not res.ok and has(res, "V6", "factor_mismatch")
+
+
+def test_r4_downward_manual_adj_factor_stays_the_vendor_ratio(w):
+    res = w.validate(_vendor(w), pk=pack(VENDOR_FEATURES))
+    assert res.ok and res.proposal["resolution"]["factor"] == pytest.approx(1.67) and res.proposal["resolution"]["needs_force"] is False
+
+
+@pytest.mark.parametrize("kind", ["split", "bonus"])
+def test_r4_a_vendor_ratio_proposal_cannot_resolve_as_a_split_or_bonus(w, kind):
+    """F1: a split-kind record also feeds PriceStore.split_events and the EPS share basis, and the real share change is already
+    recorded at the vendor's date, so a second split would double-count it. A misdated vendor adjustment is manual_adj only."""
+    p = _vendor(w)
+    p["resolution"]["resolve_kind"] = kind
+    res = w.validate(p, pk=pack(VENDOR_FEATURES))
+    assert not res.ok and has(res, "V7", "vendor_ratio_needs_manual_adj")
+    assert w.validate(_vendor(w), pk=pack(VENDOR_FEATURES)).ok                 # the manual_adj twin is still accepted
+
+
+def test_r4_is_derived_only_for_a_manual_adj_resolution(w):
+    res = {"factor_basis": "vendor_ratio", "factor_inputs": [], "resolve_kind": "manual_adj"}
+    feats = base_features(gross_factor=0.6, vendor_split_rows=[], vendor_split_candidates=[CAND], vendor_split_ratio=1.67)
+    got = validate._derive_rule("vendor_error_other", res, 1.67, {}, feats, "2026-10-20")
+    assert got[0] == "R4"
+    for kind in ("split", "bonus"):
+        assert validate._derive_rule("vendor_error_other", dict(res, resolve_kind=kind), 1.67, {}, feats, "2026-10-20")[0] is None
+
+
 # ------------------------------------------------------------------ rule 10: disagreement flag
 
 def _engine(label, rule_id=None, key=KEY_A):
