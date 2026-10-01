@@ -1,0 +1,192 @@
+{
+ "schema": "triage.llm_run/1",
+ "case_id": "TMPV_2025-10-14",
+ "model": "hand_written_example",
+ "prompt_sha256": "af86c026cf3cadf2672c04f5eb6097ba06c0c85d881a1a8b8ed62f13e71b2171",
+ "temperature": null,
+ "synthetic": true,
+ "note": "Hand-written example of a proposal that passes every validator rule. Not model output.",
+ "usage": {
+  "n_fetches": 0,
+  "tokens_in": null,
+  "tokens_out": null,
+  "wall_s": 0.0
+ },
+ "transcript": [
+  {
+   "cmd": "python3 -m quant triage show --isin INE155A01022 --ex-date 2025-10-14 --json --actor-kind llm --by llm:hand_written_example",
+   "exit": 0
+  },
+  {
+   "cmd": "python3 -m quant triage submit --as-of 2025-10-14 --file proposal.json --dry-run --actor-kind llm --by llm:hand_written_example",
+   "exit": 0
+  }
+ ],
+ "proposal": {
+  "schema": "triage.proposal/1",
+  "key": "INE155A01022@2025-10-14",
+  "as_of": "2025-10-14",
+  "producer": {
+   "kind": "llm",
+   "name": "llm:hand_written_example",
+   "prompt_sha256": "af86c026cf3cadf2672c04f5eb6097ba06c0c85d881a1a8b8ed62f13e71b2171",
+   "pack_sha256": "9f6ad9fcc36d6b98f47b91ad1e0b7778493cbaaa73e8bc886352b24a986eb6cc",
+   "self_confidence": "high"
+  },
+  "anomaly_kind": "suspected_jump",
+  "classification": {
+   "label": "demerger",
+   "subtype": null,
+   "confidence": "high",
+   "rule_id": "R2",
+   "alternatives": [
+    {
+     "label": "genuine_event",
+     "why_not": "The circular announces a scheme and a special pre-open session."
+    }
+   ]
+  },
+  "resolution": {
+   "action": "resolve",
+   "resolve_kind": "demerger",
+   "factor": 1.651875,
+   "factor_basis": "exchange_spos",
+   "factor_uncertainty_pct": null,
+   "needs_force": false,
+   "needs_primary": false,
+   "recheck_on": null,
+   "factor_inputs": [
+    {
+     "name": "prev_close",
+     "value": 660.75,
+     "citation": "c1"
+    },
+    {
+     "name": "spos_price",
+     "value": 400.0,
+     "citation": "c1"
+    }
+   ]
+  },
+  "claims": [
+   {
+    "id": "k1",
+    "type": "fact",
+    "text": "The exchange circular gives previous close 660.75 and special pre-open price 400.00.",
+    "citations": [
+     "c1"
+    ],
+    "depends_on": []
+   },
+   {
+    "id": "k2",
+    "type": "inference",
+    "text": "The price step is the demerger adjustment, so history needs a factor and not a genuine return.",
+    "citations": [
+     "c1"
+    ],
+    "depends_on": [
+     "k1"
+    ]
+   }
+  ],
+  "citations": [
+   {
+    "id": "c1",
+    "capture_id": "TD-fd420f6ffc72eb55",
+    "quote": "Previous close Rs 660.75. SPOS price Rs 400.00"
+   }
+  ],
+  "negative_checks": [],
+  "missing_evidence": [],
+  "needs_human": [
+   "Check the circular body against the exchange website before resolving."
+  ],
+  "usage": {
+   "n_fetches": 0,
+   "tokens_in": null,
+   "tokens_out": null,
+   "wall_s": 0.0
+  }
+ },
+ "pack": {
+  "schema": "triage.pack/1",
+  "rules_version": "triage-rules/1",
+  "subject": {
+   "key": "INE155A01022@2025-10-14",
+   "isin": "INE155A01022",
+   "ex_date": "2025-10-14",
+   "symbol": "TMPV",
+   "security_id": null,
+   "anomaly_kind": "suspected_jump"
+  },
+  "as_of": "2025-10-14",
+  "cutoff_utc": "2025-10-14T18:29:59.999999Z",
+  "price_store_vintage": {
+   "vintage_at": "2025-10-14T18:29:59.999999Z",
+   "subject_bars_sha256": null,
+   "n_bars": 0,
+   "last_bar_date": null
+  },
+  "features": {
+   "gross_factor": 0.598487,
+   "move_pct": -40.1513,
+   "volume_ratio": 3.97,
+   "next_day_close_ratio": null,
+   "fwd5_close_ratio": null,
+   "n_post_bars": 0,
+   "post_bars_available": false,
+   "series": "EQ",
+   "placeholder": false,
+   "sector_group": "Automobile and Auto Components",
+   "n_peers": 36,
+   "n_peers_moved": null,
+   "sector_peer_median_move_pct": -0.37,
+   "market_median_move_pct": -0.92,
+   "vendor_split_rows": [],
+   "vendor_split_ratio": null,
+   "cross_section_count": 1,
+   "reversal_prior": false,
+   "reversal_forward": null,
+   "peer_set_pit": false
+  },
+  "source_status": {
+   "yahoo_actions": "skipped",
+   "yahoo_news": "skipped",
+   "sebi_rss": "skipped",
+   "human_attach": "ok",
+   "agent_attach": "skipped",
+   "price_store": "skipped",
+   "universe": "ok",
+   "sector_map": "ok",
+   "evidence_archive": "ok"
+  },
+  "rejected_evidence": [],
+  "evidence": [
+   {
+    "capture_id": "TD-fd420f6ffc72eb55",
+    "sha256": "fd420f6ffc72eb551823441a01b3a9744efb309ab494b53445e93b152f9f0e64",
+    "captured_at": "2025-10-14T10:00:00.000000Z",
+    "provenance": "human_attach",
+    "source_class": "exchange",
+    "relevance": "entity",
+    "entity_match": true,
+    "title": "NSE circular: special pre-open session for the scheme of arrangement",
+    "excerpt": "SYNTHETIC EXCERPT. Previous close Rs 660.75. SPOS price Rs 400.00 for the scheme of arrangement.",
+    "published_at": "2025-10-13",
+    "published_at_basis": "human_declared",
+    "published_at_precision": "date",
+    "typed_fields": {
+     "prev_close": 660.75,
+     "spos_price": 400.0,
+     "action_type": "demerger"
+    },
+    "has_body": true,
+    "decisive_ok": true,
+    "headline": null,
+    "url": null
+   }
+  ],
+  "evidence_omitted": 0
+ }
+}

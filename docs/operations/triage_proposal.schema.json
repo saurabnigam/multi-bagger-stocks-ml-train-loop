@@ -1,0 +1,433 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "triage.proposal/1",
+  "description": "Informative mirror of the proposal shape checked by quant/triage/types.py (check_schema) and quant/triage/validate.py. The Python validator is authoritative. This file does not express cross-field rules (for example that action 'resolve' needs a resolve_kind, that a fact claim needs a citation, or that quotes are at most 25 words): see docs/operations/triage_agent_contract.md. tests/unit/test_triage_eval.py fails if an enum, key or cap here differs from the validator.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "key",
+    "as_of",
+    "producer",
+    "anomaly_kind",
+    "classification",
+    "resolution"
+  ],
+  "x-caps": {
+    "payload_bytes": 8192,
+    "quote_words": 25,
+    "pack_bytes": 12288,
+    "evidence_json_bytes": 2048
+  },
+  "$defs": {
+    "label": {
+      "enum": [
+        "genuine_event",
+        "demerger",
+        "scheme",
+        "rights",
+        "split_or_bonus_missed_by_vendor",
+        "vendor_error_other",
+        "pending_listing",
+        "surveillance_or_series_change",
+        "unknown"
+      ]
+    },
+    "captureId": {
+      "type": "string",
+      "pattern": "^TD-[0-9a-f]{16}$"
+    }
+  },
+  "properties": {
+    "schema": {
+      "const": "triage.proposal/1"
+    },
+    "key": {
+      "type": "string",
+      "pattern": "^[A-Z0-9]{12}@\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "as_of": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "name",
+        "pack_sha256"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "engine",
+            "llm"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "llm:<model id> for an agent, rules:<version> for the engine"
+        },
+        "prompt_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "pack_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "an agent copies it from pack.sha256 of 'triage show --json' (the pack itself is pack.data); the engine records its own pack hash here"
+        },
+        "self_confidence": {
+          "type": [
+            "string",
+            "number",
+            "null"
+          ],
+          "maxLength": 20,
+          "description": "stored and ignored"
+        }
+      }
+    },
+    "anomaly_kind": {
+      "enum": [
+        "suspected_jump",
+        "index_placeholder"
+      ]
+    },
+    "classification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "confidence",
+        "rule_id",
+        "alternatives"
+      ],
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "subtype": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 60
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "description": "derived by the engine's grade(); the agent's value is overwritten"
+        },
+        "rule_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 20
+        },
+        "alternatives": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "label",
+              "why_not"
+            ],
+            "properties": {
+              "label": {
+                "$ref": "#/$defs/label"
+              },
+              "why_not": {
+                "type": "string",
+                "maxLength": 200
+              }
+            }
+          }
+        }
+      }
+    },
+    "resolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "resolve_kind",
+        "factor",
+        "factor_basis",
+        "factor_uncertainty_pct",
+        "needs_force",
+        "needs_primary",
+        "recheck_on",
+        "factor_inputs"
+      ],
+      "properties": {
+        "action": {
+          "enum": [
+            "resolve",
+            "wait",
+            "none",
+            "recheck"
+          ]
+        },
+        "resolve_kind": {
+          "enum": [
+            "genuine",
+            "demerger",
+            "scheme",
+            "rights",
+            "manual_adj",
+            "split",
+            "bonus",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "factor": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0,
+          "description": "null, or exactly what the engine recomputes from factor_inputs"
+        },
+        "factor_basis": {
+          "enum": [
+            "exchange_spos",
+            "vendor_ratio",
+            "market_implied",
+            "round_ratio",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "factor_uncertainty_pct": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "needs_force": {
+          "type": "boolean"
+        },
+        "needs_primary": {
+          "type": "boolean"
+        },
+        "recheck_on": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "factor_inputs": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "value",
+              "citation"
+            ],
+            "properties": {
+              "name": {
+                "enum": [
+                  "prev_close",
+                  "spos_price",
+                  "ratio"
+                ]
+              },
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "citation": {
+                "type": "string",
+                "pattern": "^([A-Za-z0-9_]{1,12}|f:.+)$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "claims": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "type",
+          "text",
+          "citations",
+          "depends_on"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_]{1,12}$"
+          },
+          "type": {
+            "enum": [
+              "fact",
+              "inference"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 400
+          },
+          "citations": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "type": "string",
+              "pattern": "^([A-Za-z0-9_]{1,12}|f:.+)$"
+            }
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_]{1,12}$"
+            }
+          }
+        }
+      }
+    },
+    "citations": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "capture_id",
+          "quote"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_]{1,12}$"
+          },
+          "capture_id": {
+            "$ref": "#/$defs/captureId"
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1,
+            "description": "verbatim, at most 25 words"
+          }
+        }
+      }
+    },
+    "negative_checks": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "check",
+          "sources",
+          "result"
+        ],
+        "properties": {
+          "check": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "sources": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "$ref": "#/$defs/captureId"
+            }
+          },
+          "result": {
+            "enum": [
+              "none_found",
+              "found",
+              "unknown"
+            ]
+          }
+        }
+      }
+    },
+    "missing_evidence": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "string",
+        "maxLength": 200
+      }
+    },
+    "needs_human": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "string",
+        "maxLength": 200
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "n_fetches",
+        "tokens_in",
+        "tokens_out",
+        "wall_s"
+      ],
+      "properties": {
+        "n_fetches": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "tokens_in": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "tokens_out": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "wall_s": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

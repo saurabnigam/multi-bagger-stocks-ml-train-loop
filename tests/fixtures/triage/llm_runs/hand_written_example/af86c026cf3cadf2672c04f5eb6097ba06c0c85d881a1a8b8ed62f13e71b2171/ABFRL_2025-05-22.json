@@ -1,0 +1,176 @@
+{
+ "schema": "triage.llm_run/1",
+ "case_id": "ABFRL_2025-05-22",
+ "model": "hand_written_example",
+ "prompt_sha256": "af86c026cf3cadf2672c04f5eb6097ba06c0c85d881a1a8b8ed62f13e71b2171",
+ "temperature": null,
+ "synthetic": true,
+ "note": "Hand-written example of a fabricated quote (98.50, where the notice says 98.00) and a factor taken from the market (1/gross) instead of prev_close / spos_price. The validator refuses both (V4, V6). Not model output.",
+ "usage": {
+  "n_fetches": 0,
+  "tokens_in": null,
+  "tokens_out": null,
+  "wall_s": 0.0
+ },
+ "transcript": [
+  {
+   "cmd": "python3 -m quant triage show --isin INE647O01011 --ex-date 2025-05-22 --json --actor-kind llm --by llm:hand_written_example",
+   "exit": 0
+  },
+  {
+   "cmd": "python3 -m quant triage submit --as-of 2025-05-22 --file proposal.json --dry-run --actor-kind llm --by llm:hand_written_example",
+   "exit": 3,
+   "stderr_first_line": "Refused(triage_submit): 3 problem(s); nothing was written",
+   "illustrative": true
+  }
+ ],
+ "proposal": {
+  "schema": "triage.proposal/1",
+  "key": "INE647O01011@2025-05-22",
+  "as_of": "2025-05-22",
+  "producer": {
+   "kind": "llm",
+   "name": "llm:hand_written_example",
+   "prompt_sha256": "af86c026cf3cadf2672c04f5eb6097ba06c0c85d881a1a8b8ed62f13e71b2171",
+   "pack_sha256": "f6c03df9f1b668a0aca5f040185b216a2e9dd86ee7ef4b1c6215bf934651a7d0",
+   "self_confidence": "high"
+  },
+  "anomaly_kind": "suspected_jump",
+  "classification": {
+   "label": "demerger",
+   "subtype": null,
+   "confidence": "high",
+   "rule_id": "R2",
+   "alternatives": []
+  },
+  "resolution": {
+   "action": "resolve",
+   "resolve_kind": "demerger",
+   "factor": 2.9933,
+   "factor_basis": "exchange_spos",
+   "factor_uncertainty_pct": null,
+   "needs_force": false,
+   "needs_primary": false,
+   "recheck_on": null,
+   "factor_inputs": [
+    {
+     "name": "prev_close",
+     "value": 268.95,
+     "citation": "c1"
+    },
+    {
+     "name": "spos_price",
+     "value": 98.5,
+     "citation": "c1"
+    }
+   ]
+  },
+  "claims": [
+   {
+    "id": "k1",
+    "type": "fact",
+    "text": "The exchange notice gives previous close 268.95 and special pre-open price 98.50.",
+    "citations": [
+     "c1"
+    ],
+    "depends_on": []
+   }
+  ],
+  "citations": [
+   {
+    "id": "c1",
+    "capture_id": "TD-137b2beae909ee9d",
+    "quote": "Previous close Rs 268.95. SPOS price Rs 98.50"
+   }
+  ],
+  "negative_checks": [],
+  "missing_evidence": [],
+  "needs_human": [],
+  "usage": {
+   "n_fetches": 0,
+   "tokens_in": null,
+   "tokens_out": null,
+   "wall_s": 0.0
+  }
+ },
+ "pack": {
+  "schema": "triage.pack/1",
+  "rules_version": "triage-rules/1",
+  "subject": {
+   "key": "INE647O01011@2025-05-22",
+   "isin": "INE647O01011",
+   "ex_date": "2025-05-22",
+   "symbol": "ABFRL",
+   "security_id": null,
+   "anomaly_kind": "suspected_jump"
+  },
+  "as_of": "2025-05-22",
+  "cutoff_utc": "2025-05-22T18:29:59.999999Z",
+  "price_store_vintage": {
+   "vintage_at": "2025-05-22T18:29:59.999999Z",
+   "subject_bars_sha256": null,
+   "n_bars": 0,
+   "last_bar_date": null
+  },
+  "features": {
+   "gross_factor": 0.334077,
+   "move_pct": -66.5923,
+   "volume_ratio": 13.4,
+   "next_day_close_ratio": null,
+   "fwd5_close_ratio": null,
+   "n_post_bars": 0,
+   "post_bars_available": false,
+   "series": "EQ",
+   "placeholder": false,
+   "sector_group": "Consumer Services",
+   "n_peers": 26,
+   "n_peers_moved": null,
+   "sector_peer_median_move_pct": -0.35,
+   "market_median_move_pct": -0.29,
+   "vendor_split_rows": [],
+   "vendor_split_ratio": null,
+   "cross_section_count": 1,
+   "reversal_prior": false,
+   "reversal_forward": null,
+   "peer_set_pit": false
+  },
+  "source_status": {
+   "yahoo_actions": "skipped",
+   "yahoo_news": "skipped",
+   "sebi_rss": "skipped",
+   "human_attach": "ok",
+   "agent_attach": "skipped",
+   "price_store": "skipped",
+   "universe": "ok",
+   "sector_map": "ok",
+   "evidence_archive": "ok"
+  },
+  "rejected_evidence": [],
+  "evidence": [
+   {
+    "capture_id": "TD-137b2beae909ee9d",
+    "sha256": "137b2beae909ee9dd68a76b6f116cbe73607da91e16725db58c3a83a16173541",
+    "captured_at": "2025-05-22T10:00:00.000000Z",
+    "provenance": "human_attach",
+    "source_class": "exchange",
+    "relevance": "entity",
+    "entity_match": true,
+    "title": "Exchange notice: special pre-open session for the demerger",
+    "excerpt": "SYNTHETIC EXCERPT. Previous close Rs 268.95. SPOS price Rs 98.00 for the demerger.",
+    "published_at": "2025-05-22",
+    "published_at_basis": "human_declared",
+    "published_at_precision": "date",
+    "typed_fields": {
+     "prev_close": 268.95,
+     "spos_price": 98.0,
+     "action_type": "demerger"
+    },
+    "has_body": false,
+    "decisive_ok": true,
+    "headline": null,
+    "url": null
+   }
+  ],
+  "evidence_omitted": 0
+ }
+}

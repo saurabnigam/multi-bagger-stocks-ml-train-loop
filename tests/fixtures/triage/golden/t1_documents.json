@@ -1,0 +1,207 @@
+{
+ "_about": "SYNTHETIC document fixtures for tier T1 (design section 9). Every excerpt and body is invented to carry the figures recorded in labels.json; none is a real filing and none is point-in-time true. They test the document-driven rules and the validator. They are never used to claim live accuracy. Each case is classified on the cohort evening of its ex-date (as_of = ex_date) with the documents captured at 10:00Z that day.",
+ "synthetic": true,
+ "pit_true": false,
+ "documents_version": 1,
+ "captured_time_utc": "10:00:00.000000Z",
+ "cases": {
+  "TMPV_2025-10-14": {
+   "features_override": {
+    "series": "EQ",
+    "placeholder": false
+   },
+   "documents": [
+    {
+     "synthetic": true,
+     "provenance": "human_attach",
+     "url": null,
+     "title": "NSE circular: special pre-open session for the scheme of arrangement",
+     "headline": null,
+     "published_at": "2025-10-13",
+     "published_at_basis": "human_declared",
+     "source_class": "exchange",
+     "relevance": "entity",
+     "relevance_basis": "attacher declared; entity token_match",
+     "excerpt": "SYNTHETIC EXCERPT. Previous close Rs 660.75. SPOS price Rs 400.00 for the scheme of arrangement.",
+     "typed_fields": {
+      "prev_close": 660.75,
+      "spos_price": 400.0,
+      "action_type": "demerger"
+     },
+     "entity_match": true,
+     "body_text": "SYNTHETIC BODY. Annexure to the circular. Previous close Rs 660.75. SPOS price Rs 400.00. Demerger effective 14 October 2025.",
+     "reference_url": "https://nsearchives.nseindia.com/content/circulars/FAOP70789.pdf",
+     "note": "Figures from the recorded label; text invented. Attached as a file, so the envelope carries a body hash."
+    }
+   ]
+  },
+  "VEDL_2026-04-30": {
+   "features_override": {
+    "series": "EQ",
+    "placeholder": false
+   },
+   "documents": [
+    {
+     "synthetic": true,
+     "provenance": "human_attach",
+     "url": null,
+     "title": "NSE circular: special pre-open session for the demerger",
+     "headline": null,
+     "published_at": "2026-04-22",
+     "published_at_basis": "human_declared",
+     "source_class": "exchange",
+     "relevance": "entity",
+     "relevance_basis": "attacher declared; entity token_match",
+     "excerpt": "SYNTHETIC EXCERPT. Previous close Rs 773.60. SPOS price Rs 289.50 for the demerger.",
+     "typed_fields": {
+      "prev_close": 773.6,
+      "spos_price": 289.5,
+      "action_type": "demerger"
+     },
+     "entity_match": true,
+     "reference_url": "https://nsearchives.nseindia.com/content/circulars/FAOP73857.pdf",
+     "note": "Figures from the recorded label; text invented. Attached as a link only (no body hash)."
+    }
+   ]
+  },
+  "ABFRL_2025-05-22": {
+   "features_override": {
+    "series": "EQ",
+    "placeholder": false
+   },
+   "documents": [
+    {
+     "synthetic": true,
+     "provenance": "human_attach",
+     "url": null,
+     "title": "Exchange notice: special pre-open session for the demerger",
+     "headline": null,
+     "published_at": "2025-05-22",
+     "published_at_basis": "human_declared",
+     "source_class": "exchange",
+     "relevance": "entity",
+     "relevance_basis": "attacher declared; entity token_match",
+     "excerpt": "SYNTHETIC EXCERPT. Previous close Rs 268.95. SPOS price Rs 98.00 for the demerger.",
+     "typed_fields": {
+      "prev_close": 268.95,
+      "spos_price": 98.0,
+      "action_type": "demerger"
+     },
+     "entity_match": true,
+     "reference_url": null,
+     "note": "The real label rests on the open price in the exchange's bhavcopy for the ex-date; this fixture stands in for the exchange notice the owner would attach."
+    }
+   ]
+  },
+  "HEG_2026-09-07": {
+   "features_override": {
+    "placeholder": true
+   },
+   "documents": [
+    {
+     "synthetic": true,
+     "provenance": "human_attach",
+     "url": null,
+     "title": "HEG Reg-30 intimation: composite scheme of arrangement",
+     "headline": null,
+     "published_at": "2026-08-25",
+     "published_at_basis": "human_declared",
+     "source_class": "company",
+     "relevance": "entity",
+     "relevance_basis": "attacher declared; entity token_match",
+     "excerpt": "SYNTHETIC EXCERPT. Composite scheme effective 1 September 2026. Record date 7 September 2026. Resulting company listing awaited.",
+     "typed_fields": {},
+     "entity_match": true,
+     "reference_url": "https://nsearchives.nseindia.com/corporate/HEG_25082026170347_HEG_Final_Press_Realease_Intimation.pdf",
+     "note": "Text invented from the recorded label notes. The series at the jump is left unknown."
+    }
+   ]
+  },
+  "TRENT_2026-01-01": {
+   "features_override": {
+    "series": "EQ",
+    "placeholder": false
+   },
+   "documents": [
+    {
+     "synthetic": true,
+     "provenance": "yahoo_actions",
+     "url": null,
+     "title": "Yahoo corporate actions for TRENT.NS",
+     "headline": null,
+     "published_at": null,
+     "published_at_basis": null,
+     "source_class": "other",
+     "relevance": "context",
+     "relevance_basis": "ticker_query_unverified",
+     "excerpt": null,
+     "typed_fields": {
+      "ticker": "TRENT.NS",
+      "window_days": 400,
+      "n_splits": 1,
+      "split_1_date": "2026-06-04",
+      "split_1_ratio": 1.5,
+      "splits_truncated": false,
+      "n_dividends_pm5d": 0
+     },
+     "entity_match": null,
+     "note": "Shape written by quant.triage.sources.actions_result. Yahoo lists the 1.5 split on 2026-06-04, five months after the jump. That listing did not exist on 2026-01-01, so this is not point-in-time true. The rules look only five days either side of the jump, so the engine still abstains: a known miss."
+    }
+   ]
+  },
+  "POLICYBZR_2026-09-24": {
+   "features_override": {
+    "series": "EQ",
+    "placeholder": false,
+    "n_peers": 5,
+    "n_peers_moved": 3,
+    "sector_peer_median_move_pct": -4.5,
+    "market_median_move_pct": -0.4,
+    "cross_section_count": 1
+   },
+   "documents": [
+    {
+     "synthetic": true,
+     "provenance": "human_attach",
+     "url": null,
+     "title": "Consultation paper on recalibrating the economics of insurance distribution",
+     "headline": null,
+     "published_at": "2026-09-23",
+     "published_at_basis": "human_declared",
+     "source_class": "regulator",
+     "relevance": "sector",
+     "relevance_basis": "attacher declared: sector-wide distribution rules",
+     "excerpt": "SYNTHETIC EXCERPT. The authority invites comments on distribution commission limits for insurers and intermediaries.",
+     "typed_fields": {},
+     "entity_match": null,
+     "note": "Text and the peer counts are assumptions (the price store has no bars after 2026-09-11)."
+    }
+   ]
+  },
+  "IEX_2025-07-24": {
+   "features_override": {
+    "series": "EQ",
+    "placeholder": false
+   },
+   "documents": [
+    {
+     "synthetic": true,
+     "provenance": "human_attach",
+     "url": null,
+     "title": "CERC suo motu order on phased market coupling",
+     "headline": null,
+     "published_at": "2025-07-23",
+     "published_at_basis": "human_declared",
+     "source_class": "regulator",
+     "relevance": "entity",
+     "relevance_basis": "attacher declared; entity token_match",
+     "excerpt": "SYNTHETIC EXCERPT. The Commission orders phased market coupling of the day-ahead market, affecting Indian Energy Exchange.",
+     "typed_fields": {},
+     "entity_match": true,
+     "reference_url": "https://www.cercind.gov.in/2025/orders/8-SM-2025.pdf",
+     "note": "Text invented; the real PDF was not opened."
+    }
+   ]
+  }
+ }
+}

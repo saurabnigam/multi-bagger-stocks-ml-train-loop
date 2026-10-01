@@ -1,0 +1,188 @@
+{
+ "schema": "triage.llm_run/1",
+ "case_id": "POLICYBZR_2026-09-24",
+ "model": "hand_written_example",
+ "prompt_sha256": "af86c026cf3cadf2672c04f5eb6097ba06c0c85d881a1a8b8ed62f13e71b2171",
+ "temperature": null,
+ "synthetic": true,
+ "note": "Hand-written example of a proposal that passes every validator rule. Not model output.",
+ "usage": {
+  "n_fetches": 0,
+  "tokens_in": null,
+  "tokens_out": null,
+  "wall_s": 0.0
+ },
+ "transcript": [
+  {
+   "cmd": "python3 -m quant triage show --isin INE417T01026 --ex-date 2026-09-24 --json --actor-kind llm --by llm:hand_written_example",
+   "exit": 0
+  },
+  {
+   "cmd": "python3 -m quant triage submit --as-of 2026-09-24 --file proposal.json --dry-run --actor-kind llm --by llm:hand_written_example",
+   "exit": 0
+  }
+ ],
+ "proposal": {
+  "schema": "triage.proposal/1",
+  "key": "INE417T01026@2026-09-24",
+  "as_of": "2026-09-24",
+  "producer": {
+   "kind": "llm",
+   "name": "llm:hand_written_example",
+   "prompt_sha256": "af86c026cf3cadf2672c04f5eb6097ba06c0c85d881a1a8b8ed62f13e71b2171",
+   "pack_sha256": "822402bff7aaea2e4e18c4d087fe9a250f6596265e136f3e19eda92fcd230131",
+   "self_confidence": "high"
+  },
+  "anomaly_kind": "suspected_jump",
+  "classification": {
+   "label": "genuine_event",
+   "subtype": null,
+   "confidence": "high",
+   "rule_id": "R7",
+   "alternatives": [
+    {
+     "label": "demerger",
+     "why_not": "No document mentions a scheme, demerger or special pre-open session."
+    }
+   ]
+  },
+  "resolution": {
+   "action": "resolve",
+   "resolve_kind": "genuine",
+   "factor": 1.0,
+   "factor_basis": null,
+   "factor_uncertainty_pct": null,
+   "needs_force": false,
+   "needs_primary": false,
+   "recheck_on": null,
+   "factor_inputs": []
+  },
+  "claims": [
+   {
+    "id": "k1",
+    "type": "fact",
+    "text": "The authority invites comments on distribution commission limits for insurers and intermediaries.",
+    "citations": [
+     "c1"
+    ],
+    "depends_on": []
+   },
+   {
+    "id": "k2",
+    "type": "fact",
+    "text": "3 of the 5 closest sector peers moved 5% or more the same way.",
+    "citations": [
+     "f:n_peers_moved",
+     "f:n_peers"
+    ],
+    "depends_on": []
+   },
+   {
+    "id": "k3",
+    "type": "inference",
+    "text": "No demerger keyword, vendor split, placeholder or non-EQ series was found, so the fall reads as a real reaction to the paper.",
+    "citations": [
+     "c1"
+    ],
+    "depends_on": [
+     "k1",
+     "k2"
+    ]
+   }
+  ],
+  "citations": [
+   {
+    "id": "c1",
+    "capture_id": "TD-a3455b21ee8f4041",
+    "quote": "The authority invites comments on distribution commission limits"
+   }
+  ],
+  "negative_checks": [],
+  "missing_evidence": [],
+  "needs_human": [
+   "The paper names no company: confirm the link to this issuer before resolving."
+  ],
+  "usage": {
+   "n_fetches": 0,
+   "tokens_in": null,
+   "tokens_out": null,
+   "wall_s": 0.0
+  }
+ },
+ "pack": {
+  "schema": "triage.pack/1",
+  "rules_version": "triage-rules/1",
+  "subject": {
+   "key": "INE417T01026@2026-09-24",
+   "isin": "INE417T01026",
+   "ex_date": "2026-09-24",
+   "symbol": "POLICYBZR",
+   "security_id": null,
+   "anomaly_kind": "suspected_jump"
+  },
+  "as_of": "2026-09-24",
+  "cutoff_utc": "2026-09-24T18:29:59.999999Z",
+  "price_store_vintage": {
+   "vintage_at": "2026-09-24T18:29:59.999999Z",
+   "subject_bars_sha256": null,
+   "n_bars": 0,
+   "last_bar_date": null
+  },
+  "features": {
+   "gross_factor": 0.641467,
+   "move_pct": -35.8533,
+   "volume_ratio": null,
+   "next_day_close_ratio": null,
+   "fwd5_close_ratio": null,
+   "n_post_bars": 0,
+   "post_bars_available": false,
+   "series": "EQ",
+   "placeholder": false,
+   "sector_group": "Financial Services",
+   "n_peers": 5,
+   "n_peers_moved": 3,
+   "sector_peer_median_move_pct": -4.5,
+   "market_median_move_pct": -0.4,
+   "vendor_split_rows": [],
+   "vendor_split_ratio": null,
+   "cross_section_count": 1,
+   "reversal_prior": false,
+   "reversal_forward": null,
+   "peer_set_pit": false
+  },
+  "source_status": {
+   "yahoo_actions": "skipped",
+   "yahoo_news": "skipped",
+   "sebi_rss": "skipped",
+   "human_attach": "ok",
+   "agent_attach": "skipped",
+   "price_store": "skipped",
+   "universe": "ok",
+   "sector_map": "ok",
+   "evidence_archive": "ok"
+  },
+  "rejected_evidence": [],
+  "evidence": [
+   {
+    "capture_id": "TD-a3455b21ee8f4041",
+    "sha256": "a3455b21ee8f404105c2baf6f252156783b1d9c6d35979a74d8f7c3e9925a1f4",
+    "captured_at": "2026-09-24T10:00:00.000000Z",
+    "provenance": "human_attach",
+    "source_class": "regulator",
+    "relevance": "sector",
+    "entity_match": null,
+    "title": "Consultation paper on recalibrating the economics of insurance distribution",
+    "excerpt": "SYNTHETIC EXCERPT. The authority invites comments on distribution commission limits for insurers and intermediaries.",
+    "published_at": "2026-09-23",
+    "published_at_basis": "human_declared",
+    "published_at_precision": "date",
+    "typed_fields": {},
+    "has_body": false,
+    "decisive_ok": true,
+    "headline": null,
+    "url": null
+   }
+  ],
+  "evidence_omitted": 0
+ }
+}
