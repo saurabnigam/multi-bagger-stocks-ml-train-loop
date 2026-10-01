@@ -1,6 +1,7 @@
 """Corporate action detection, manual additions, and decision verification."""
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -8,6 +9,7 @@ import pandas as pd
 
 from quant.data.identity import resolve_security_id
 from quant.errors import Refused
+from quant.db.core import update_control
 from quant.knowledge.adr import write as write_adr
 from quant.run import RunContext
 from quant.types import Result
@@ -18,6 +20,33 @@ RESOLVE_VALUE_TRANSFER_KINDS = ("demerger", "rights", "scheme", "manual_adj")
 RESOLVE_SPLIT_KINDS = ("split", "bonus")
 RESOLVE_KINDS = RESOLVE_VALUE_TRANSFER_KINDS + RESOLVE_SPLIT_KINDS + ("genuine",)
 JUMP_RATIO_BOUNDS = (1.0 / 1.40, 1.40)
+#: A human factor within this relative distance of the proposal's factor counts as accepted.
+TRIAGE_FACTOR_TOLERANCE = 0.02
+
+
+def _refuse_llm_actor(ctx: RunContext, command: str) -> None:
+    """Corporate-action and price-history writes are never LLM-provisional, whatever decision the actor holds.
+
+    ``proposals.approve`` gives an llm actor a *provisional* Tier-1 decision, which
+    ``_validate_decision`` would accept for ``add``/``clear``; this closes that bridge
+    (evidence triage, MASTER_SPEC 9.3). ``--actor-kind`` is a label, so this is a
+    guard against mistakes and prompt-driven misuse, not authentication.
+    """
+    if ctx.actor.kind == "llm":
+        raise Refused(
+            "governance",
+            f"{command} refuses --actor-kind llm: corporate-action changes are never "
+            f"LLM-provisional (actor was '{ctx.actor.by}')",
+        )
+
+
+def proposal_confirm_code(payload_json: str) -> str:
+    """First 8 hex of sha256 of a proposal's stored ``payload_json``.
+
+    ``data actions-resolve --confirm`` binds a decision to the exact proposal version. It is
+    not authentication: anyone who can read the proposal can compute it.
+    """
+    return hashlib.sha256(payload_json.encode("utf-8")).hexdigest()[:8]
 
 
 def _validate_decision(ctx: RunContext, decision_id: str) -> dict:
@@ -119,6 +148,7 @@ def add(
     decision_id: str,
 ) -> Result:
     """Add an approved corporate action under an authorized decision."""
+    _refuse_llm_actor(ctx, "prices action-add")
     _validate_decision(ctx, decision_id)
 
     sid = resolve_security_id(ctx.conn, isin=isin, cutoff=ctx.as_of)
@@ -254,6 +284,72 @@ def _observed_gross_factor(ctx: RunContext, sid: int, ex_date: str) -> Optional[
     return float(cur["split_ratio"]) * (float(cur["close_raw"]) + float(cur["dividend_raw"] or 0.0)) / float(prev["close_raw"])
 
 
+def _open_proposal(ctx: RunContext, proposal_id: str, confirm: Optional[str]) -> Dict[str, Any]:
+    """Load the proposal a resolution is bound to; refuse unless ``confirm`` matches its payload.
+
+    Runs before any write. The proposal must still be ``proposed``: an approved, rejected,
+    expired or superseded row is a different (or stale) version of the evidence than the one
+    a reviewer would be confirming.
+    """
+    if not confirm:
+        raise Refused("confirm_required", f"--proposal-id {proposal_id} needs --confirm <first 8 hex of the payload sha256>")
+    row = ctx.conn.execute(
+        "SELECT proposal_id, subject_id, payload_json, status FROM proposals WHERE proposal_id = ?",
+        (proposal_id,),
+    ).fetchone()
+    if row is None:
+        raise Refused("proposal_missing", f"Proposal {proposal_id} does not exist")
+    pid, subject_id, payload_json, status = row[0], row[1], row[2], row[3]
+    if status != "proposed":
+        raise Refused("proposal_not_open", f"Proposal {pid} is '{status}', not 'proposed'; build or pick the current one")
+    expected = proposal_confirm_code(payload_json)
+    if str(confirm).strip().lower() != expected:
+        raise Refused(
+            "confirm_mismatch",
+            f"--confirm does not match proposal {pid}: the payload may have changed since you read it; "
+            "show it again and use the current code",
+        )
+    try:
+        payload = json.loads(payload_json)
+    except (ValueError, TypeError):
+        payload = None
+    if not isinstance(payload, dict):
+        raise Refused("proposal_payload_invalid", f"Proposal {pid} payload is not a JSON object")
+    return {"proposal_id": pid, "subject_id": subject_id, "payload": payload, "confirm": expected}
+
+
+def _is_number(x: Any) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def _triage_outcome(payload: Dict[str, Any], kind: str, factor: float) -> tuple:
+    """Compare the operator's resolution with a proposal: ``('accepted'|'modified'|'no_call', reasons)``.
+
+    ``no_call`` when the proposal made no ``resolution.resolve_kind`` (abstain, wait, unknown):
+    there is nothing to accept or modify, so it is kept out of the accept and override rates.
+    Otherwise modified when the chosen kind differs from the proposal's ``resolve_kind``, or the
+    stored factor differs from the proposed factor by more than ``TRIAGE_FACTOR_TOLERANCE``
+    (2%). A 'genuine' proposal with no factor means 1.0.
+    """
+    res = payload.get("resolution")
+    res = res if isinstance(res, dict) else {}
+    p_kind = res.get("resolve_kind")
+    if not p_kind:
+        return "no_call", [f"no resolve call proposed; operator chose {kind} factor {factor:g}"]
+    p_factor = res.get("factor")
+    if p_factor is None and p_kind == "genuine":
+        p_factor = 1.0
+    reasons = []
+    if p_kind != kind:
+        reasons.append(f"kind {p_kind} -> {kind}")
+    if not (_is_number(p_factor) and p_factor > 0):
+        if p_kind == kind:
+            reasons.append(f"factor {p_factor if p_factor is not None else 'none proposed'} -> {factor:g}")
+    elif abs(factor - p_factor) / p_factor > TRIAGE_FACTOR_TOLERANCE:
+        reasons.append(f"factor {p_factor:g} -> {factor:g}")
+    return ("modified" if reasons else "accepted"), reasons
+
+
 def resolve(
     ctx: RunContext,
     *,
@@ -265,6 +361,8 @@ def resolve(
     evidence: str,
     title: Optional[str] = None,
     force: bool = False,
+    proposal_id: Optional[str] = None,
+    confirm: Optional[str] = None,
 ) -> Result:
     """Operator resolution of a suspected corporate action (D3/T2; MASTER_SPEC 2.3, 4.3, 9.3).
 
@@ -279,6 +377,14 @@ def resolve(
     (new shares per old); the other kinds take it as the multiplicative value-transfer
     adjustment. Refuses a second resolution of the same ``(security, ex_date)``, and an
     implausible combination of the evidenced jump and the chosen factor unless ``force``.
+
+    ``proposal_id`` binds the resolution to an evidence-triage proposal (subject
+    ``triage:<isin>@<ex_date>``, status ``proposed``) and needs ``confirm``, the first 8 hex
+    of sha256 of its ``payload_json`` (:func:`proposal_confirm_code`). The proposal only
+    informs the human: the operator still chooses kind and factor. On success the decision
+    stores ``proposal_id``, the proposal moves to ``approved`` through the control-update
+    path, and the decision context (and so its ADR) records whether the human ``accepted``
+    the proposal, ``modified`` it, or the proposal made no resolve call (``no_call``).
     """
     if ctx.actor.kind != "human":
         raise Refused(
@@ -289,6 +395,10 @@ def resolve(
 
     if kind not in RESOLVE_KINDS:
         raise Refused("invalid_kind", f"Invalid resolution kind '{kind}'; choose one of {RESOLVE_KINDS}")
+
+    if proposal_id is None and confirm is not None:
+        raise Refused("confirm_without_proposal", "--confirm is only meaningful with --proposal-id")
+    proposal = _open_proposal(ctx, proposal_id, confirm) if proposal_id is not None else None
 
     if kind == "genuine":
         stored_kind, stored_factor = "manual_adj", 1.0
@@ -306,6 +416,13 @@ def resolve(
     if canonical_isin is None:
         row = ctx.conn.execute("SELECT isin FROM securities WHERE security_id = ?", (sid,)).fetchone()
         canonical_isin = row[0] if row else None
+
+    if proposal is not None and str(proposal["subject_id"]).upper() != f"triage:{canonical_isin}@{ex_date}".upper():
+        raise Refused(
+            "proposal_subject_mismatch",
+            f"Proposal {proposal['proposal_id']} is for '{proposal['subject_id']}', "
+            f"not triage:{canonical_isin}@{ex_date}",
+        )
 
     existing = ctx.conn.execute(
         "SELECT decision_id FROM corporate_actions WHERE security_id = ? AND ex_date = ? "
@@ -365,6 +482,18 @@ def resolve(
     timestamp = ctx.clock.iso()
     decided_by = ctx.actor.by
 
+    context = (
+        f"Suspected corporate action detected on {ex_date} with evidenced gross factor "
+        f"{gross_factor:.4f}; reviewed against the operator-supplied evidence below."
+    )
+    triage_outcome = None
+    if proposal is not None:
+        triage_outcome, reasons = _triage_outcome(proposal["payload"], kind, stored_factor)
+        context += (
+            f" Evidence-triage proposal {proposal['proposal_id']} (confirm {proposal['confirm']}): "
+            f"{triage_outcome}" + (f" ({'; '.join(reasons)})." if reasons else ".")
+        )
+
     ctx.conn.execute(
         """
         INSERT INTO decisions (
@@ -373,7 +502,7 @@ def resolve(
             decided_on, decided_by, approver_kind, ratified_by, ratified_on,
             status, effective_from, applied_on, adr_path, supersedes, reverted_by, git_sha
         ) VALUES (
-            ?, NULL, 'data_fix', 1, ?, ?, ?,
+            ?, ?, 'data_fix', 1, ?, ?, ?,
             ?, ?, ?, NULL,
             ?, ?, ?, NULL, NULL,
             'approved', ?, NULL, ?, NULL, NULL, ?
@@ -381,10 +510,10 @@ def resolve(
         """,
         (
             decision_id,
+            proposal["proposal_id"] if proposal is not None else None,
             canonical_isin,
             title or f"Corporate action resolution: {canonical_isin} {ex_date} ({stored_kind})",
-            f"Suspected corporate action detected on {ex_date} with evidenced gross factor "
-            f"{gross_factor:.4f}; reviewed against the operator-supplied evidence below.",
+            context,
             json.dumps([{"kind": stored_kind, "factor": stored_factor}]),
             f"Record {stored_kind} with factor {stored_factor} for {canonical_isin} on {ex_date}",
             json.dumps([evidence]),
@@ -400,25 +529,32 @@ def resolve(
 
     add(ctx, isin=canonical_isin, ex_date=ex_date, kind=stored_kind, factor=stored_factor, decision_id=decision_id)
 
-    return Result(
-        status="ok",
-        counts={"decisions": 1, "actions": 1},
-        details={
-            "decision_id": decision_id,
-            "isin": canonical_isin,
-            "security_id": sid,
-            "ex_date": ex_date,
-            "kind": stored_kind,
-            "factor": stored_factor,
-            "gross_factor": gross_factor,
-            "adr_path": adr_path,
-            "warning": warning,
-        },
-    )
+    if proposal is not None:
+        update_control(
+            ctx, "proposals", {"proposal_id": proposal["proposal_id"]},
+            {"status": "approved", "decided_on": timestamp, "decided_by": decided_by, "decision_id": decision_id},
+        )
+
+    details = {
+        "decision_id": decision_id,
+        "isin": canonical_isin,
+        "security_id": sid,
+        "ex_date": ex_date,
+        "kind": stored_kind,
+        "factor": stored_factor,
+        "gross_factor": gross_factor,
+        "adr_path": adr_path,
+        "warning": warning,
+    }
+    if proposal is not None:
+        details.update(proposal_id=proposal["proposal_id"], triage_outcome=triage_outcome)
+
+    return Result(status="ok", counts={"decisions": 1, "actions": 1}, details=details)
 
 
 def clear(ctx: RunContext, event_id: int, decision_id: str) -> Result:
     """Clear a data quality / corporate action flag under an authorized decision."""
+    _refuse_llm_actor(ctx, "prices action-clear")
     _validate_decision(ctx, decision_id)
 
     cur = ctx.conn.cursor()

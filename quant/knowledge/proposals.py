@@ -41,6 +41,12 @@ TIER2_KINDS = {
     "gate_override",
 }
 
+#: Evidence-triage proposals carry kind 'other' (Tier 1), which would give an llm actor a
+#: provisional decision here. They are resolved only through ``data actions-resolve
+#: --proposal-id`` by a human and closed only through ``triage reject``, so ``approve`` and ``reject`` refuse
+#: the prefix for every actor kind. ``accept_revision`` is deliberately not guarded (MASTER_SPEC §9.3: Tier 1).
+TRIAGE_RULE_PREFIX = "TRIAGE_"
+
 # Forward transition applied prospectively when a decision of this kind takes effect.
 _APPLY_TARGET_STATUS = {
     "promote_factor": "active",
@@ -269,6 +275,14 @@ def approve(ctx: RunContext, proposal_id: str, note: str = "") -> str:
     kind = p["kind"]
     subject_id = p["subject_id"]
 
+    if str(p.get("rule_id") or "").startswith(TRIAGE_RULE_PREFIX):
+        raise Refused(
+            "governance",
+            f"Proposal '{proposal_id}' (rule {p['rule_id']}) is an evidence-triage proposal: "
+            f"{TRIAGE_RULE_PREFIX}* proposals are resolved only by a human through "
+            "'data actions-resolve --proposal-id', never through 'kb approve'",
+        )
+
     tier = 2 if kind in TIER2_KINDS else 1
 
     # Enforce Tier 2 human-only authority
@@ -353,6 +367,16 @@ def reject(ctx: RunContext, proposal_id: str, note: str = "") -> str:
         raise ValueError(f"Proposal '{proposal_id}' not found")
 
     p = dict(p_row)
+    if str(p.get("rule_id") or "").startswith(TRIAGE_RULE_PREFIX):
+        # A rejection closes the proposal and records a decision. For a triage proposal that is a human review
+        # outcome with a reason code (it feeds the eval), so it goes through 'triage reject' only. Refusing every
+        # actor kind, not just llm, also closes the 'kb reject --actor-kind system' path: the kind is a label.
+        raise Refused(
+            "governance",
+            f"{actor.kind} actor cannot reject proposal '{proposal_id}' (rule {p['rule_id']}): "
+            f"{TRIAGE_RULE_PREFIX}* proposals are closed only by a human with "
+            "'triage reject --proposal-id ... --reason CODE'",
+        )
     as_of = p["as_of"]
     timestamp = ctx.clock.now_iso() if getattr(ctx, "clock", None) else f"{as_of}T09:00:00.000000Z"
     git_sha = getattr(ctx, "git_sha", "unknown")

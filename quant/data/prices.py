@@ -143,10 +143,58 @@ def frames_from_download(df: pd.DataFrame, tickers: Iterable[str]) -> Dict[str, 
 class PriceStore:
     """Isolated price cache manager using price_schema.sql."""
 
+    _readonly = False
+
     def __init__(self, path: Path | str, state_conn: sqlite3.Connection):
         self.path = Path(path)
         self.state_conn = state_conn
         self._init_db()
+
+    @classmethod
+    def open_readonly(cls, path: Path | str, state_conn: Optional[sqlite3.Connection] = None, *,
+                      allow_unadjusted: bool = False) -> "PriceStore":
+        """Open an existing price database for reading only.
+
+        Every connection is ``file:<path>?mode=ro``: no ``CREATE TABLE``, no directory
+        creation, no commit, and any write (``ingest``, ``reconcile``, a raw ``INSERT``) raises
+        ``sqlite3.OperationalError``. The file's mtime and size are unchanged by use. A missing
+        file raises ``FileNotFoundError`` instead of being created. ``state_conn`` (optionally
+        itself ``connect(..., readonly=True)``) serves the corporate-action reads.
+
+        Without ``state_conn`` no corporate action is visible, so ``tri`` and ``close_split`` would
+        return unadjusted, untruncated history. That is refused at open time:
+        ``Refused('action_source_missing')`` unless the caller passes ``allow_unadjusted=True``
+        (keyword only) to say it reads raw ``close_raw`` / ``volume_raw`` and nothing adjusted.
+        :attr:`has_action_source` still reports False for such a store and
+        :meth:`require_action_source` still refuses, so the opt-out stays visible downstream.
+        """
+        if state_conn is None and not allow_unadjusted:
+            raise Refused(
+                "action_source_missing",
+                "open_readonly needs a state connection so adjusted series see corporate actions; pass state_conn, "
+                "or allow_unadjusted=True if only raw bars are read")
+        p = Path(path)
+        if not p.is_file():
+            raise FileNotFoundError(f"price database not found: {p}")
+        store = cls.__new__(cls)
+        store.path = p
+        store.state_conn = state_conn
+        store._readonly = True
+        return store
+
+    @property
+    def has_action_source(self) -> bool:
+        """False when no state connection is attached: adjusted series then ignore every action."""
+        return self.state_conn is not None
+
+    def require_action_source(self) -> "PriceStore":
+        """Return ``self`` or refuse: callers of ``tri`` / ``close_split`` assert this first."""
+        if self.state_conn is None:
+            raise Refused(
+                "action_source_missing",
+                "price store has no state connection: adjusted series would ignore every corporate action",
+            )
+        return self
 
     def _init_db(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -164,6 +212,13 @@ class PriceStore:
 
     @contextmanager
     def conn(self):
+        if self._readonly:
+            c = sqlite3.connect(f"{self.path.resolve().as_uri()}?mode=ro", uri=True)
+            try:
+                yield c
+            finally:
+                c.close()
+            return
         c = sqlite3.connect(self.path)
         try:
             yield c
