@@ -18,16 +18,18 @@ run is never read as evidence that nothing exists.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from quant.errors import Refused
-from quant.triage import evidence, features as feat, rules
+from quant.triage import evidence, features as feat, pit, rules
 from quant.triage.store import pack_bytes
 from quant.triage.types import (
-    MAX_CITATIONS, MAX_EVIDENCE_JSON_BYTES, MAX_PACK_BYTES, PROVENANCE, SCHEMA_PACK, canonical_bytes, check_schema,
+    MAX_CITATIONS, MAX_EVIDENCE_JSON_BYTES, MAX_PACK_BYTES, PROVENANCE, SCHEMA_PACK, SOURCE_STATUSES, canonical_bytes,
+    check_schema,
 )
 
 MAX_EVIDENCE_ITEMS = 16
@@ -88,13 +90,51 @@ def _summary(it: Any, *, urls: bool = True, excerpt_chars: int | None = None, he
     return out
 
 
+def collected_status(conn: sqlite3.Connection, key: str, cutoff: str) -> dict[str, str]:
+    """Per source, the state ``triage collect`` last recorded for this anomaly at or before the cutoff.
+
+    Only ``ok`` answers leave an envelope, so an ``empty`` or ``error`` answer is otherwise invisible to the pack and
+    would read as ``skipped``. Collect writes it to its run notes (``notes_json['collect'][key][source]['status']``);
+    this reads it back. The latest run wins. A run that cannot be read is ignored: that source stays unknown.
+    """
+    try:
+        rows = conn.execute("SELECT started_at, notes_json FROM runs WHERE kind = 'triage' AND notes_json IS NOT NULL "
+                            "ORDER BY started_at, run_id").fetchall()
+    except sqlite3.Error:
+        return {}
+    cut = pit.parse_instant(cutoff)
+    out: dict[str, str] = {}
+    for started_at, notes_json in rows:
+        try:
+            if pit.parse_instant(started_at) > cut:
+                continue
+            per_source = ((json.loads(notes_json) or {}).get("collect") or {}).get(key)
+        except (ValueError, TypeError, AttributeError):
+            continue
+        if not isinstance(per_source, dict):
+            continue
+        for name, rec in per_source.items():
+            status = rec.get("status") if isinstance(rec, dict) else None
+            if name in PROVENANCE and status in SOURCE_STATUSES:
+                out[name] = status
+    return out
+
+
 def source_status(f: feat.Features, items: Sequence[Any], rejected: Sequence[tuple[str, str]],
-                  vintage: Mapping[str, Any]) -> dict[str, str]:
-    """Per-source answer state. A source with no archived envelope is ``skipped``, never ``empty``."""
+                  vintage: Mapping[str, Any], collected: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Per-source answer state. A source nobody ran, or that left nothing to record, is ``skipped``, never ``empty``.
+
+    ``collected`` is ``collected_status``: a source that was asked and answered ``empty`` or ``error`` leaves no
+    envelope, so that state comes from the collect run's notes. An archived envelope always wins.
+    """
+    collected = collected or {}
     out: dict[str, str] = {}
     for prov in PROVENANCE:
         envs = sorted((i for i in items if i.envelope.get("provenance") == prov), key=lambda i: (i.captured_at, i.capture_id))
-        out[prov] = "skipped" if not envs else str(envs[-1].envelope.get("source_status") or "ok")
+        if envs:
+            out[prov] = str(envs[-1].envelope.get("source_status") or "ok")
+        else:
+            out[prov] = collected[prov] if collected.get(prov) in ("empty", "error") else "skipped"
     if f.anomaly_kind == "index_placeholder" or f.security_id is None:
         out["price_store"] = "skipped"
     else:
@@ -209,7 +249,8 @@ def build_one(conn: sqlite3.Connection, reader: feat.Reader, anomaly: Any, *,
                     "security_id": anomaly.security_id, "anomaly_kind": anomaly.kind},
         "as_of": f.as_of, "cutoff_utc": cutoff, "price_store_vintage": vintage,
         "features": feat.flat(f, evset.admitted, product_range=rules.R6_PRODUCT_RANGE),
-        "source_status": source_status(f, evset.admitted, evset.rejected, vintage),
+        "source_status": source_status(f, evset.admitted, evset.rejected, vintage,
+                                       collected_status(conn, anomaly.key, cutoff)),
         "rejected_evidence": [{"capture_id": cid, "reason": reason} for cid, reason in sorted(evset.rejected)[:_REJECT_LISTED]],
     }
     _fit(pack, ordered)

@@ -795,6 +795,35 @@ def test_rule7_vendor_error_needs_a_vendor_conflict_feature(w):
     assert ok.ok, ok.errors
 
 
+CAND = {"date": "2026-06-04", "ratio": 1.67, "source": "yahoo_actions", "sessions_from_jump": 100, "compensating_jump": False}
+
+
+def wide_features(cand, **over):
+    return base_features(vendor_split_rows=[], vendor_split_candidates=[cand], vendor_split_ratio=1.67, **over)
+
+
+def test_rule7_a_vendor_split_months_from_the_jump_is_a_vendor_conflict_feature_only_when_it_qualifies(w):
+    """The same test the engine applies (D1): more than one session away, no compensating jump on its date."""
+    assert w.validate(_vendor(w), pk=pack(wide_features(CAND))).ok
+    for bad in (dict(CAND, sessions_from_jump=1), dict(CAND, sessions_from_jump=-1), dict(CAND, sessions_from_jump=0),
+                dict(CAND, compensating_jump=True), dict(CAND, compensating_jump=None), dict(CAND, ratio=2.5)):
+        res = w.validate(_vendor(w), pk=pack(wide_features(bad)))
+        assert not res.ok and has(res, "V7", "vendor"), bad
+
+
+def test_rule9_a_qualifying_far_split_grades_medium_a_compensated_one_low(w):
+    res = w.validate(_vendor(w), pk=pack(wide_features(CAND)))
+    assert res.ok and res.proposal["classification"]["confidence"] == "medium" and res.proposal["classification"]["rule_id"] == "R4"
+    # a cross-section keeps the proposal valid (V7) but the far split does not qualify, so R4 is not derived
+    res = w.validate(_vendor(w), pk=pack(wide_features(dict(CAND, compensating_jump=True), cross_section_count=4)))
+    assert res.ok and res.proposal["classification"]["confidence"] == "low"
+
+
+def test_rule9_a_pack_without_candidates_keeps_the_five_day_rule(w):
+    res = w.validate(_vendor(w), pk=pack(VENDOR_FEATURES))
+    assert res.ok and res.proposal["classification"]["confidence"] == "medium"
+
+
 def test_rule7_a_cross_section_of_jumps_is_also_a_vendor_conflict_feature(w):
     feats = base_features(cross_section_count=4, vendor_split_ratio=1.67)
     assert w.validate(_vendor(w), pk=pack(feats)).ok

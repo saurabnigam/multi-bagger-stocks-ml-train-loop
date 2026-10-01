@@ -57,6 +57,32 @@ def _fast_run_context(monkeypatch):
     monkeypatch.setattr(RunContext, "_get_git_sha", staticmethod(lambda: "test"))
 
 
+_STATE_TEMPLATE: list[sqlite3.Connection] = []
+
+
+@pytest.fixture(autouse=True)
+def _state_schema_from_template(monkeypatch):
+    """The replay worlds build the state schema about 45 times; build it once and copy the pages instead.
+
+    The copy is the page image of what ``apply_schema`` produced (tables and journal triggers), so the
+    databases the tests read are the same ones.
+    """
+    import quant.db.core as dbcore
+    real = dbcore.apply_schema
+
+    def fast(conn, *, kind="state", journal=True):
+        if kind != "state" or not journal:
+            return real(conn, kind=kind, journal=journal)
+        if not _STATE_TEMPLATE:
+            template = sqlite3.connect(":memory:", isolation_level=None)
+            template.row_factory = sqlite3.Row
+            real(template, kind="state")
+            _STATE_TEMPLATE.append(template)
+        _STATE_TEMPLATE[0].backup(conn)
+
+    monkeypatch.setattr(dbcore, "apply_schema", fast)
+
+
 GROUND_TRUTH = ("TMPV_2025-10-14", "VEDL_2026-04-30", "TRENT_2026-01-01", "HEG_2026-09-07", "POLICYBZR_2026-09-24")
 T1_CASES = ("TMPV_2025-10-14", "VEDL_2026-04-30", "ABFRL_2025-05-22", "HEG_2026-09-07", "TRENT_2026-01-01",
             "POLICYBZR_2026-09-24", "IEX_2025-07-24")

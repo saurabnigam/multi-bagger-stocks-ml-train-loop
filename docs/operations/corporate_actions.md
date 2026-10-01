@@ -102,5 +102,9 @@ changing the observed return.
   `genuine`, if `gross_factor x factor` still lies outside `[1/1.4, 1.4]` -- i.e. your
   chosen factor does not actually explain the evidenced jump -- the command prints a
   warning and refuses unless you pass `--force`. Re-check the filing before forcing.
+- **A refusal writes no data rows, but it is audited.** A refused `actions-resolve` creates no decision, ADR or
+  `corporate_actions` row: everything it staged is rolled back. The attempt itself is recorded as a `data_fix` run with status
+  `refused` (the reason is in `runs.notes_json`), and the ledger journals that run row. Refusals that happen before a run
+  opens (a missing argument, an unknown `--kind`) write nothing at all.
 - **Idempotent detection.** Once resolved, `actions.detect` will not re-flag the same
   `(security, ex-date)` on a later capture.

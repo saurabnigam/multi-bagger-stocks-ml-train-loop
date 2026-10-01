@@ -12,6 +12,9 @@ The commands propose and file evidence. They never resolve a corporate action: t
 ``data actions-resolve`` with ``--actor-kind human``. ``--actor-kind`` is a label, not authentication
 (MASTER_SPEC 9.3); the refusals here stop mistakes and prompt-driven misuse, not a hostile runtime.
 
+``list``, ``show`` and ``attach`` take ``--symbol`` in place of ``--isin``: it matches any symbol the security has
+ever had in ``symbol_history`` (HEG finds the security now listed as HEGAM).
+
 ``_clock`` and ``_yahoo_client`` are the two seams tests replace.
 """
 from __future__ import annotations
@@ -157,6 +160,32 @@ def _names(ident: dict[str, Any] | None) -> list[str]:
     return [ident["name"]] if ident and ident.get("name") else []
 
 
+def _symbol_security(conn, symbol: str) -> tuple[int, str]:
+    """(security_id, isin) of the one security that has ever traded under ``symbol`` (any case, any date)."""
+    rows = conn.execute(
+        "SELECT DISTINCT s.security_id, s.isin FROM symbol_history h JOIN securities s ON s.security_id = h.security_id "
+        "WHERE upper(h.nse_symbol) = ? ORDER BY s.security_id", (symbol.strip().upper(),)).fetchall()
+    if not rows:
+        raise _Usage(f"no security has traded under the symbol {symbol!r} in symbol_history")
+    if len(rows) > 1:
+        raise _Usage(f"the symbol {symbol!r} belongs to {len(rows)} securities ({', '.join(r[1] for r in rows)}); "
+                     "give --isin instead")
+    return int(rows[0][0]), str(rows[0][1])
+
+
+def _isin_from_args(conn, args) -> str | None:
+    """The ISIN named by ``--isin``, by ``--symbol``, or by both when they agree; None when neither is given."""
+    isin = getattr(args, "isin", None)
+    isin = isin.strip().upper() if isin else None
+    symbol = getattr(args, "symbol", None)
+    if not symbol:
+        return isin
+    _sid, by_symbol = _symbol_security(conn, symbol)
+    if isin and isin != by_symbol:
+        raise _Usage(f"--symbol {symbol} is {by_symbol}, not {isin}")
+    return by_symbol
+
+
 # ------------------------------------------------------------------ scanning and selecting anomalies
 
 def _scan(cfg, conn, as_of: str, since: str | None):
@@ -200,16 +229,22 @@ def triage_list_cmd(args) -> int:
     cfg = _cfg(args)
     conn = connect(cfg.paths.db, readonly=True)
     try:
+        symbol_isin = _isin_from_args(conn, args) if getattr(args, "symbol", None) else None
         result, _store = _scan(cfg, conn, as_of, since)
     finally:
         conn.close()
     window_open = _clock().now() <= pit.parse_instant(result.cutoff)
-    rows = [{**asdict(a), "key": a.key} for a in result.anomalies]
+    keep = (lambda a: a.isin == symbol_isin) if symbol_isin else (lambda a: True)
+    shown = [a for a in result.anomalies if keep(a)]
+    hidden = [a for a in result.hidden if keep(a)]
+    hidden_since = min((a.ex_date for a in hidden), default=None)
+    rows = [{**asdict(a), "key": a.key} for a in shown]
 
     if getattr(args, "json", False):
         _json({"as_of": as_of, "cutoff_utc": result.cutoff, "window_start": result.window_start,
                "window_open": window_open, "n_measured": result.n_measured,
-               "n_suspect_rows": result.n_suspect_rows, "anomalies": rows})
+               "n_suspect_rows": result.n_suspect_rows, "n_hidden": len(hidden), "hidden_since": hidden_since,
+               "anomalies": rows})
         return 0
 
     print(f"Triage anomalies for cohort {as_of} (cutoff {result.cutoff}; window from {result.window_start})")
@@ -218,12 +253,15 @@ def triage_list_cmd(args) -> int:
               "triage these anomalies for the next cohort.")
     if not rows:
         print("No anomalies in the window.")
-        return 0
-    print(f"{'KIND':<18}{'SYMBOL':<12}{'ISIN':<14}{'EX_DATE':<12}{'GROSS':>8}  {'SOURCE':<22}{'STATUS':<10}PROPOSAL")
-    for r in rows:
-        gross = f"{r['gross_factor']:.3f}" if r["gross_factor"] is not None else "?"
-        print(f"{r['kind']:<18}{(r['symbol'] or '?'):<12}{(r['isin'] or '?'):<14}{r['ex_date']:<12}{gross:>8}  "
-              f"{r['source']:<22}{r['status']:<10}{r['proposal_id'] or ''}")
+    else:
+        print(f"{'KIND':<18}{'SYMBOL':<12}{'ISIN':<14}{'EX_DATE':<12}{'GROSS':>8}  {'SOURCE':<22}{'STATUS':<10}PROPOSAL")
+        for r in rows:
+            gross = f"{r['gross_factor']:.3f}" if r["gross_factor"] is not None else "?"
+            print(f"{r['kind']:<18}{(r['symbol'] or '?'):<12}{(r['isin'] or '?'):<14}{r['ex_date']:<12}{gross:>8}  "
+                  f"{r['source']:<22}{r['status']:<10}{r['proposal_id'] or ''}")
+    if hidden:
+        print(f"{len(hidden)} older unresolved suspect row(s) before {result.window_start} are hidden (no open proposal); "
+              f"show them with --since {hidden_since}")
     return 0
 
 
@@ -368,8 +406,17 @@ def triage_attach_cmd(args) -> int:
     from quant.triage.types import ISIN_RE, RELEVANCE, SOURCE_CLASSES, canonical_bytes, sha256_hex, valid_date
 
     as_of = _as_of(args)
-    _need(args, "isin", "ex_date", "title", "source_class", "relevance")
-    isin = args.isin.strip().upper()
+    _need(args, "ex_date", "title", "source_class", "relevance")
+    if not getattr(args, "isin", None) and not getattr(args, "symbol", None):
+        raise _Usage("missing --isin (or --symbol)")
+    if getattr(args, "symbol", None):
+        lookup = connect(_cfg(args).paths.db, readonly=True)
+        try:
+            isin = _isin_from_args(lookup, args)
+        finally:
+            lookup.close()
+    else:
+        isin = args.isin.strip().upper()
     if not ISIN_RE.match(isin) or not valid_date(args.ex_date):
         raise _Usage("--isin must be a 12-character ISIN and --ex-date a YYYY-MM-DD date")
     if args.source_class not in SOURCE_CLASSES:
@@ -929,6 +976,26 @@ def _write_sheet(conn, cfg, proposal_id: str) -> None:
 
 # ------------------------------------------------------------------ triage show
 
+def _only_ex_date(conn, isin: str) -> str:
+    """The one ex-date that has a triage proposal for ``isin``; a usage error that lists the choices when there are several."""
+    from quant.triage import store as triage_store
+    from quant.triage.types import split_key
+
+    found: dict[str, str] = {}
+    for row in triage_store.list_proposals(conn, isin=isin):
+        try:
+            _isin, ex = split_key(str(row["subject_id"]).removeprefix("triage:"))
+        except ValueError:
+            continue
+        found[ex] = f"{isin}@{ex}"
+    if not found:
+        raise _Usage(f"no triage proposal for {isin}; run 'triage build --as-of <date> --isin {isin} --ex-date <date>' first")
+    if len(found) > 1:
+        raise _Usage(f"{isin} has proposals for {len(found)} ex-dates ({', '.join(found[k] for k in sorted(found))}); "
+                     "add --ex-date")
+    return next(iter(found))
+
+
 @_command
 def triage_show_cmd(args) -> int:
     from quant.triage import pit
@@ -936,9 +1003,11 @@ def triage_show_cmd(args) -> int:
     cfg = _cfg(args)
     conn = connect(cfg.paths.db, readonly=True)
     try:
-        view = _view(conn, cfg, proposal_id=getattr(args, "proposal_id", None) or None,
-                     isin=getattr(args, "isin", None), ex_date=getattr(args, "ex_date", None),
-                     cohort=_date_arg(args, "as_of"))
+        proposal_id = getattr(args, "proposal_id", None) or None
+        isin, ex_date = _isin_from_args(conn, args), getattr(args, "ex_date", None)
+        if getattr(args, "symbol", None) and not ex_date and not proposal_id:
+            ex_date = _only_ex_date(conn, isin)
+        view = _view(conn, cfg, proposal_id=proposal_id, isin=isin, ex_date=ex_date, cohort=_date_arg(args, "as_of"))
     finally:
         conn.close()
     if getattr(args, "json", False):

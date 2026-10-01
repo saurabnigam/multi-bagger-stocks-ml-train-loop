@@ -12,8 +12,11 @@ a day-0 anomaly with no later bars all stay distinguishable from a measured zero
 ``Features`` into the flat mapping that goes into the pack (and that the agent validator reads).
 
 Nothing here writes to a database, reads a factor, or looks at a bar dated after ``as_of`` or
-observed after the cutoff. Peers come from ``sector_map``, which is one current backfill and not
-point-in-time, so every pack says ``peer_set_pit: false`` and peers only ever corroborate.
+observed after the cutoff. Corroborating peers come from the subject's Yahoo industry first, then its industry
+family, then ``sector_map`` (``Reader.peers``); the pack records which one (``peer_universe``). ``n_peers`` and the
+peer median that R3 reads always stay on the sector group. Both tables are
+current backfills and not point-in-time in the way a price is, so every pack says ``peer_set_pit: false``
+and peers only ever corroborate.
 """
 from __future__ import annotations
 
@@ -29,21 +32,31 @@ import numpy as np
 import pandas as pd
 
 from quant.data.actions import JUMP_RATIO_BOUNDS
-from quant.triage import pit
+from quant.triage import pit, validate
 from quant.triage.types import canonical_bytes, sha256_hex
 
 IST = ZoneInfo("Asia/Kolkata")
 
 #: Session offsets inspected around the ex-date for a second jump (reversal) and for sizing the window.
 NEARBY_SESSIONS = 7
-#: Calendar days either side of the ex-date in which a vendor split counts as "near" the jump.
+#: Calendar days either side of the ex-date in which a vendor split counts as "near" the jump. This is the window the
+#: demerger rule (R3) and the ``vendor_split_present`` negative check read; it stays at five days.
 VENDOR_SPLIT_WINDOW_DAYS = 5
+#: Calendar days either side of the ex-date in which a vendor split is a candidate for R4 (a misdated adjustment): a
+#: vendor split sits 64 to 277 days from the jump it explains in the recorded cases (CGCL, GPIL, MOTILALOFS, TRENT).
+VENDOR_SPLIT_LOOKBACK_DAYS = 400
 #: Bars after the ex-date needed before later-bar features are treated as available (design: "day-5").
 POST_BARS_MIN = 5
 #: A placeholder event counts for a jump if its day is in [ex - 45 days, ex + 15 days]. An event recorded much
 #: later belongs to a later listing, not to an old jump.
 PLACEHOLDER_LOOKBACK_DAYS = 45
 PLACEHOLDER_LOOKAHEAD_DAYS = 15
+#: A placeholder linked to its parent by ISIN suffix (DUM545A01024 for INE545A01024) is recorded the day the engine first
+#: captured it, which lags the parent's jump; its window reaches further ahead.
+PLACEHOLDER_ISIN_LOOKAHEAD_DAYS = 60
+PLACEHOLDER_ISIN_PREFIX = "DUM"
+#: A peer universe (industry, industry family) needs this many securities besides the subject, else the next level is used.
+PEER_MIN_GROUP = 3
 PEER_TOP_N = 5
 PEER_CORR_SESSIONS = 120
 PEER_CORR_MIN_OBS = 60
@@ -98,11 +111,16 @@ class Features:
     sector_peer_median_move_pct: float | None = None
     market_median_move_pct: float | None = None
     n_peers_moved: int | None = None
-    vendor_split_rows: tuple[Mapping[str, Any], ...] | None = None    # None = unknown, () = none seen
+    vendor_split_rows: tuple[Mapping[str, Any], ...] | None = None    # None = unknown, () = none seen (within 5 days)
+    #: Store split rows within VENDOR_SPLIT_LOOKBACK_DAYS of the ex-date (R4 candidates); None = no bars read.
+    store_splits_wide: tuple[Mapping[str, Any], ...] | None = None
+    #: (date, gross) of this security's other one-day jumps within VENDOR_SPLIT_LOOKBACK_DAYS; None = no bars read.
+    store_jumps: tuple[tuple[str, float], ...] | None = None
     cross_section_count: int | None = None
     #: (session offset from the ex-date, date, gross) of other jumps of this security; offset < 0 is before.
     nearby_jumps: tuple[tuple[int, str, float], ...] = ()
     peer_set_pit: bool = False
+    peer_universe: str | None = None      # industry | industry_family | sector_group; None = no peers could be chosen
 
     @property
     def post_bars_available(self) -> bool:
@@ -118,8 +136,8 @@ class Features:
 _SPLIT_KEY = re.compile(r"^split_(\d+)_date$")
 
 
-def yahoo_split_rows(items: Iterable[Any], ex_date: str) -> list[dict[str, Any]]:
-    """Split rows from archived Yahoo ``actions`` envelopes within the vendor window of the ex-date.
+def yahoo_split_rows(items: Iterable[Any], ex_date: str, window: int = VENDOR_SPLIT_WINDOW_DAYS) -> list[dict[str, Any]]:
+    """Split rows from archived Yahoo ``actions`` envelopes within ``window`` days of the ex-date (default: five).
 
     Reads the envelope shape ``sources.actions_result`` writes: provenance ``yahoo_actions`` and
     ``typed_fields`` ``split_<k>_date`` / ``split_<k>_ratio`` pairs (ratio as the vendor gives it, new
@@ -143,7 +161,7 @@ def yahoo_split_rows(items: Iterable[Any], ex_date: str) -> list[dict[str, Any]]
                 gap = abs((_day(when) - ex).days)
             except ValueError:
                 continue
-            if gap <= VENDOR_SPLIT_WINDOW_DAYS:
+            if gap <= window:
                 out.append({"date": when[:10], "ratio": round(float(ratio), 6), "source": "yahoo_actions",
                             "capture_id": it.capture_id})
     return out
@@ -157,6 +175,57 @@ def merged_vendor_rows(f: Features, items: Iterable[Any] = ()) -> list[dict[str,
     rows = [dict(r) for r in (f.vendor_split_rows or ())] + yahoo
     rows.sort(key=lambda r: (str(r.get("date")), str(r.get("source")), float(r.get("ratio") or 0)))
     return rows
+
+
+def sessions_between(first: str, last: str) -> int:
+    """Signed weekday count from ``first`` to ``last`` (negative when ``last`` is earlier). No holiday calendar."""
+    a, b = np.datetime64(first[:10]), np.datetime64(last[:10])
+    return int(np.busday_count(a, b)) if b >= a else -int(np.busday_count(b, a))
+
+
+def split_candidates(f: Features, items: Iterable[Any] = (),
+                     product_range: tuple[float, float] = (0.95, 1.05)) -> list[dict[str, Any]] | None:
+    """Vendor splits within ``VENDOR_SPLIT_LOOKBACK_DAYS`` of the jump, annotated for rule R4 (design D1).
+
+    Union of the price store's split rows and Yahoo's, nearest-in-time first within a source, each carrying
+    ``sessions_from_jump`` (signed weekday count from the ex-date) and ``compensating_jump``: True when the store shows
+    a one-day jump of this security on the split date whose product with this jump's gross factor is within
+    ``product_range`` (the two cancel), False when it shows none, None when it could not tell (no bars read, or no gross
+    factor). None for the whole list means no source answered at all: unknown, not "no split".
+    """
+    yahoo = yahoo_split_rows(items, f.ex_date, VENDOR_SPLIT_LOOKBACK_DAYS)
+    if f.vendor_split_rows is None and f.store_splits_wide is None and not yahoo:
+        return None
+    lo, hi = product_range
+    seen: set[tuple[Any, ...]] = set()
+    rows: list[dict[str, Any]] = []
+    for r in (*(f.vendor_split_rows or ()), *(f.store_splits_wide or ()), *yahoo):
+        day, ratio = r.get("date"), r.get("ratio")
+        key = (day, ratio, r.get("source"), r.get("capture_id"))
+        if not isinstance(day, str) or not ratio or key in seen:
+            continue
+        seen.add(key)
+        if f.store_jumps is None or f.gross_factor is None:
+            compensating: bool | None = None
+        else:
+            compensating = any(d == day and lo <= f.gross_factor * g <= hi for d, g in f.store_jumps)
+        row = dict(r)
+        row.update(sessions_from_jump=sessions_between(f.ex_date, day), compensating_jump=compensating)
+        rows.append(row)
+    rows.sort(key=lambda r: (str(r["date"]), str(r.get("source")), float(r["ratio"] or 0), str(r.get("capture_id") or "")))
+    return rows
+
+
+_FAMILY_SPLIT = re.compile(r"\s+-\s+")
+
+
+def industry_family(industry: Any) -> str | None:
+    """Text before `` - `` if present, else the first word: 'Insurance - Life' and 'Insurance Brokers' are 'Insurance'."""
+    if not isinstance(industry, str) or not industry.strip():
+        return None
+    text = industry.strip()
+    head = _FAMILY_SPLIT.split(text, maxsplit=1)[0] if _FAMILY_SPLIT.search(text) else text.split()[0]
+    return head.strip() or None
 
 
 def _reversal(f: Features, lo: float, hi: float, *, forward: bool) -> bool | None:
@@ -179,6 +248,10 @@ def flat(f: Features, items: Iterable[Any] = (), *, product_range: tuple[float, 
         other = [r for r in rows if r.get("date") != f.ex_date and r.get("ratio")]
         if other:
             ratio = min(other, key=lambda r: (abs(float(r["ratio"]) - target) / target, str(r["date"])))["ratio"]
+    candidates = split_candidates(f, items, product_range)
+    chosen = validate.r4_row(candidates, f.gross_factor)
+    if chosen is not None:
+        ratio = chosen["ratio"]                  # the split R4 acts on is the one the pack names
     lo, hi = product_range
     return {
         "gross_factor": _r(f.gross_factor),
@@ -196,11 +269,13 @@ def flat(f: Features, items: Iterable[Any] = (), *, product_range: tuple[float, 
         "sector_peer_median_move_pct": _r(f.sector_peer_median_move_pct, 4),
         "market_median_move_pct": _r(f.market_median_move_pct, 4),
         "vendor_split_rows": rows,
+        "vendor_split_candidates": candidates,
         "vendor_split_ratio": ratio,
         "cross_section_count": f.cross_section_count,
         "reversal_prior": _reversal(f, lo, hi, forward=False),
         "reversal_forward": _reversal(f, lo, hi, forward=True),
         "peer_set_pit": f.peer_set_pit,
+        "peer_universe": f.peer_universe,
     }
 
 
@@ -239,32 +314,51 @@ def placeholder_events(conn: sqlite3.Connection, cutoff: str) -> list[dict[str, 
     return out
 
 
-def placeholder_window(ex_date: str) -> tuple[str, str]:
-    """Inclusive ``(first, last)`` event day that can attach to a jump on ``ex_date``."""
+def placeholder_window(ex_date: str, *, isin_linked: bool = False) -> tuple[str, str]:
+    """Inclusive ``(first, last)`` event day that can attach to a jump on ``ex_date``.
+
+    A symbol link (the event's security or ``parent_symbol`` is the subject) uses ``[ex - 45, ex + 15]`` days. An ISIN
+    suffix link uses ``[ex - 45, ex + 60]``: the event's day is the day the engine first captured the placeholder,
+    which lags the parent's jump (HEG: jump 2026-09-07, DUMMYHEG captured 2026-10-01).
+    """
     ex = _day(ex_date)
-    return ((ex - timedelta(days=PLACEHOLDER_LOOKBACK_DAYS)).isoformat(),
-            (ex + timedelta(days=PLACEHOLDER_LOOKAHEAD_DAYS)).isoformat())
+    ahead = PLACEHOLDER_ISIN_LOOKAHEAD_DAYS if isin_linked else PLACEHOLDER_LOOKAHEAD_DAYS
+    return ((ex - timedelta(days=PLACEHOLDER_LOOKBACK_DAYS)).isoformat(), (ex + timedelta(days=ahead)).isoformat())
+
+
+def is_isin_placeholder_of(placeholder_isin: Any, parent_isin: Any) -> bool:
+    """NSE index placeholder ISINs start ``DUM`` and keep the parent's tail: DUM545A01024 stands for INE545A01024."""
+    return (isinstance(placeholder_isin, str) and isinstance(parent_isin, str) and len(placeholder_isin) == len(parent_isin) == 12
+            and placeholder_isin.startswith(PLACEHOLDER_ISIN_PREFIX) and not parent_isin.startswith(PLACEHOLDER_ISIN_PREFIX)
+            and placeholder_isin[3:] == parent_isin[3:])
+
+
+def placeholder_links(ev: Mapping[str, Any], *, security_id: int | None, isin: str | None, symbol: str | None,
+                      ex_date: str) -> bool:
+    """Does this placeholder event attach to the security's jump on ``ex_date``? Scan and features share this test."""
+    detail = ev["detail"]
+    floor, ceiling = placeholder_window(ex_date, isin_linked=True)
+    if is_isin_placeholder_of(detail.get("placeholder_isin"), isin) and floor <= ev["day"] <= ceiling:
+        return True
+    floor, ceiling = placeholder_window(ex_date)
+    if not floor <= ev["day"] <= ceiling:
+        return False
+    return (security_id is not None and ev["security_id"] == security_id) \
+        or (isin is not None and detail.get("placeholder_isin") == isin) \
+        or (symbol is not None and detail.get("parent_symbol") == symbol)
 
 
 def placeholder_for(events: Sequence[Mapping[str, Any]] | None, *, security_id: int | None, isin: str,
                     symbol: str | None, ex_date: str) -> bool | None:
-    """Does a placeholder event in the window point at this security (itself or as the parent of a DUMMY row)?
+    """Does a placeholder event in the window point at this security (itself, as the parent of a DUMMY row, or by ISIN suffix)?
 
-    The window is the event's IST day in ``[ex - 45 days, ex + 15 days]``. None means the events could not be
-    read; an empty answer inside the window is False.
+    A symbol link uses the event's IST day in ``[ex - 45 days, ex + 15 days]``; an ISIN suffix link uses
+    ``[ex - 45, ex + 60]`` (see ``placeholder_window``). None means the events could not be read; an empty answer
+    inside the window is False.
     """
     if events is None:
         return None
-    floor, ceiling = placeholder_window(ex_date)
-    for ev in events:
-        if not floor <= ev["day"] <= ceiling:
-            continue
-        detail = ev["detail"]
-        if (security_id is not None and ev["security_id"] == security_id) \
-                or detail.get("placeholder_isin") == isin \
-                or (symbol is not None and detail.get("parent_symbol") == symbol):
-            return True
-    return False
+    return any(placeholder_links(ev, security_id=security_id, isin=isin, symbol=symbol, ex_date=ex_date) for ev in events)
 
 
 # ------------------------------------------------------------------ store reader
@@ -303,6 +397,7 @@ class Reader:
         self._ids: list[int] | None = None
         self._xs: dict[str, CrossSection] = {}
         self._sectors: dict[int, list[tuple[str, str | None, str]]] | None = None
+        self._industries: dict[int, str] | None | bool = False
         self._events: list[dict[str, Any]] | None | bool = False
 
     # -- price store
@@ -355,7 +450,51 @@ class Reader:
                  None if pd.isna(r.volume_raw) else float(r.volume_raw), str(r.observed_at)] for r in df.itertuples()]
         return SubjectBars(df, sha256_hex(canonical_bytes(rows)), str(df["date"].iloc[-1]), len(df))
 
+    def wide_store_facts(self, sid: int, ex_date: str) -> tuple[tuple[dict[str, Any], ...] | None,
+                                                               tuple[tuple[str, float], ...] | None]:
+        """(split rows, other one-day jumps) of one security within ``VENDOR_SPLIT_LOOKBACK_DAYS`` of the ex-date.
+
+        Bars are read at the cutoff vintage and never past the ``as_of`` date. ``(None, None)`` when the store has no
+        bar in the range: unknown, not "no split and no jump". The ex-date's own jump is left out of the second list.
+        """
+        ex = _day(ex_date)
+        start = (ex - timedelta(days=VENDOR_SPLIT_LOOKBACK_DAYS)).isoformat()
+        end = min(self.as_of, (ex + timedelta(days=VENDOR_SPLIT_LOOKBACK_DAYS)).isoformat())
+        df = self._bars([sid], start, end, "close_raw, dividend_raw, split_ratio")
+        if df.empty:
+            return None, None
+        df = df.sort_values("date").reset_index(drop=True)
+        dates = [str(d) for d in df["date"]]
+        c, d, sp = (df[col].to_numpy(float) for col in ("close_raw", "dividend_raw", "split_ratio"))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            g = np.full(len(c), np.nan)
+            g[1:] = sp[1:] * (c[1:] + d[1:]) / c[:-1]
+        splits = tuple({"date": dates[k], "ratio": round(float(sp[k]), 6), "source": "price_store"}
+                       for k in range(len(c)) if abs(sp[k] - 1.0) > 1e-9)
+        jumps = tuple((dates[k], round(float(g[k]), 6)) for k in range(1, len(c))
+                      if dates[k] != ex_date and is_jump(float(g[k]), self.jump_ratio))
+        return splits, jumps
+
     # -- state database
+    def industries(self) -> dict[int, str] | None:
+        """security_id -> latest ``security_attributes.yahoo_industry`` captured at or before the cutoff.
+
+        A security whose latest capture has no industry is absent (unknown). None when the table cannot be read.
+        """
+        if self._industries is False:
+            out: dict[int, str] | None = {}
+            try:
+                cur = self.conn.execute("SELECT security_id, yahoo_industry FROM security_attributes WHERE captured_at <= ? "
+                                        "ORDER BY security_id, captured_at", (self.cutoff,))
+                latest: dict[int, str | None] = {}
+                for sid, industry in cur.fetchall():
+                    latest[int(sid)] = industry
+                out = {sid: ind.strip() for sid, ind in latest.items() if isinstance(ind, str) and ind.strip()}
+            except sqlite3.Error:
+                out = None
+            self._industries = out
+        return self._industries      # type: ignore[return-value]
+
     def _sector_rows(self) -> dict[int, list[tuple[str, str | None, str]]]:
         if self._sectors is None:
             out: dict[int, list[tuple[str, str | None, str]]] = {}
@@ -394,26 +533,51 @@ class Reader:
         return self._events      # type: ignore[return-value]
 
     # -- peers
-    def peers(self, sid: int, day: str, stock_gross: float | None) -> tuple[str | None, int | None, float | None, int | None]:
-        """(sector_group, n_peers with a bar that day, peer median move %, top-5 correlated peers that moved 5%+)."""
+    def peer_universe(self, sid: int, day: str, grp: str | None) -> tuple[str | None, list[int]]:
+        """(universe name, member ids besides ``sid``): the same Yahoo industry if it has at least three others, else the
+        same industry family if it has at least three, else the sector group. ``(None, [])`` when none is known."""
+        others = [p for p in self.security_ids() if p != sid]
+        ind = self.industries()
+        mine = None if ind is None else ind.get(int(sid))
+        if mine is not None:
+            same = [p for p in others if ind.get(p) == mine]
+            if len(same) >= PEER_MIN_GROUP:
+                return "industry", same
+            family = industry_family(mine)
+            fam = [p for p in others if industry_family(ind.get(p)) == family]
+            if len(fam) >= PEER_MIN_GROUP:
+                return "industry_family", fam
+        if grp is not None:
+            return "sector_group", [p for p in others if self.sector_group(p, day) == grp]
+        return None, []
+
+    def peers(self, sid: int, day: str, stock_gross: float | None) -> tuple[str | None, int | None, float | None, int | None, str | None]:
+        """(sector_group, n_peers with a bar that day, peer median move %, top-5 correlated peers that moved 5%+, universe).
+
+        ``n_peers`` and the median (which R3 compares with the market) always come from the sector group. Only the
+        corroboration count uses ``peer_universe`` (industry, then industry family, then sector group), and the pack
+        records which universe that was.
+        """
         grp = self.sector_group(sid, day)
-        if grp is None:
-            return None, None, None, None
-        peer_ids = [p for p in self.security_ids() if p != sid and self.sector_group(p, day) == grp]
+        universe, peer_ids = self.peer_universe(sid, day, grp)
         xs = self.cross_section(day)
-        moves = [xs.gross[p] - 1.0 for p in peer_ids if p in xs.gross]
-        if not moves:
-            return grp, 0, None, None
-        median = _r(float(np.median(moves)) * 100.0, 4)
-        if stock_gross is None or stock_gross == 1.0:
-            return grp, len(moves), median, None
+        n_peers: int | None = None
+        median: float | None = None
+        if grp is not None:
+            sector_ids = [p for p in self.security_ids() if p != sid and self.sector_group(p, day) == grp]
+            moves = [xs.gross[p] - 1.0 for p in sector_ids if p in xs.gross]
+            n_peers = len(moves)
+            if moves:
+                median = _r(float(np.median(moves)) * 100.0, 4)
+        if universe is None or stock_gross is None or stock_gross == 1.0:
+            return grp, n_peers, median, None, universe
         top = self._top_correlated(sid, peer_ids, day)
         if top is None:
-            return grp, len(moves), median, None
+            return grp, n_peers, median, None, universe
         up = stock_gross > 1.0
         moved = sum(1 for p in top if p in xs.gross
                     and ((xs.gross[p] - 1.0 >= PEER_MOVE_THRESHOLD) if up else (xs.gross[p] - 1.0 <= -PEER_MOVE_THRESHOLD)))
-        return grp, len(moves), median, moved
+        return grp, n_peers, median, moved, universe
 
     def _top_correlated(self, sid: int, peer_ids: Sequence[int], day: str) -> list[int] | None:
         """Top-5 peers by correlation of daily returns over the sessions before ``day``; None if nothing to rank."""
@@ -500,14 +664,15 @@ def build(reader: Reader, anomaly: Any) -> Features:
             for k in range(len(c))
             if abs(sp[k] - 1.0) > 1e-9 and abs((_day(dates[k]) - ex).days) <= VENDOR_SPLIT_WINDOW_DAYS)
 
+    store_splits, store_jumps = reader.wide_store_facts(sid, anomaly.ex_date)
     xs = reader.cross_section(anomaly.ex_date)
-    grp, n_peers, peer_median, moved = reader.peers(sid, anomaly.ex_date, gross)
+    grp, n_peers, peer_median, moved, universe = reader.peers(sid, anomaly.ex_date, gross)
     return Features(
         **base, gross_factor=gross, volume_ratio=volume_ratio, next_day_close_ratio=next_day, fwd5_close_ratio=fwd5,
         n_post_bars=n_post, sector_group=grp, n_peers=n_peers, sector_peer_median_move_pct=peer_median,
         market_median_move_pct=xs.market_median_move_pct if xs.gross else None, n_peers_moved=moved,
-        vendor_split_rows=vendor_rows, cross_section_count=xs.n_jumps if xs.gross else None,
-        nearby_jumps=tuple(nearby))
+        vendor_split_rows=vendor_rows, store_splits_wide=store_splits, store_jumps=store_jumps,
+        cross_section_count=xs.n_jumps if xs.gross else None, nearby_jumps=tuple(nearby), peer_universe=universe)
 
 
 def price_vintage(reader: Reader, f: Features) -> dict[str, Any]:

@@ -205,12 +205,16 @@ def get_proposal(conn: sqlite3.Connection, proposal_id: str) -> dict[str, Any] |
 
 def list_proposals(conn: sqlite3.Connection, *, isin: str | None = None, ex_date: str | None = None,
                    status: str | None = None) -> list[dict[str, Any]]:
-    """Triage proposals (rule_id starting ``TRIAGE_``), oldest first, optionally for one anomaly or status."""
+    """Triage proposals (rule_id starting ``TRIAGE_``), oldest first, optionally for one anomaly, one ISIN or one status."""
     sql = f"SELECT {_COLUMNS} FROM proposals WHERE rule_id LIKE 'TRIAGE\\_%' ESCAPE '\\'"
     args: list[Any] = []
     if isin is not None and ex_date is not None:
         sql += " AND subject_id = ?"
         args.append(subject_id(isin, ex_date))
+    elif isin is not None:
+        sql += " AND substr(subject_id, 1, ?) = ?"                 # every ex-date of one security
+        prefix = subject_id(isin, "")
+        args.extend([len(prefix), prefix])
     if status is not None:
         sql += " AND status = ?"
         args.append(status)

@@ -4,6 +4,8 @@
 R1 placeholder or non-EQ series, R2 exchange SPOS, R3 demerger document, R4 vendor split, R7
 genuine-event document, R8 market stress, R5 cross-section, R6 reversal, then ``unknown``. The
 numbering follows the design table's names; the evaluation order is the table's order, not the number's.
+R4 reads vendor splits dated up to 400 days from the jump (``features.VENDOR_SPLIT_LOOKBACK_DAYS``), not only the five
+days R3's negative check reads; ``validate.r4_row`` holds the test and the agent validator calls it too.
 R1 has two halves (an index placeholder, and a series other than EQ at the jump). Both label
 ``pending_listing`` and run first, as design section 5.2 says. A non-EQ series on a stock with an SPOS
 or demerger document therefore waits instead of proposing a factor; that is fail-safe and is the one
@@ -47,7 +49,9 @@ R1_RECHECK_DAYS = 7
 R3_WINDOW_DAYS = 120                   # a demerger document is dated in [ex - 120d, ex]
 R3_GROSS_RANGE = (0.2, 0.9)
 R3_PEER_MARKET_GAP_PCT = 3.0           # |peer median - market median| must be under this
-R4_RATIO_TOLERANCE = 0.03              # vendor ratio within 3% of 1/gross
+R4_RATIO_TOLERANCE = 0.03              # vendor ratio within 3% of 1/gross (downward jump) or of gross (upward jump)
+R4_MIN_SESSIONS = validate.R4_MIN_SESSIONS   # the split must be more than one session from the jump
+R4_LOOKBACK_DAYS = feat.VENDOR_SPLIT_LOOKBACK_DAYS   # and within 400 days of it; R3 keeps the five-day window
 R5_MIN_JUMPS = validate.R5_MIN_JUMPS   # jumps on one date across the store (shared with the R7 negative check)
 R5_MARKET_QUIET_PCT = validate.R5_MARKET_QUIET_PCT
 R5_ROUND_RATIOS = (1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 10.0)
@@ -265,28 +269,31 @@ def _r3_demerger_doc(c: _Ctx) -> Decision | None:
 
 
 def _r4_vendor_split(c: _Ctx) -> Decision | None:
+    """R4: a vendor split dated on another day explains the jump (design D1).
+
+    The split may be dated up to ``features.VENDOR_SPLIT_LOOKBACK_DAYS`` (400) from the jump. It must be more than one
+    session from the jump date, its ratio within 3% of 1/gross (downward jump) or of gross (upward jump), and the price
+    store must show no compensating jump on its date. ``validate.r4_row`` holds the test; the agent validator calls it too.
+    """
     f, fl = c.f, c.flat
     g = f.gross_factor
-    rows = fl["vendor_split_rows"]
-    if g is None or g <= 0 or not rows:
+    row = validate.r4_row(fl.get("vendor_split_candidates"), g)
+    if row is None:
         return None
-    target = 1.0 / g
-    near = [r for r in rows if r.get("date") != f.ex_date and r.get("ratio")
-            and abs(float(r["ratio"]) - target) / target <= R4_RATIO_TOLERANCE]
-    if not near:
-        return None
-    row = min(near, key=lambda r: (abs(float(r["ratio"]) - target) / target, str(r["date"])))
+    target = validate.r4_target(g)
     ratio = round(float(row["ratio"]), 6)
     ref = row.get("capture_id") or "f:vendor_split_ratio"
+    sessions = abs(int(row["sessions_from_jump"]))
     return Decision(
         "vendor_error_other", "R4", grade.grade("vendor_error_other", rule_id="R4"), subtype="misdated_adjustment",
         action="resolve", resolve_kind="split", factor=ratio, factor_basis="vendor_ratio",
         needs_force=_needs_force(g, ratio), needs_primary=True, factor_inputs=(("ratio", ratio, ref),),
         claims=(_gross_claim(f),
-                ("fact", f"The vendor records a split of ratio {ratio:g} dated {row['date']}, not on the ex-date "
-                         f"{f.ex_date}.", (ref,)),
+                ("fact", f"The vendor records a split of ratio {ratio:g} dated {row['date']}, {sessions} sessions from the "
+                         f"ex-date {f.ex_date}, and the price store shows no jump on that date that cancels this one.", (ref,)),
                 ("inference", f"The vendor applied the split on the wrong day; its ratio is within "
-                              f"{R4_RATIO_TOLERANCE:.0%} of 1/gross ({target:.4f}).", ("f:gross_factor", ref))),
+                              f"{R4_RATIO_TOLERANCE:.0%} of {target:.4f} ({'1/gross' if g < 1.0 else 'gross'}).",
+                 ("f:gross_factor", ref))),
         missing_evidence=_cap(("exchange or company document confirming the split date",
                                f"review the vendor split dated {row['date']} for a mirror-image jump")),
         cited=(row["capture_id"],) if row.get("capture_id") else ())

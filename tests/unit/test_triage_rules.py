@@ -51,8 +51,8 @@ def _fast_run_context(monkeypatch):
 def F(**over) -> feat.Features:
     """A quiet EQ jump: nothing known beyond the store basics, no later bars (day 0)."""
     base = dict(isin=ISIN, ex_date=EX, as_of=AS_OF, symbol="TESTCO", security_id=1, gross_factor=0.6,
-                series="EQ", placeholder=False, vendor_split_rows=(), cross_section_count=1,
-                market_median_move_pct=0.3, sector_peer_median_move_pct=0.2, n_peers=10, n_post_bars=0)
+                series="EQ", placeholder=False, vendor_split_rows=(), store_splits_wide=(), store_jumps=(),
+                cross_section_count=1, market_median_move_pct=0.3, sector_peer_median_move_pct=0.2, n_peers=10, n_post_bars=0)
     base.update(over)
     return feat.Features(**base)
 
@@ -316,6 +316,121 @@ def test_r4_reads_yahoo_actions_envelopes_and_ignores_malformed_ones():
                typed_fields={"n_splits": 2, "split_1_date": "2026-10-26", "split_1_ratio": 1.5, "split_2_date": "2026-10-29",
                              "split_2_ratio": 2.0})
     assert [(r["date"], r["ratio"]) for r in feat.yahoo_split_rows([two], EX)] == [("2026-10-26", 1.5), ("2026-10-29", 2.0)]
+
+
+# ------------------------------------------------------------------ R4 (D1): a vendor split up to 400 days from the jump
+
+TRENT_EX = "2026-01-01"                     # the dress-rehearsal case: jump 2026-01-01, vendor split 2026-06-04
+TRENT_SPLIT = "2026-06-04"
+
+
+def actions_item(*splits, **over):
+    """An undated Yahoo ``actions`` envelope with (date, ratio) splits, as ``sources.actions_result`` writes it."""
+    tf = {"ticker": "TESTCO.NS", "window_days": 400, "n_splits": len(splits)}
+    for k, (day, ratio) in enumerate(splits, start=1):
+        tf[f"split_{k}_date"], tf[f"split_{k}_ratio"] = day, ratio
+    base = dict(provenance="yahoo_actions", source_class="other", relevance="context", published_at=None,
+                published_at_basis=None, published_at_precision=None, decisive=False, typed_fields=tf)
+    base.update(over)
+    return item(**base)
+
+
+def trent(**over):
+    return F(ex_date=TRENT_EX, gross_factor=0.6695, **over)
+
+
+def test_r4_window_is_a_named_400_day_constant_and_the_five_day_window_stays():
+    assert feat.VENDOR_SPLIT_LOOKBACK_DAYS == 400
+    assert feat.VENDOR_SPLIT_WINDOW_DAYS == 5              # the demerger (R3) negative check keeps this one
+
+
+def test_r4_trent_a_yahoo_split_five_months_after_the_jump_is_a_misdated_adjustment():
+    y = actions_item((TRENT_SPLIT, 1.5))
+    d = run(trent(vendor_split_rows=None), y)
+    assert (d.label, d.subtype, d.rule_id, d.confidence) == ("vendor_error_other", "misdated_adjustment", "R4", "medium")
+    assert (d.action, d.resolve_kind, d.factor, d.factor_basis, d.needs_primary, d.needs_force) == \
+        ("resolve", "split", 1.5, "vendor_ratio", True, False)
+    assert d.factor_inputs == (("ratio", 1.5, y.capture_id),) and d.cited == (y.capture_id,)
+    assert any(TRENT_SPLIT in c[1] for c in d.claims)
+
+
+def test_r4_trent_the_price_store_split_row_alone_is_enough():
+    row = {"date": TRENT_SPLIT, "ratio": 1.5, "source": "price_store"}
+    d = run(trent(store_splits_wide=(row,)))
+    assert (d.rule_id, d.factor, d.factor_basis, d.needs_primary) == ("R4", 1.5, "vendor_ratio", True)
+    assert d.factor_inputs == (("ratio", 1.5, "f:vendor_split_ratio"),)
+
+
+def test_r4_upward_jump_matches_the_ratio_to_gross_not_one_over_gross():
+    y = actions_item((TRENT_SPLIT, 1.8))
+    up = F(ex_date=TRENT_EX, gross_factor=1.8, vendor_split_rows=None)
+    assert run(up, y).rule_id == "R4"
+    assert run(F(ex_date=TRENT_EX, gross_factor=1.8, vendor_split_rows=None), actions_item((TRENT_SPLIT, 1 / 1.8))).rule_id != "R4"
+
+
+@pytest.mark.parametrize("day,fires", [
+    ("2025-12-31", False),     # Wednesday, one session before the Thursday jump: the vendor had it on the right day
+    ("2026-01-01", False),     # the jump date itself
+    ("2026-01-02", False),     # one session after
+    ("2025-12-30", True),      # two sessions before
+    ("2026-01-05", True),      # Monday, two sessions after
+    ("2026-06-04", True),      # the dress-rehearsal case
+    ("2027-01-05", True),      # 369 days after: inside the 400-day window
+])
+def test_r4_needs_the_split_more_than_one_session_from_the_jump(day, fires):
+    d = run(trent(vendor_split_rows=None), actions_item((day, 1.5)))
+    assert (d.rule_id == "R4") is fires
+
+
+def test_r4_ignores_a_split_outside_the_400_day_window():
+    assert run(trent(vendor_split_rows=None), actions_item(("2027-02-10", 1.5))).rule_id != "R4"     # 405 days
+    assert run(trent(vendor_split_rows=None), actions_item(("2024-11-01", 1.5))).rule_id != "R4"
+
+
+def test_r4_ratio_must_be_within_three_percent_of_the_target():
+    target = 1 / 0.6695
+    assert run(trent(vendor_split_rows=None), actions_item((TRENT_SPLIT, round(target * 1.029, 4)))).rule_id == "R4"
+    assert run(trent(vendor_split_rows=None), actions_item((TRENT_SPLIT, round(target * 0.971, 4)))).rule_id == "R4"
+    assert run(trent(vendor_split_rows=None), actions_item((TRENT_SPLIT, round(target * 1.04, 4)))).rule_id != "R4"
+    assert run(trent(vendor_split_rows=None), actions_item((TRENT_SPLIT, 2.0))).rule_id != "R4"
+
+
+def test_r4_does_not_fire_when_the_store_shows_a_compensating_jump_on_the_split_date():
+    y = actions_item((TRENT_SPLIT, 1.5))
+    comp = trent(vendor_split_rows=None, store_jumps=((TRENT_SPLIT, 1.5),))          # 0.6695 * 1.5 = 1.004: it cancels
+    assert run(comp, y).rule_id != "R4"
+    other = trent(vendor_split_rows=None, store_jumps=((TRENT_SPLIT, 0.5),))        # a jump, but it does not cancel
+    assert run(other, y).rule_id == "R4"
+    elsewhere = trent(vendor_split_rows=None, store_jumps=(("2026-06-05", 1.5),))   # a cancelling jump on another day
+    assert run(elsewhere, y).rule_id == "R4"
+
+
+def test_r4_unknown_store_jumps_are_not_a_clean_bill():
+    """No store read at all (None) is unknown, not 'no compensating jump': R4 holds back and the candidate says so."""
+    y = actions_item((TRENT_SPLIT, 1.5))
+    d = run(trent(vendor_split_rows=None, store_jumps=None), y)
+    assert d.rule_id != "R4"
+    rows = feat.flat(trent(vendor_split_rows=None, store_jumps=None), [y])["vendor_split_candidates"]
+    assert rows[0]["compensating_jump"] is None and rows[0]["sessions_from_jump"] > 1
+
+
+def test_r4_candidates_are_annotated_in_the_flat_features():
+    y = actions_item((TRENT_SPLIT, 1.5))
+    flat = feat.flat(trent(vendor_split_rows=None), [y])
+    cand, = flat["vendor_split_candidates"]
+    assert (cand["date"], cand["ratio"], cand["source"], cand["compensating_jump"]) == (TRENT_SPLIT, 1.5, "yahoo_actions", False)
+    assert cand["sessions_from_jump"] == int(np.busday_count(TRENT_EX, TRENT_SPLIT))      # weekday count, no holiday calendar
+    assert flat["vendor_split_rows"] is None and flat["vendor_split_ratio"] == 1.5      # the 5-day feature is untouched
+    assert feat.flat(F())["vendor_split_candidates"] == []                              # known: none
+    assert feat.flat(feat.Features(isin=ISIN, ex_date=EX, as_of=AS_OF, gross_factor=0.6))["vendor_split_candidates"] is None
+
+
+def test_r3_still_reads_only_the_five_day_window_so_a_far_split_does_not_block_a_demerger_document():
+    f = r3_features()
+    far = actions_item(("2026-10-01", 2.5))            # 27 days before the ex-date: outside the 5-day R3 window
+    assert run(f, demerger_item(), far).rule_id == "R3"
+    near = actions_item(("2026-10-26", 2.5))           # 2 days before: inside it, and the ratio is nowhere near 1/gross
+    assert run(f, demerger_item(), near).rule_id != "R3"
 
 
 # ------------------------------------------------------------------ R7 genuine-event document
@@ -649,11 +764,13 @@ PRICE_COLS = ("security_id, date, open_raw, high_raw, low_raw, close_raw, volume
               "yahoo_close, yahoo_adj_close, observed_at, capture_id, source_sha256")
 
 
-def add_bars(path, sid, dates, closes, *, observed_at=None, volume=1e5, split=1.0):
+def add_bars(path, sid, dates, closes, *, observed_at=None, volume=1e5, split=1.0, splits=None):
+    """``splits`` maps a date to that bar's ``split_ratio``; every other bar gets ``split``."""
+    splits = splits or {}
     con = sqlite3.connect(path)
     con.executemany(
         f"INSERT INTO prices_daily ({PRICE_COLS}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        [(sid, d, c, c, c, float(c), volume, 0.0, split, c, c, observed_at or OBS(d), "CAP", "SHA")
+        [(sid, d, c, c, c, float(c), volume, 0.0, splits.get(d, split), c, c, observed_at or OBS(d), "CAP", "SHA")
          for d, c in zip(dates, closes)])
     con.commit()
     con.close()
@@ -779,15 +896,15 @@ def test_a_document_turns_the_same_anomaly_into_a_medium_genuine_proposal(world)
     assert b.pack["source_status"]["human_attach"] == "ok"
 
 
-def _add_security(world, sid, closes_by_date):
+def _add_security(world, sid, closes_by_date, *, isin=None, symbol=None, splits=None):
     conn = connect(world.cfg.paths.db)
     conn.execute("INSERT INTO securities (security_id, isin, name, first_seen, last_seen, status) "
-                 "VALUES (?, ?, ?, '2026-01-01', '2026-10-30', 'listed')", (sid, f"INE{sid:09d}", f"Company {sid}"))
+                 "VALUES (?, ?, ?, '2026-01-01', '2026-10-30', 'listed')", (sid, isin or f"INE{sid:09d}", f"Company {sid}"))
     conn.execute("INSERT INTO symbol_history (security_id, nse_symbol, yahoo_ticker, valid_from, source) "
-                 "VALUES (?, ?, ?, '2026-01-01', 'test')", (sid, f"SYM{sid}", f"SYM{sid}.NS"))
+                 "VALUES (?, ?, ?, '2026-01-01', 'test')", (sid, symbol or f"SYM{sid}", f"{symbol or f'SYM{sid}'}.NS"))
     conn.close()
     dates = sorted(closes_by_date)
-    add_bars(world.cfg.paths.prices_db, sid, dates, [closes_by_date[d] for d in dates])
+    add_bars(world.cfg.paths.prices_db, sid, dates, [closes_by_date[d] for d in dates], splits=splits)
 
 
 def test_a_reversal_found_in_the_store_fires_r6_on_both_jumps_before_day5(world):
@@ -1007,13 +1124,16 @@ def test_scan_window_is_thirteen_months_plus_old_suspects_and_since_widens(tmp_p
     st = PriceStore.open_readonly(cfg.paths.prices_db, conn)
     jr = feat.jump_ratio_from(cfg)
     assert scan.default_window_start("2026-11-30") == "2025-10-30"
-    # as_of 2027-12-31: the 2025-10-14 jump is outside the 13 months, but its unresolved suspect row stays listed
+    # as_of 2027-12-31: the 2025-10-14 jump is outside the 13 months and has no open proposal, so its unresolved
+    # suspect row is hidden by default (D4), and counted so the list can say how to show it
     late = scan.scan(conn, st, "2027-12-31", jump_ratio=jr)
-    assert [(a.ex_date, a.source, a.in_window) for a in late.anomalies] == [("2025-10-14", "suspect_row", False)]
-    assert late.anomalies[0].gross_factor == pytest.approx(0.6, abs=1e-3)
+    assert late.anomalies == [] and late.n_hidden == 1
+    assert [(a.ex_date, a.source, a.in_window) for a in late.hidden] == [("2025-10-14", "suspect_row", False)]
+    assert late.hidden[0].gross_factor == pytest.approx(0.6, abs=1e-3) and late.hidden_since == "2025-10-14"
+    assert [a.key for a in scan.select(late, isin=late.hidden[0].isin, ex_date="2025-10-14")] == [late.hidden[0].key]
     wide = scan.scan(conn, st, "2027-12-31", since="2025-01-01", jump_ratio=jr)
     assert [(a.ex_date, a.source, a.in_window) for a in wide.anomalies] == [("2025-10-14", "measured+suspect_row", True)]
-    assert wide.window_start == "2025-01-01"
+    assert wide.window_start == "2025-01-01" and wide.n_hidden == 0
     assert scan.scan(conn, st, "2027-12-31", since="2027-06-01", jump_ratio=jr).window_start == scan.default_window_start("2027-12-31")
 
 
@@ -1049,6 +1169,23 @@ def test_scan_lists_a_measured_only_jump_ten_months_old_and_omits_one_fifteen_mo
     assert old.anomalies == [] and old.window_start == "2025-12-14"
     widened = scan.scan(conn, st, "2027-01-14", since="2025-10-01", jump_ratio=jr)
     assert [(a.ex_date, a.source) for a in widened.anomalies] == [("2025-10-14", "measured")]
+
+
+def test_an_old_suspect_with_an_open_proposal_stays_in_the_default_window(tmp_path):
+    cfg, db, mod = _actions_cli_world(tmp_path)
+    conn = connect(db, readonly=True)
+    st = PriceStore.open_readonly(cfg.paths.prices_db, conn)
+    jr = feat.jump_ratio_from(cfg)
+    wide = scan.scan(conn, st, "2027-12-31", since="2025-01-01", jump_ratio=jr)
+    b = pack.build_one(conn, feat.Reader(conn, st, "2027-12-31", jump_ratio=jr), wide.anomalies[0])
+    conn.close()
+    with RunContext(as_of="2027-12-31", kind="triage", track="live", cfg=cfg, clock=FrozenClock("2027-12-31T06:30:00.000000Z"),
+                    actor=Actor(kind="system", name="pytest")) as ctx:
+        triage_store.write_proposal(ctx, b.proposal, b.evidence)
+    conn = connect(db, readonly=True)
+    st = PriceStore.open_readonly(cfg.paths.prices_db, conn)
+    late = scan.scan(conn, st, "2027-12-31", jump_ratio=jr)
+    assert [(a.ex_date, a.status) for a in late.anomalies] == [("2025-10-14", "proposed")] and late.n_hidden == 0
 
 
 def test_scan_omits_a_resolved_jump_unless_asked_and_reads_resolution_at_the_cutoff(tmp_path):
@@ -1341,6 +1478,263 @@ def test_pack_r4_vendor_split_on_another_date_is_a_flagged_misdated_adjustment(w
     assert [x["capture_id"] for x in p["citations"]] == [reg.capture_id]
     assert b.pack["features"]["vendor_split_rows"][0]["date"] == "2026-10-26"
     assert b.pack["source_status"]["yahoo_actions"] == "ok"
+
+
+def _far_split_world(world, *, cancel):
+    """Security 11 steps down by 0.6 on EX, and the store records a 1/0.6 split on 2026-06-04, 100 sessions earlier.
+
+    ``cancel=False``: the raw close does not move that day, so the store's gross factor there is a 1.667 jump that
+    cancels the 0.6 step (the vendor's split is the other half of one glitch). ``cancel=True``: the raw close falls
+    to 0.6 of itself that day too, so the split day is quiet in the store (the dress-rehearsal TRENT shape)."""
+    bars = {d: 100.0 for d in BDAYS}
+    if cancel:
+        for d in BDAYS:
+            if "2026-06-04" <= d < EX:
+                bars[d] = 60.0
+        for d in BDAYS:
+            if d >= EX:
+                bars[d] = 36.0
+    else:
+        for d in BDAYS:
+            if d >= EX:
+                bars[d] = 60.0
+    _add_security(world, 11, bars, splits={"2026-06-04": 1.0 / 0.6})
+    conn = connect(world.cfg.paths.db, readonly=True)
+    try:
+        return next(b for b in world.build_all(conn) if b.anomaly.security_id == 11 and b.anomaly.ex_date == EX)
+    finally:
+        conn.close()
+
+
+def test_pack_r4_a_store_split_far_from_the_jump_fires_when_the_split_day_is_quiet(world):
+    b = _far_split_world(world, cancel=True)
+    assert b.features.vendor_split_rows == () and b.features.store_jumps is not None       # nothing within five days
+    assert (b.decision.rule_id, b.decision.subtype, b.decision.confidence) == ("R4", "misdated_adjustment", "medium")
+    assert (b.proposal["resolution"]["resolve_kind"], b.proposal["resolution"]["factor"]) == ("split", pytest.approx(1 / 0.6, abs=1e-5))
+    cand, = b.pack["features"]["vendor_split_candidates"]
+    assert (cand["date"], cand["source"], cand["compensating_jump"]) == ("2026-06-04", "price_store", False)
+    assert b.pack["features"]["vendor_split_ratio"] == pytest.approx(1 / 0.6, abs=1e-5)
+    assert check_schema(b.proposal, producer_kind="engine") == []
+
+
+def test_pack_r4_does_not_fire_when_the_store_has_a_compensating_jump_on_the_split_date(world):
+    b = _far_split_world(world, cancel=False)
+    assert b.decision.rule_id != "R4"
+    assert b.features.store_jumps and b.features.store_jumps[0][0] == "2026-06-04"
+    cand, = b.pack["features"]["vendor_split_candidates"]
+    assert cand["compensating_jump"] is True
+
+
+def test_pack_r4_a_yahoo_split_five_months_before_the_jump_in_a_real_store(world):
+    target = 1.0 / world.build().features.gross_factor
+    reg = register(world, provenance="yahoo_actions", title="Yahoo corporate actions for SYM1.NS", published_at=None,
+                   published_at_basis=None, source_class="other", relevance="context", entity_match=None,
+                   relevance_basis="ticker_query_unverified", excerpt=None,
+                   typed_fields={"ticker": "SYM1.NS", "window_days": 400, "n_splits": 1,
+                                 "split_1_date": "2026-06-04", "split_1_ratio": round(target, 4),
+                                 "splits_truncated": False, "n_dividends_pm5d": 0})
+    b = world.build()
+    assert b.features.vendor_split_rows == () and b.pack["features"]["vendor_split_rows"] == []   # the 5-day feature is empty
+    assert (b.decision.rule_id, b.decision.cited) == ("R4", (reg.capture_id,))
+    assert [x["capture_id"] for x in b.proposal["citations"]] == [reg.capture_id]
+
+
+# ------------------------------------------------------------------ D2: corroboration peers come from the same industry first
+
+def _industries(world, rows):
+    """``rows``: (security_id, yahoo_industry, captured_at). One security_attributes row each."""
+    conn = connect(world.cfg.paths.db)
+    for sid, industry, captured_at in rows:
+        conn.execute("INSERT INTO security_attributes (captured_at, security_id, yahoo_sector, yahoo_industry, source_sha256) "
+                     "VALUES (?, ?, 'Financial Services', ?, ?)", (captured_at, sid, industry, "0" * 64))
+    conn.close()
+
+
+EARLY = "2026-10-01T10:00:00.000000Z"
+
+
+def test_industry_family_is_the_text_before_a_dash_else_the_first_word():
+    assert feat.industry_family("Insurance Brokers") == "Insurance"
+    assert feat.industry_family("Insurance - Life") == "Insurance"
+    assert feat.industry_family("Insurance - Diversified") == "Insurance"
+    assert feat.industry_family("Banks - Regional") == "Banks"
+    assert feat.industry_family("Auto Parts") == "Auto"
+    assert feat.industry_family("Steel") == "Steel"
+    assert feat.industry_family("  ") is None and feat.industry_family(None) is None
+
+
+def test_peers_use_the_same_industry_when_it_has_three_members(world):
+    _industries(world, [(1, "Insurance Brokers", EARLY), (4, "Insurance Brokers", EARLY), (5, "Insurance Brokers", EARLY),
+                        (6, "Insurance Brokers", EARLY), (2, "Insurance - Life", EARLY)])
+    b = world.build()
+    assert b.features.peer_universe == "industry" and b.pack["features"]["peer_universe"] == "industry"
+    assert b.features.n_peers == 5 and b.features.n_peers_moved == 0          # 2 and 3 fell 6%, but they are not in it
+    assert b.features.sector_group == "Insurance"                              # the sector label is still reported
+
+
+def test_peers_fall_back_to_the_industry_family_across_sector_groups(world):
+    """POLICYBZR shape: the subject's own industry is alone; the family has the corroborating peers."""
+    _industries(world, [(1, "Insurance Brokers", EARLY), (2, "Insurance - Life", EARLY), (3, "Insurance - Life", EARLY),
+                        (7, "Insurance - Diversified", EARLY)])               # 7 sits in the Metals sector group
+    b = world.build()
+    assert b.features.peer_universe == "industry_family" and b.pack["features"]["peer_universe"] == "industry_family"
+    assert b.features.n_peers == 5 and b.features.n_peers_moved == 2           # n_peers stays the sector group's
+    from quant.triage import grade
+    assert grade.corroborated(b.features.n_peers_moved) is True
+
+
+@pytest.mark.parametrize("rows", [
+    [(1, "Insurance Brokers", EARLY), (4, "Insurance Brokers", EARLY), (5, "Insurance Brokers", EARLY),
+     (6, "Insurance Brokers", EARLY)],                                                            # industry of 3 peers
+    [(1, "Insurance Brokers", EARLY), (2, "Insurance - Life", EARLY), (3, "Insurance - Life", EARLY),
+     (7, "Insurance - Diversified", EARLY)],                                                      # family, crosses the sector group
+], ids=["industry", "industry_family"])
+def test_the_peer_median_and_count_that_r3_reads_stay_on_the_sector_group(world, rows):
+    """D2 changes only who corroborates. n_peers and the peer median (R3's gap test) are the sector group's."""
+    base = world.build().features
+    assert base.peer_universe == "sector_group" and base.n_peers == 5
+    _industries(world, rows)
+    f = world.build().features
+    assert f.peer_universe in ("industry", "industry_family")
+    assert (f.n_peers, f.sector_peer_median_move_pct) == (base.n_peers, base.sector_peer_median_move_pct)
+    assert abs(f.sector_peer_median_move_pct) < 3.0          # the 6% fallers 2 and 3 do not drag the median in a small universe
+
+
+def test_peers_fall_back_to_the_sector_group_when_industry_and_family_are_thin(world):
+    _industries(world, [(1, "Insurance Brokers", EARLY), (2, "Insurance - Life", EARLY)])         # family of two
+    b = world.build()
+    assert b.features.peer_universe == "sector_group" and b.features.n_peers == 5 and b.features.n_peers_moved == 2
+
+
+def test_peers_without_any_attributes_use_the_sector_group(world):
+    b = world.build()
+    assert b.features.peer_universe == "sector_group" and b.pack["features"]["peer_universe"] == "sector_group"
+    assert b.features.n_peers == 5 and b.features.n_peers_moved == 2
+
+
+def test_peer_industry_ignores_a_capture_made_after_the_cutoff(world):
+    _industries(world, [(1, "Insurance Brokers", EARLY), (4, "Insurance Brokers", EARLY), (5, "Insurance Brokers", EARLY),
+                        (6, "Insurance Brokers", EARLY),
+                        (5, "Steel", "2026-10-31T10:00:00.000000Z")])              # after the cutoff: invisible
+    b = world.build()
+    assert b.features.peer_universe == "industry" and b.features.n_peers == 5
+
+
+def test_peer_industry_is_the_latest_capture_at_or_before_the_cutoff(world):
+    _industries(world, [(1, "Insurance Brokers", EARLY), (4, "Insurance Brokers", EARLY), (5, "Insurance Brokers", EARLY),
+                        (6, "Insurance Brokers", EARLY),
+                        (4, "Steel", "2026-10-15T10:00:00.000000Z")])              # a later capture moves 4 out
+    b = world.build()
+    assert b.features.peer_universe == "sector_group"                              # industry and family each have 2 left
+
+
+def test_a_missing_attributes_table_leaves_the_sector_group_peers(world):
+    conn = connect(world.cfg.paths.db)
+    conn.execute("DROP TRIGGER IF EXISTS immutable_security_attributes_update")
+    conn.execute("DROP TRIGGER IF EXISTS immutable_security_attributes_delete")
+    conn.execute("ALTER TABLE security_attributes RENAME TO security_attributes_gone")
+    conn.close()
+    b = world.build()
+    assert b.features.peer_universe == "sector_group" and b.features.n_peers == 5
+
+
+# ------------------------------------------------------------------ D3: a placeholder links to its parent by ISIN suffix
+
+HEG_ISIN, HEG_DUMMY = "INE545A01024", "DUM545A01024"
+
+
+def test_isin_suffix_link_requires_the_dum_prefix_and_the_same_tail():
+    assert feat.is_isin_placeholder_of("DUM545A01024", "INE545A01024") is True
+    assert feat.is_isin_placeholder_of("DUM545A01024", "INE545A01025") is False
+    assert feat.is_isin_placeholder_of("INE545A01024", "INE545A01024") is False      # not a DUM placeholder
+    assert feat.is_isin_placeholder_of("XYZ545A01024", "INE545A01024") is False
+    assert feat.is_isin_placeholder_of(None, "INE545A01024") is False
+
+
+@pytest.mark.parametrize("lag,attached", [(-45, True), (-46, False), (15, True), (60, True), (61, False), (24, True)])
+def test_an_isin_linked_placeholder_matches_within_ex_minus_45_to_ex_plus_60(lag, attached):
+    from datetime import date, timedelta
+    ex = date.fromisoformat("2026-09-07")
+    ev = {"day": (ex + timedelta(days=lag)).isoformat(), "security_id": 99,
+          "detail": {"placeholder_isin": HEG_DUMMY, "parent_symbol": None}}
+    got = feat.placeholder_for([ev], security_id=1, isin=HEG_ISIN, symbol="HEGAM", ex_date="2026-09-07")
+    assert got is attached
+
+
+@pytest.mark.parametrize("lag,attached", [(15, True), (16, False), (24, False)])
+def test_a_symbol_only_link_keeps_the_ex_plus_15_window(lag, attached):
+    from datetime import date, timedelta
+    ex = date.fromisoformat("2026-09-07")
+    ev = {"day": (ex + timedelta(days=lag)).isoformat(), "security_id": 99,
+          "detail": {"placeholder_isin": "ZZZ000000000", "parent_symbol": "HEGAM"}}
+    assert feat.placeholder_for([ev], security_id=1, isin=HEG_ISIN, symbol="HEGAM", ex_date="2026-09-07") is attached
+
+
+def _heg_world(world, *, jump="2026-09-07", event_day="2026-10-01"):
+    """HEGAM (INE545A01024) jumps 0.3738 on ``jump``; the NSE placeholder DUMMYHEG (DUM545A01024) is first captured later."""
+    _add_security(world, 11, {d: (100.0 if d < jump else 37.38) for d in BDAYS}, isin=HEG_ISIN, symbol="HEGAM")
+    conn = connect(world.cfg.paths.db)
+    conn.execute("INSERT INTO securities (security_id, isin, name, first_seen, last_seen, status) "
+                 "VALUES (12, ?, 'Dummy HEG', '2026-10-01', '2026-10-30', 'listed')", (HEG_DUMMY,))
+    conn.close()
+    with world.run() as ctx:
+        _placeholder_event(ctx, 12, event_day, {"placeholder_symbol": "DUMMYHEG", "placeholder_isin": HEG_DUMMY,
+                                                "basis": "dummy_prefix", "parent_symbol": None})
+    conn = connect(world.cfg.paths.db, readonly=True)
+    try:
+        return [b for b in world.build_all(conn) if b.anomaly.security_id in (11, 12)]
+    finally:
+        conn.close()
+
+
+def test_heg_the_placeholder_folds_into_the_parent_jump_and_the_rule_waits(world):
+    built = _heg_world(world)
+    assert [(b.anomaly.kind, b.anomaly.isin, b.anomaly.ex_date) for b in built] == [("suspected_jump", HEG_ISIN, "2026-09-07")]
+    b = built[0]
+    assert b.features.gross_factor == pytest.approx(0.3738, abs=1e-4) and b.features.placeholder is True
+    assert (b.decision.label, b.decision.rule_id, b.decision.action) == ("pending_listing", "R1", "wait")
+    assert b.proposal["classification"]["subtype"] == "index_placeholder"
+
+
+def test_a_placeholder_first_captured_more_than_60_days_after_the_jump_is_listed_on_its_own(world):
+    built = _heg_world(world, jump="2026-07-20")                            # event 2026-10-01 is 73 days later
+    by_kind = {b.anomaly.kind: b for b in built}
+    assert sorted(by_kind) == ["index_placeholder", "suspected_jump"]
+    assert by_kind["suspected_jump"].features.placeholder is False and by_kind["suspected_jump"].decision.rule_id != "R1"
+
+
+# ------------------------------------------------------------------ D9: a source that answered with nothing is not "skipped"
+
+def _collect_note(world, status_by_source, *, now=NOON):
+    """What ``triage collect`` records in its run notes: per anomaly, per source, the answer state."""
+    with world.run(now=now) as ctx:
+        ctx.notes["collect"] = {"INE000000001@2026-10-28": {
+            name: {"status": st, "detail": "x", "n_envelopes": 0, "captures": []} for name, st in status_by_source.items()}}
+
+
+def test_source_status_reports_a_collected_empty_or_error_answer_and_never_calls_it_skipped(world):
+    _collect_note(world, {"yahoo_actions": "ok", "yahoo_news": "empty", "feeds": "skipped"})
+    b = world.build()
+    assert b.pack["source_status"]["yahoo_news"] == "empty"
+    assert b.pack["source_status"]["yahoo_actions"] == "skipped"       # said ok but archived no envelope: nothing to cite
+    assert b.pack["source_status"]["sebi_rss"] == "skipped"            # never run (the feeds line is not a provenance)
+
+
+def test_source_status_reports_a_collect_error(world):
+    _collect_note(world, {"yahoo_news": "error"})
+    assert world.build().pack["source_status"]["yahoo_news"] == "error"
+
+
+def test_source_status_ignores_a_collect_made_after_the_cutoff(world):
+    _collect_note(world, {"yahoo_news": "empty"}, now="2026-10-30T18:30:00.000000Z")
+    assert world.build().pack["source_status"]["yahoo_news"] == "skipped"
+
+
+def test_an_archived_envelope_outranks_a_collect_note(world):
+    register(world, provenance="yahoo_news", title="SYM1 news", source_class="news", relevance="context", entity_match=False,
+             published_at=None, published_at_basis=None, relevance_basis="no_token_match", excerpt=None)
+    _collect_note(world, {"yahoo_news": "empty"})
+    assert world.build().pack["source_status"]["yahoo_news"] == "ok"
 
 
 def test_pack_r5_cross_section_gives_a_round_ratio_or_no_factor_and_waits_for_later_bars(world):

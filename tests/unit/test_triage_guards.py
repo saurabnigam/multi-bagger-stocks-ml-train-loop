@@ -12,7 +12,9 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
+import shutil
 import sqlite3
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -52,11 +54,25 @@ def _fast_run_context(monkeypatch):
     monkeypatch.setattr(RunContext, "_get_git_sha", staticmethod(lambda: "test"))
 
 
-def _world(tmp_path):
-    db = tmp_path / "state.db"
+_TEMPLATE: dict[str, Path] = {}
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _state_template(tmp_path_factory):
+    """One schema build for the module; every ``_world`` copies it (about 30 ms saved per test)."""
+    db = tmp_path_factory.mktemp("guards_template") / "state.db"
     conn = connect(db)
     apply_schema(conn, kind="state")
-    conn.close()
+    conn.close()                                                                 # WAL checkpointed: one file
+    _TEMPLATE["db"] = db
+    yield
+    _TEMPLATE.clear()
+
+
+def _world(tmp_path):
+    db = tmp_path / "state.db"
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(_TEMPLATE["db"], db)
     cfg = load_config().with_paths(db=db, prices_db=tmp_path / "p.db", data_dir=tmp_path / "d",
                                     archive_dir=tmp_path / "a", knowledge_dir=tmp_path / "k", ui_dir=tmp_path / "u")
     return cfg, db

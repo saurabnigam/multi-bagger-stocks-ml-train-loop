@@ -17,8 +17,9 @@ first. Errors are strings that start with the rule they belong to (``V1:`` ... `
 
 Pack features read here (``pack["features"]``, flat): ``gross_factor``, ``n_peers_moved``,
 ``sector_peer_median_move_pct``, ``market_median_move_pct``, ``vendor_split_rows`` (a list; the
-recorded-case name ``yahoo_split_event_in_store_pm5d`` is accepted too), ``cross_section_count``,
-``reversal_prior`` and ``placeholder``. ``series`` is the
+recorded-case name ``yahoo_split_event_in_store_pm5d`` is accepted too), ``vendor_split_candidates`` (vendor splits
+within 400 days of the jump, each with ``sessions_from_jump`` and ``compensating_jump``; ``r4_row`` is the one
+test of which of them R4 acts on), ``cross_section_count``, ``reversal_prior`` and ``placeholder``. ``series`` is the
 security's series at the jump (a string). A missing or null feature is unknown, never zero or false:
 a condition that needs it is treated as not shown, and a negative check that needs it reports
 ``unknown`` rather than ``none_found``.
@@ -29,6 +30,7 @@ engine looked with every input present and saw nothing) and ``unknown`` (an inpu
 """
 from __future__ import annotations
 
+import math
 import re
 import sqlite3
 from dataclasses import dataclass, field
@@ -53,6 +55,7 @@ R3_WINDOW_DAYS = 120
 R3_GROSS_RANGE = (0.2, 0.9)
 R3_PEER_MARKET_GAP_PCT = 3.0
 R4_RATIO_TOLERANCE = 0.03
+R4_MIN_SESSIONS = 2                        # a vendor split within 1 session of the jump is the vendor's own, correctly dated
 R5_MIN_JUMPS = 3                           # jumps on one date across the store (rule R5; also an R7 negative check)
 R5_MARKET_QUIET_PCT = 2.0                  # |market median move| under this is a quiet day
 R7_WINDOW_DAYS = 5                         # a genuine-event document must be dated in [ex - 5d, ex]
@@ -119,11 +122,43 @@ def vendor_split_rows(features: Mapping[str, Any]) -> list[Any]:
     return list(rows) if isinstance(rows, (list, tuple)) else []
 
 
+def r4_target(gross: float | None) -> float | None:
+    """The split ratio R4 looks for: 1/gross for a downward jump, gross for an upward one (design D1)."""
+    if gross is None or not math.isfinite(gross) or gross <= 0:
+        return None
+    return 1.0 / gross if gross < 1.0 else gross
+
+
+def r4_row(candidates: Any, gross: float | None) -> Mapping[str, Any] | None:
+    """The vendor split R4 acts on, from the pack's ``vendor_split_candidates``; None when none qualifies.
+
+    A candidate qualifies when it is not within one session of the jump (``sessions_from_jump``), the price store shows
+    no compensating jump on its date (``compensating_jump`` is exactly False: unknown is None and does not qualify), and
+    its ratio is within ``R4_RATIO_TOLERANCE`` of ``r4_target``. The engine (rules R4) and the agent validator both call
+    this, so they cannot disagree about what a misdated vendor split is. Nearest ratio wins, then the earlier date.
+    """
+    target = r4_target(gross)
+    if target is None or not isinstance(candidates, (list, tuple)):
+        return None
+    ok = []
+    for row in candidates:
+        if not isinstance(row, Mapping):
+            continue
+        ratio, sessions = row.get("ratio"), row.get("sessions_from_jump")
+        if not is_number(ratio) or ratio <= 0 or isinstance(sessions, bool) or not isinstance(sessions, int) \
+                or abs(sessions) < R4_MIN_SESSIONS or row.get("compensating_jump") is not False:
+            continue
+        if abs(float(ratio) - target) / target <= R4_RATIO_TOLERANCE:
+            ok.append(row)
+    return min(ok, key=lambda r: (abs(float(r["ratio"]) - target) / target, str(r.get("date")))) if ok else None
+
+
 def vendor_conflict(features: Mapping[str, Any]) -> bool:
-    """A vendor-conflict feature: a vendor split on a different date, a cross-section of jumps, or a reversal."""
+    """A vendor-conflict feature: a vendor split (near the jump, or a qualifying R4 split months away), a cross-section of
+    jumps, or a reversal."""
     xs = _num(features, "cross_section_count")
-    return bool(vendor_split_rows(features)) or (xs is not None and xs >= R5_MIN_JUMPS) \
-        or features.get("reversal_prior") is True
+    return bool(vendor_split_rows(features)) or r4_row(features.get("vendor_split_candidates"), _num(features, "gross_factor")) is not None \
+        or (xs is not None and xs >= R5_MIN_JUMPS) or features.get("reversal_prior") is True
 
 
 def unreadable_captures(rejected: list[tuple[str, str]] | None) -> list[str]:
@@ -550,9 +585,14 @@ def _derive_rule(label: str, res: Mapping[str, Any], factor: float | None, cited
         return None, False, bool(primary)
     if label == "vendor_error_other":
         gross = _num(features, "gross_factor")
-        if basis == "vendor_ratio" and gross is not None and gross > 0 and factor is not None \
-                and vendor_split_rows(features) and abs(factor - 1 / gross) / (1 / gross) <= R4_RATIO_TOLERANCE:
-            return "R4", False, bool(primary)
+        if basis == "vendor_ratio" and gross is not None and gross > 0 and factor is not None:
+            candidates = features.get("vendor_split_candidates")
+            if isinstance(candidates, (list, tuple)):         # a pack from the current engine: the same test as rule R4
+                met, target = r4_row(candidates, gross) is not None, r4_target(gross)
+            else:                                             # an older pack or a recorded row: the five-day rows only
+                met, target = bool(vendor_split_rows(features)), 1.0 / gross
+            if met and abs(factor - target) / target <= R4_RATIO_TOLERANCE:
+                return "R4", False, bool(primary)
         return None, False, bool(primary)
     if label == "pending_listing" and features.get("placeholder") is True:
         return "R1", False, bool(primary)

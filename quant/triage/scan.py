@@ -4,17 +4,21 @@ An anomaly is a measured one-day jump, an unresolved ``suspected`` row, or an in
 ``measure_jumps`` repeats ``actions.detect``'s arithmetic on the price store, without writing, so
 the two always agree on what a jump is (a test compares them on the actions CLI fixture world).
 
-Window (F2). The scan lists every measured jump that is not yet resolved in ``corporate_actions``
-and whose ex-date is in the trailing 13 months of ``as_of`` (the lookback ``data actions-list`` uses
-for its in-window flag), plus every unresolved ``suspected`` row observed at or before the cutoff
-whatever its date, plus index placeholders. ``since`` widens the window and never narrows it.
-Resolution is read as of the cutoff, so a decision recorded later does not hide an anomaly from an
-earlier cohort.
+Window (F2, narrowed by D4). The default window lists every measured jump that is not yet resolved in
+``corporate_actions`` and whose ex-date is in the trailing 13 months of ``as_of`` (the lookback
+``data actions-list`` uses for its in-window flag), every unresolved ``suspected`` row in the same 13
+months, anything with an open proposal (status ``proposed`` or ``wait``) whatever its date, and index
+placeholders. An older unresolved suspect row with no open proposal is hidden: it is counted in
+``ScanResult.hidden`` (so a list can say how many there are and how to show them) and ``since``
+widens the window to include it. ``since`` never narrows the window. An explicit ``select`` by ISIN and
+ex-date still finds a hidden row. Resolution is read as of the cutoff, so a decision recorded later does
+not hide an anomaly from an earlier cohort.
 
 A placeholder event for a security that also has a listed jump is folded into that jump (its
-features say ``placeholder: true``) instead of being listed twice, but only when the event's day is in
-that jump's placeholder window (``features.placeholder_window``: ex minus 45 days to ex plus 15 days).
-An event outside every jump's window is listed on its own.
+features say ``placeholder: true``) instead of being listed twice, when ``features.placeholder_links``
+says so: by the parent symbol or security, with the event's day in ``[ex - 45, ex + 15]``, or by ISIN
+suffix (``DUM545A01024`` for ``INE545A01024``), with the event's day in ``[ex - 45, ex + 60]``. An event
+outside every jump's window is listed on its own.
 
 The scan is read-only: it takes a state connection and a price store and writes nothing.
 """
@@ -22,7 +26,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any, Iterable, Sequence
 
@@ -34,6 +38,7 @@ from quant.triage.types import RULE_ID_ENGINE, subject_key
 WINDOW_MONTHS = 13
 KIND_JUMP = "suspected_jump"
 KIND_PLACEHOLDER = "index_placeholder"
+OPEN_STATUSES = ("proposed", "wait")     # an anomaly with one of these has an open proposal and stays in the default window
 
 
 @dataclass(frozen=True)
@@ -71,6 +76,17 @@ class ScanResult:
     anomalies: list[Anomaly]
     n_measured: int
     n_suspect_rows: int
+    #: Unresolved suspect rows older than the window with no open proposal (D4). Not in ``anomalies``.
+    hidden: list[Anomaly] = field(default_factory=list)
+
+    @property
+    def n_hidden(self) -> int:
+        return len(self.hidden)
+
+    @property
+    def hidden_since(self) -> str | None:
+        """Earliest ex-date among the hidden rows: ``--since`` this date shows them all."""
+        return min((a.ex_date for a in self.hidden), default=None)
 
 
 def default_window_start(as_of: str) -> str:
@@ -208,19 +224,20 @@ def scan(conn: sqlite3.Connection, store: Any, as_of: str, *, since: str | None 
         anomalies.append(Anomaly(KIND_JUMP, isin, ex, sid, symbol, v["gross"], v["observed_at"], v["source"],
                                  v["in_window"], status, pid))
 
-    jump_dates: dict[int, list[str]] = {}
-    for a in anomalies:
-        jump_dates.setdefault(a.security_id, []).append(a.ex_date)
-    anomalies.extend(_placeholder_anomalies(conn, cutoff, jump_dates))
-    anomalies.sort(key=lambda a: (a.ex_date, a.isin or "", a.kind))
-    return ScanResult(as_of, cutoff, window_start, anomalies, len(measured), len(suspects))
+    hidden = [a for a in anomalies if a.source == "suspect_row" and not a.in_window and a.status not in OPEN_STATUSES]
+    shown = [a for a in anomalies if a not in hidden]
+    shown.extend(_placeholder_anomalies(conn, cutoff, shown))
+    shown.sort(key=lambda a: (a.ex_date, a.isin or "", a.kind))
+    hidden.sort(key=lambda a: (a.ex_date, a.isin or "", a.kind))
+    return ScanResult(as_of, cutoff, window_start, shown, len(measured), len(suspects), hidden)
 
 
-def _placeholder_anomalies(conn: sqlite3.Connection, cutoff: str, jump_dates: dict[int, list[str]]) -> list[Anomaly]:
-    """One anomaly per placeholder (its first event in the lookback), unless a listed jump of its security claims it.
+def _placeholder_anomalies(conn: sqlite3.Connection, cutoff: str, jumps: Sequence[Anomaly]) -> list[Anomaly]:
+    """One anomaly per placeholder (its first event in the lookback), unless a listed jump claims it.
 
-    ``jump_dates`` maps a security id to the ex-dates of its listed jumps. The event is claimed (folded into the
-    jump) only if its day is inside that jump's placeholder window, the same test ``features.placeholder_for`` applies.
+    ``jumps`` are the listed jump anomalies. The event is claimed (folded into the jump) when
+    ``features.placeholder_links`` says it points at that jump's security, the same test
+    ``features.placeholder_for`` applies, so a folded placeholder is exactly one the jump's features report.
     """
     events = feat.placeholder_events(conn, cutoff)
     if not events:
@@ -234,8 +251,8 @@ def _placeholder_anomalies(conn: sqlite3.Connection, cutoff: str, jump_dates: di
         first.setdefault((ev["security_id"], ev["detail"].get("placeholder_isin")), ev)
     out: list[Anomaly] = []
     for (sid, _placeholder_isin), ev in first.items():
-        if sid is not None and any(feat.placeholder_window(ex)[0] <= ev["day"] <= feat.placeholder_window(ex)[1]
-                                   for ex in jump_dates.get(int(sid), ())):
+        if any(feat.placeholder_links(ev, security_id=j.security_id, isin=j.isin, symbol=j.symbol, ex_date=j.ex_date)
+               for j in jumps if j.kind == KIND_JUMP):
             continue
         isin, symbol = (None, None) if sid is None else _identities(conn, [int(sid)])[int(sid)]
         isin = isin or ev["detail"].get("placeholder_isin")
@@ -248,6 +265,7 @@ def _placeholder_anomalies(conn: sqlite3.Connection, cutoff: str, jump_dates: di
 
 
 def select(result: ScanResult, *, isin: str | None = None, ex_date: str | None = None) -> list[Anomaly]:
-    """Anomalies matching an ISIN and ex-date (either may be None)."""
-    return [a for a in result.anomalies if (isin is None or a.isin == isin) and (ex_date is None or a.ex_date == ex_date)]
+    """Anomalies matching an ISIN and ex-date (either may be None). An explicit pick also finds a hidden row."""
+    return [a for a in (*result.anomalies, *result.hidden)
+            if (isin is None or a.isin == isin) and (ex_date is None or a.ex_date == ex_date)]
 

@@ -270,25 +270,52 @@ def _seed_old_suspect_and_placeholder(w):
     return ["INE000000002@2024-01-15", "INE000000003@2026-10-29"]
 
 
-def test_the_old_suspect_row_and_the_placeholder_reach_list_collect_and_build(world, capsys):
-    extra = _seed_old_suspect_and_placeholder(world)
+OLD_KEY = "INE000000002@2024-01-15"
+PLACEHOLDER_KEY = "INE000000003@2026-10-29"
+
+
+def test_the_placeholder_reaches_list_collect_and_build_and_the_old_suspect_is_hidden(world, capsys):
+    assert _seed_old_suspect_and_placeholder(world) == [OLD_KEY, PLACEHOLDER_KEY]
     assert run(world, "triage", "list", "--as-of", AS_OF, "--json") == 0
-    rows = {a["key"]: a for a in json.loads(capsys.readouterr().out)["anomalies"]}
-    assert set(rows) == {KEY, *extra}
-    assert rows[extra[0]]["source"] == "suspect_row" and rows[extra[0]]["in_window"] is False
-    assert rows[extra[1]]["source"] == "placeholder_event"
+    out = json.loads(capsys.readouterr().out)
+    rows = {a["key"]: a for a in out["anomalies"]}
+    assert set(rows) == {KEY, PLACEHOLDER_KEY} and rows[PLACEHOLDER_KEY]["source"] == "placeholder_event"
+    assert out["n_hidden"] == 1 and out["hidden_since"] == "2024-01-15"       # D4: counted, not listed
+
+    assert run(world, "triage", "list", "--as-of", AS_OF) == 0
+    text = capsys.readouterr().out
+    hidden_lines = [line for line in text.splitlines() if "hidden" in line]
+    assert len(hidden_lines) == 1 and "1 older unresolved suspect" in hidden_lines[0] and "--since 2024-01-15" in hidden_lines[0]
+    assert OLD_KEY.split("@")[0] not in text.replace(hidden_lines[0], "")
+
+    assert run(world, "triage", "list", "--as-of", AS_OF, "--since", "2024-01-15", "--json") == 0
+    shown = json.loads(capsys.readouterr().out)
+    assert {a["key"] for a in shown["anomalies"]} == {KEY, PLACEHOLDER_KEY, OLD_KEY} and shown["n_hidden"] == 0
+    assert run(world, "triage", "list", "--as-of", AS_OF, "--since", "2024-01-15") == 0
+    assert "hidden" not in capsys.readouterr().out                             # nothing hidden, no line
 
     assert run(world, "triage", "collect", "--as-of", AS_OF, "--all", "--dry-run", *HUMAN) == 0
     out = capsys.readouterr().out
-    assert all(k in out for k in (KEY, *extra)) and world.client.calls == []
+    assert KEY in out and PLACEHOLDER_KEY in out and OLD_KEY not in out and world.client.calls == []
     assert build_all(world, "--dry-run") == 0
     out = capsys.readouterr().out
-    assert all(k in out for k in (KEY, *extra))
+    assert KEY in out and PLACEHOLDER_KEY in out and OLD_KEY not in out
 
     assert build_all(world) == 0
-    assert sorted(json.loads(r[2])["key"] for r in engine_rows(world)) == sorted([KEY, *extra])
+    assert sorted(json.loads(r[2])["key"] for r in engine_rows(world)) == sorted([KEY, PLACEHOLDER_KEY])
     assert build_all(world) == 0                                               # a rebuild duplicates nothing
-    assert len(engine_rows(world)) == 3
+    assert len(engine_rows(world)) == 2
+
+
+def test_an_old_suspect_can_be_picked_by_isin_and_ex_date_and_then_stays_listed_with_its_proposal(world, capsys):
+    _seed_old_suspect_and_placeholder(world)
+    assert run(world, "triage", "build", "--as-of", AS_OF, "--isin", "INE000000002", "--ex-date", "2024-01-15") == 0
+    assert OLD_KEY in capsys.readouterr().out
+    assert [json.loads(r[2])["key"] for r in engine_rows(world)] == [OLD_KEY]
+    assert run(world, "triage", "list", "--as-of", AS_OF, "--json") == 0
+    out = json.loads(capsys.readouterr().out)
+    rows = {a["key"]: a for a in out["anomalies"]}
+    assert rows[OLD_KEY]["status"] == "proposed" and out["n_hidden"] == 0       # an open proposal keeps it in the window
 
 
 # ----------------------------------------------------------------------------- collect
@@ -641,6 +668,104 @@ def test_show_and_sheet_strip_terminal_escapes_and_forged_lines_from_document_te
         assert "excerpt: line one line two" in out
 
 
+def test_show_says_an_empty_source_answered_with_nothing_and_only_a_skipped_one_was_not_checked(world, capsys):
+    """D9: Yahoo answered 'no news' (empty). That is not 'not checked'; the feed that never ran is."""
+    class EmptyNews(FakeYahoo):
+        def news(self, ticker):
+            self.calls.append(("news", ticker))
+            return RawNews(ticker=ticker, fetched_at=EVENING, status="empty", items=[])
+    world.client = EmptyNews()
+    assert run(world, "triage", "collect", "--as-of", AS_OF, "--all", *HUMAN) == 0
+    assert build_all(world) == 0
+    capsys.readouterr()
+    assert run(world, "triage", "show", "--isin", ISIN, "--ex-date", EX) == 0
+    lines = capsys.readouterr().out.splitlines()
+    nothing = [line for line in lines if "answered with nothing (not proof that nothing exists)" in line]
+    unchecked = [line for line in lines if "not checked" in line]
+    assert len(nothing) == 1 and "yahoo_news" in nothing[0]
+    assert len(unchecked) == 1 and "yahoo_news" not in unchecked[0] and "sebi_rss" in unchecked[0]
+    assert "yahoo_actions" not in nothing[0] + unchecked[0]                      # it answered, with an envelope
+
+
+def test_show_a_failed_source_is_failed_not_skipped(world, capsys):
+    class DownNews(FakeYahoo):
+        def news(self, ticker):
+            raise RuntimeError("yahoo is down")
+    world.client = DownNews()
+    assert run(world, "triage", "collect", "--as-of", AS_OF, "--all", *HUMAN) == 0
+    assert build_all(world) == 0
+    capsys.readouterr()
+    assert run(world, "triage", "show", "--isin", ISIN, "--ex-date", EX) == 0
+    out = capsys.readouterr().out
+    failed = [line for line in out.splitlines() if "failed or unreadable" in line]
+    assert len(failed) == 1 and "yahoo_news" in failed[0]
+    assert "yahoo_news" not in [line for line in out.splitlines() if "not checked" in line][0]
+
+
+# ----------------------------------------------------------------------------- D10: --symbol matches any historical symbol
+
+def _rename_testco(w):
+    """TESTCO was OLDTEST until 2025-01-01: a second symbol_history row for the same security."""
+    conn = connect(w.db)
+    conn.execute("INSERT INTO symbol_history (security_id, nse_symbol, yahoo_ticker, valid_from, valid_to, source) "
+                 "VALUES (1, 'OLDTEST', 'OLDTEST.NS', '2024-01-01', '2025-01-01', 'test')")
+    conn.close()
+
+
+def test_list_accepts_a_current_or_historical_symbol_in_any_case(world, capsys):
+    _rename_testco(world)
+    for symbol in ("OLDTEST", "oldtest", "TESTCO"):
+        assert run(world, "triage", "list", "--as-of", AS_OF, "--symbol", symbol, "--json") == 0
+        assert [a["key"] for a in json.loads(capsys.readouterr().out)["anomalies"]] == [KEY], symbol
+    assert run(world, "triage", "list", "--as-of", AS_OF, "--symbol", "FLAT2", "--json") == 0
+    assert json.loads(capsys.readouterr().out)["anomalies"] == []               # a known security with no anomaly
+    assert run(world, "triage", "list", "--as-of", AS_OF, "--symbol", "NOSUCH") == 1
+    assert "NOSUCH" in capsys.readouterr().err
+
+
+def test_show_finds_the_security_by_a_historical_symbol(world, capsys):
+    _rename_testco(world)
+    assert build_all(world) == 0
+    capsys.readouterr()
+    assert run(world, "triage", "show", "--symbol", "OLDTEST", "--ex-date", EX, "--json") == 0
+    assert json.loads(capsys.readouterr().out)["subject"]["key"] == KEY
+    assert run(world, "triage", "show", "--symbol", "OLDTEST") == 0               # one proposal: no ex-date needed
+    assert f"TRIAGE {KEY}" in capsys.readouterr().out
+    assert run(world, "triage", "show", "--symbol", "OLDTEST", "--isin", "INE000000002", "--ex-date", EX) == 1
+    assert "INE000000001" in capsys.readouterr().err                              # symbol and ISIN disagree
+    assert run(world, "triage", "show", "--symbol", "NOSUCH", "--ex-date", EX) == 1
+
+
+def test_show_by_symbol_without_an_ex_date_lists_the_choices_when_there_are_several(world, capsys):
+    conn = connect(world.db)
+    conn.execute("INSERT INTO corporate_actions (security_id, ex_date, kind, source, observed_at, note) "
+                 "VALUES (1, '2026-03-02', 'suspected', 'inferred', '2026-10-01T00:00:00.000000Z', ?)",
+                 (json.dumps({"gross_factor": 0.5}),))
+    conn.close()
+    assert build_all(world) == 0
+    capsys.readouterr()
+    assert run(world, "triage", "show", "--symbol", "TESTCO") == 1
+    err = capsys.readouterr().err
+    assert f"{ISIN}@2026-03-02" in err and KEY in err and "--ex-date" in err
+
+
+def test_attach_accepts_a_historical_symbol_instead_of_an_isin(world, capsys):
+    _rename_testco(world)
+    circular = world.root / "circular.txt"
+    circular.write_text("NSE circular: TESTCO special pre-open session. " + SPOS_EXCERPT + "\n")
+    argv = ["triage", "attach", "--as-of", AS_OF, "--ex-date", EX, "--title", "TESTCO: special pre-open session for demerger",
+            "--published-at", "2025-10-10", "--file", str(circular), "--source-class", "exchange", "--relevance", "entity",
+            "--excerpt", SPOS_EXCERPT, "--field", "prev_close=600", "--field", "spos_price=360", *HUMAN]
+    assert run(world, *argv, "--symbol", "OLDTEST") == 0
+    assert f"for {ISIN}@{EX}" in capsys.readouterr().out
+    assert len(world.q("SELECT 1 FROM captures")) == 1
+    assert run(world, *argv, "--isin", ISIN) == 0                                  # the same envelope: already archived
+    assert "Already archived" in capsys.readouterr().out and len(world.q("SELECT 1 FROM captures")) == 1
+    assert run(world, *argv, "--symbol", "NOSUCH") == 1
+    assert run(world, *argv) == 1                                                  # neither --isin nor --symbol
+    assert "--isin" in capsys.readouterr().err
+
+
 def test_show_unknown_subject_exits_1(world, capsys):
     assert run(world, "triage", "show", "--isin", ISIN, "--ex-date", EX) == 1
     assert run(world, "triage", "show", "--proposal-id", "PT-none") == 1
@@ -816,6 +941,62 @@ def test_reject_is_human_only_and_records_the_reason(world, capsys):
 
     assert run(world, "triage", "reject", "--proposal-id", pid, "--reason", "bad_evidence", *HUMAN) == 3   # already decided
     assert run(world, "triage", "reject", "--proposal-id", "PT-none", "--reason", "stale", *HUMAN) == 1
+
+
+def _runs(w):
+    return w.q("SELECT kind, status, notes_json FROM runs ORDER BY run_id")
+
+
+def test_a_refused_actions_resolve_is_audited_as_a_refused_run_and_writes_no_data_row(world, capsys):
+    """D5: the refusal happens inside the data_fix run, so the run row is the audit record and nothing else is kept."""
+    assert build_all(world) == 0
+    assert attach_circular(world) == 0
+    assert build_all(world) == 0
+    pid, confirm = proposed_engine(world)
+    wrong = "00000000" if confirm != "00000000" else "ffffffff"
+    before = world.q("SELECT (SELECT count(*) FROM decisions), (SELECT count(*) FROM corporate_actions), "
+                     "(SELECT count(*) FROM runs), (SELECT count(*) FROM proposals)")[0]
+    assert main(resolve_args(world, pid, wrong)) == 3
+    assert "confirm" in capsys.readouterr().err
+    after = world.q("SELECT (SELECT count(*) FROM decisions), (SELECT count(*) FROM corporate_actions), "
+                    "(SELECT count(*) FROM runs), (SELECT count(*) FROM proposals)")[0]
+    assert after[:2] == before[:2] and after[3] == before[3]                       # no decision, no corporate action
+    assert after[2] == before[2] + 1                                              # one audit run
+    kind, status, notes = _runs(world)[-1]
+    assert (kind, status) == ("data_fix", "refused") and "confirm" in json.loads(notes)["error"]
+    assert world.q("SELECT status FROM proposals WHERE proposal_id = ?", (pid,)) == [("proposed",)]
+
+
+def test_a_reject_refused_before_its_run_opens_leaves_no_run_row(world, capsys):
+    """D5: the first 'not open' check runs on a read-only connection, before any RunContext: nothing is audited."""
+    assert build_all(world) == 0
+    (pid, *_), = engine_rows(world)
+    assert run(world, "triage", "reject", "--proposal-id", pid, "--reason", "stale", *HUMAN) == 0
+    capsys.readouterr()
+    before = world.fingerprint()
+    assert run(world, "triage", "reject", "--proposal-id", pid, "--reason", "stale", *HUMAN) == 3
+    assert "not 'proposed'" in capsys.readouterr().err
+    assert world.fingerprint() == before                                          # no runs row, no ledger event
+    assert not [r for r in _runs(world) if r[1] == "refused"]
+
+
+def test_a_reject_that_loses_a_race_inside_its_run_is_audited_as_refused(world, monkeypatch, capsys):
+    """D5: only the race path is refused inside the run: the proposal is no longer open by the time the run reads it."""
+    from quant.triage import store as triage_store
+    assert build_all(world) == 0
+    (pid, *_), = engine_rows(world)
+    assert run(world, "triage", "reject", "--proposal-id", pid, "--reason", "stale", *HUMAN) == 0
+    capsys.readouterr()
+    real = triage_store.get_proposal
+    monkeypatch.setattr(triage_store, "get_proposal", lambda conn, p: {**real(conn, p), "status": "proposed"})   # a stale read
+    before = len(_runs(world))
+    assert run(world, "triage", "reject", "--proposal-id", pid, "--reason", "duplicate", *HUMAN) == 3
+    assert "no longer" in capsys.readouterr().err
+    assert len(_runs(world)) == before + 1
+    kind, status, notes = _runs(world)[-1]
+    assert (kind, status) == ("triage", "refused") and "no longer" in json.loads(notes)["error"]
+    flags = world.q("SELECT llm_review FROM proposals WHERE proposal_id = ?", (pid,))[0][0]
+    assert "REJECT_duplicate" not in flags                                        # the refused attempt changed no proposal
 
 
 def test_rebuild_after_a_reject_keeps_it_rejected_until_the_evidence_changes(world):

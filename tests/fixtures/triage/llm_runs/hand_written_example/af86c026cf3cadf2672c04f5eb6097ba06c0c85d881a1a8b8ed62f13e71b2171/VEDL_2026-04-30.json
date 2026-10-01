@@ -32,7 +32,7 @@
    "kind": "llm",
    "name": "llm:hand_written_example",
    "prompt_sha256": "af86c026cf3cadf2672c04f5eb6097ba06c0c85d881a1a8b8ed62f13e71b2171",
-   "pack_sha256": "7673b6e8907c6ed3d1a26ba7fbd1d2f6e587cd799b5541a00fc28448003158ae",
+   "pack_sha256": "83c551f7f02fed63e8c598b0fa554befe0d838efeb72bbb2fc7cadb48d410d7c",
    "self_confidence": "high"
   },
   "anomaly_kind": "suspected_jump",
@@ -128,11 +128,13 @@
    "sector_peer_median_move_pct": -1.0,
    "market_median_move_pct": -0.88,
    "vendor_split_rows": [],
+   "vendor_split_candidates": [],
    "vendor_split_ratio": null,
    "cross_section_count": 1,
    "reversal_prior": false,
    "reversal_forward": null,
-   "peer_set_pit": false
+   "peer_set_pit": false,
+   "peer_universe": null
   },
   "source_status": {
    "yahoo_actions": "skipped",
