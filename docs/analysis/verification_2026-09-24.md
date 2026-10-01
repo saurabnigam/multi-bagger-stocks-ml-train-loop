@@ -259,20 +259,36 @@ Challengers on the same cohort: `EW_HIER_NR_v1` shares 23 of the champion's top 
 ties (the champion has 146 securities in ties); `EW_HIER_COV_v1` shares 29 of 30. EMMVEE ranks 2 under
 the champion, 1 without re-ranking and 6 with coverage scaling.
 
-**Recommended corporate-action factors (T2).** Use the market-implied factor, not the companies'
-cost-of-acquisition split. The cost split is a tax apportionment on net worth; applied to a total return
-it leaves a fake loss (TMPV -13%, VEDL -33%). The market factor matches how NSE indices treat a demerger
-on the ex-date (parent's previous close less its discovered ex price).
+**Recommended corporate-action factors (T2).** Use the exchange-derived factor: the parent's previous close divided
+by the special pre-open price (SPOS) that the exchange discovered for the ex-date. Do not use the companies'
+cost-of-acquisition split. The cost split is a tax apportionment on net worth; applied to a total return it leaves a
+fake loss (TMPV -13%, VEDL -33%).
 
 ```
 security  ex-date     kind         factor   source of the number
-TMPV      2025-10-14  demerger     1.6708   1 / ex-day gross factor 0.5985 (cost split would give 1.4524)
-VEDL      2026-04-30  demerger     2.849    1 / 0.3510 (cost split would give 1.9106)
+TMPV      2025-10-14  demerger     1.6519   660.75 / 400.00 (previous close / SPOS price; cost split would give 1.4524)
+VEDL      2026-04-30  demerger     2.6722   773.60 / 289.50 (previous close / SPOS price; cost split would give 1.9106)
 TRENT     2026-01-01  manual_adj   1.5      Yahoo applied the 1:2 bonus (record 2026-06-04) only from Jan 1
 HEG       2026-09-07  wait         -        spin-off lists late October 2026; HEG is excluded (BE series) anyway
 ```
 
-Counterfactual (sandbox, approvals dated before the cutoff): TMPV stays at 468 and VEDL at 40 but on 8 and
+**Superseded: the market-implied factors, TMPV 1.6708 and VEDL 2.849.** An earlier version of this section
+recommended 1 / (ex-day gross factor), that is 1 / 0.5985 and 1 / 0.3510, on the argument that this matches NSE
+indices. It does not. NSE Indices keeps the parent at its special pre-open price on the ex-date, so the part of the day's
+move that happens after price discovery is real return, not a corporate-action effect. On the ex-date that move was
+-1.14% for TMPV and -6.20% for VEDL. The market-implied factor folds that return into the adjustment, so it sits above the
+exchange-derived value: TMPV 1.6708 against 1.6519 (+1.1%), VEDL 2.849 against 2.6722 (+6.6%, which fails a 2%
+tolerance). The market-implied figure stays in the triage proposal as a labelled alternative, and as the rule R3 fallback
+when no circular is attached, with a declared uncertainty of 12%.
+
+**Where the prices come from.** The previous closes (660.75, 773.60) and the SPOS prices (400.00, 289.50) come from
+secondary sources: the NSE open as Yahoo shows it equals the discovered price, and Angel One, Upstox and Republic report
+the same figures. The NSE circular text was not read, so these factors are not verified against the primary document.
+Read the circular before approving, then resolve with `data actions-resolve` as a human; the two factors are
+recommendations, not approvals.
+
+Counterfactual (sandbox, approvals dated before the cutoff, run with the superseded market-implied factors; the
+exchange-derived ones were not re-run): TMPV stays at 468 and VEDL at 40 but on 8 and
 9 factors instead of 6; TRENT moves from 122 to 188, because its full 12-month history is weak and the
 truncation had been hiding it. Approvals made now take effect from the 2026-09-30 cohort, never
 retroactively (point-in-time).
