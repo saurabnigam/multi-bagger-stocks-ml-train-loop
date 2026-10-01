@@ -389,7 +389,7 @@ def test_cli_dry_run_leaves_a_preexisting_state_db_untouched(tmp_path):
     assert db_path.stat().st_mtime_ns == before_mtime
 
 
-def test_cli_real_run_does_write_a_runs_row(tmp_path):
+def test_cli_real_run_does_write_a_runs_row(tmp_path, monkeypatch):
     """Sanity counterpart: the non-dry-run path must still journal a real run (guards against
     the dry_run fix accidentally making every run a no-op).
 
@@ -397,6 +397,9 @@ def test_cli_real_run_does_write_a_runs_row(tmp_path):
     writes an ADR file under knowledge_dir) so this test cannot write into the actual repo
     tree, which other agents are editing concurrently.
     """
+    # Its own config file points every mutable path at tmp_path; env overrides would win over it.
+    for var in ("QUANT_DB_PATH", "QUANT_PRICES_DB_PATH", "QUANT_DATA_DIR", "QUANT_UI_DIR", "QUANT_KNOWLEDGE_DIR", "QUANT_ARCHIVE_DIR"):
+        monkeypatch.delenv(var, raising=False)
     db_path = tmp_path / "state.db"
     sample_path = tmp_path / "sample_legacy.db"
     build_sample(source=Path("quant_engine.db"), output=sample_path, tickers=SAMPLE_TICKERS)

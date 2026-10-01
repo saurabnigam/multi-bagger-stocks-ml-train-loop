@@ -27,7 +27,10 @@ from quant.errors import (
 )
 
 
-def test_config_loads_canonical_keys_and_paths():
+def test_config_loads_canonical_keys_and_paths(monkeypatch):
+    # Reads config only (no file access), so it may see the real repo-relative defaults.
+    for var in ("QUANT_DB_PATH", "QUANT_PRICES_DB_PATH", "QUANT_DATA_DIR", "QUANT_UI_DIR", "QUANT_KNOWLEDGE_DIR", "QUANT_ARCHIVE_DIR"):
+        monkeypatch.delenv(var, raising=False)
     repo_root = Path(__file__).resolve().parents[2]
     cfg = load_config()
     

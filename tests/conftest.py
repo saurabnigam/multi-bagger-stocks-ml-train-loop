@@ -31,6 +31,17 @@ def disable_network(monkeypatch):
     monkeypatch.setattr(socket.socket, "connect", blocked_connect)
 
 
+@pytest.fixture(autouse=True)
+def isolate_default_paths(monkeypatch, tmp_path_factory):
+    """Point every mutable default path at a temp dir, so a CLI handler that calls load_config()
+    without an override can never open the repository's real state DB or price store."""
+    base = tmp_path_factory.mktemp("default_paths")
+    for var, name in (("QUANT_DB_PATH", "quant.db"), ("QUANT_PRICES_DB_PATH", "prices_daily.sqlite"),
+                      ("QUANT_DATA_DIR", "data"), ("QUANT_UI_DIR", "ui"),
+                      ("QUANT_KNOWLEDGE_DIR", "knowledge"), ("QUANT_ARCHIVE_DIR", "archive")):
+        monkeypatch.setenv(var, str(base / name))
+
+
 @pytest.fixture
 def spec_case():
     """Helper fixture to load golden case definitions."""
