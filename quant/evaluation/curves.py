@@ -25,6 +25,8 @@ def update(ctx: RunContext, through: str) -> Result:
     if conn is None:
         return Result(status="ok", counts={"evidence_curves": 0, "learning_points": 0})
 
+    from quant.data.price_admission import excluded_late_cohorts_sql
+
     run_id = getattr(ctx, "run_id", None) or 1
     if ctx and getattr(ctx, "clock", None):
         computed_at = ctx.clock.iso()
@@ -141,7 +143,8 @@ def update(ctx: RunContext, through: str) -> Result:
             matured_cache[track_] = [
                 r[0]
                 for r in conn.execute(
-                    "SELECT as_of FROM cohorts WHERE track = ? AND (is_clean = 1 OR track != 'live') ORDER BY as_of",
+                    "SELECT as_of FROM cohorts WHERE track = ? "
+                    f"AND ((is_clean = 1 AND {excluded_late_cohorts_sql()}) OR track != 'live') ORDER BY as_of",
                     (track_,),
                 ).fetchall()
             ]

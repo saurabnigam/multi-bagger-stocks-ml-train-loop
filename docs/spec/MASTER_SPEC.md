@@ -53,6 +53,8 @@ Dates are ISO dates; all observed/created/published timestamps are UTC strings `
 
 `as_of` is the last completed NSE session of the target month. `knowledge_cutoff` is that date at 23:59:59.999999 Asia/Kolkata converted to UTC. Thus a late-night archive capture after market close can be used, but next-month captures cannot be backdated. Future as_of values are refused. Daily closes must be from completed sessions.
 
+Late price admission: a closing price is admissible by its trading date. When fewer than 98% of the `as_of` closes are recorded by `knowledge_cutoff`, a cohort may be scored late: its price bars dated `<= as_of` are read at a pinned price vintage (the time of scoring), and a price jump evidenced only by those bars is an unresolved suspected corporate action. Every other input (fundamentals, holdings, attributes, index membership and human corporate-action approvals) keeps the cutoff. A late-scored cohort is flagged `scored_late` and published with `is_clean = 0`, so it is shown but kept out of clean-live evidence and model promotion. The late path requires a recorded human Tier-2 decision (kind `rule_change`, subject `late_price_admission`) in that database; without it the cutoff rule above applies unchanged. Replay uses the stored pin, so a late-scored cohort reproduces exactly. A live cohort published before this rule whose `as_of` closes carry record times after its cutoff is replayed at its publication time (bars only) once the decision exists, and is excluded from clean-live evidence.
+
 The calendar reads an explicit session table/DataFrame supplied to its constructor; fetching is outside the calendar. Fallback weekday/holiday data is versioned and flagged. Missing holiday years block live publication until the session calendar is verified; synthetic tests use their declared weekday calendar. Future order dates use the verified calendar, not the last date in an already downloaded price series.
 
 ### 2.2 Bootstrap and monthly timing
@@ -190,6 +192,8 @@ Gates return PASS, FAIL or DEFERRED with observed value, threshold, reason and a
 | G8 | actual computed factor coverage: price >=95%, other >=70% of applicable members | exclude factor; BLOCK if >=3 active factors excluded |
 | G9 | prior published cohort reproduced from pinned inputs, code and definitions | BLOCK on mismatch; first month DEFERRED |
 | G10 | prescribed leakage checks with sufficient evidence | BLOCK on a deterministic invariant failure; absent evidence DEFERRED |
+
+For a late-scored cohort (section 2.1), G3, G4, G9 and the leakage replay read price bars at the cohort's pinned price vintage.
 
 G1-G7 run before computation. G8 checks actual computed results and per-security score coverage; do not substitute raw-field availability. G9 and applicable G10 run before atomic publication against staging/prior cohorts. Missing fundamentals on a fresh install are BOOTSTRAP_REQUIRED, not G8 DEFERRED.
 
@@ -430,6 +434,7 @@ kb hypothesis new --file PATH | queue | review --as-of DATE
 kb approve ID --actor-kind KIND --by ACTOR --note TEXT | reject ID --actor-kind KIND --by ACTOR --note TEXT
 kb ratify ID --actor-kind human --by human:NAME --note TEXT
 kb apply --as-of DATE | report --as-of DATE | decision new --file PATH
+kb decide --kind KIND --subject SUBJECT --title TEXT --evidence TEXT --actor-kind human --by human:NAME
 verify leakage --as-of DATE | pit --months N | report --as-of DATE
 ui export
 status
@@ -479,7 +484,7 @@ Yahoo is a single mutable source, annual statement coverage and filing dates var
 
 ## 13. Correction decisions
 
-R01: actual observation cutoff plus pre-month bootstrap replaces retrospective live capture. R02: next-session-after-generation paper fills replaces backdated T+1. R03: frequency is part of the fundamental identity. R04: append-only labeled/evaluation revisions replace contradictory overwrite rules. R05: oriented IC is the only decisive sign convention. R06: integer allocation replaces rounded weights claiming an exact binary-float sum. R07: centered bounded ranks explicitly allow tied-score variance. R08: source/client before price consumers, knowledge before migration, no fake approval placeholders. R09: statistical outcomes are research observations, not build oracles. R10: one canonical API/DDL/config with executable examples and task manifests. R11: honest pending/history states replace calendar-date promises. R12: artifact-vintage recovery replaces a promise that mutable vendor re-downloads reproduce hashes.
+R01: actual observation cutoff plus pre-month bootstrap replaces retrospective live capture. R02: next-session-after-generation paper fills replaces backdated T+1. R03: frequency is part of the fundamental identity. R04: append-only labeled/evaluation revisions replace contradictory overwrite rules. R05: oriented IC is the only decisive sign convention. R06: integer allocation replaces rounded weights claiming an exact binary-float sum. R07: centered bounded ranks explicitly allow tied-score variance. R08: source/client before price consumers, knowledge before migration, no fake approval placeholders. R09: statistical outcomes are research observations, not build oracles. R10: one canonical API/DDL/config with executable examples and task manifests. R11: honest pending/history states replace calendar-date promises. R12: artifact-vintage recovery replaces a promise that mutable vendor re-downloads reproduce hashes. R13: late price admission by trading date with a pinned price vintage, flagged `scored_late` and `is_clean = 0`, is enabled per database by a human Tier-2 decision; fundamentals and human approvals keep the cutoff.
 
 ## 14. Glossary
 

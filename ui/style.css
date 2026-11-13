@@ -86,6 +86,16 @@ body {
     border: 1px solid #a3e3b5;
 }
 
+.badge-late {
+    background: #fff8e6;
+    color: #d97d00;
+    border: 1px solid #ffd591;
+}
+
+.badge-late[hidden] {
+    display: none;
+}
+
 .badge-blocked {
     background: #fff0f0;
     color: var(--danger);

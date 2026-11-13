@@ -241,11 +241,14 @@ def run(ctx: RunContext, through: str, track: str) -> Result:
     if ctx.cfg and hasattr(ctx.cfg, "horizons") and hasattr(ctx.cfg.horizons, "tracked_m"):
         horizons = list(ctx.cfg.horizons.tracked_m)
 
+    from quant.data.price_admission import excluded_late_cohorts_sql
+
     cohort_rows = conn.execute(
         # Only clean cohorts feed the live track; backfill/legacy cohorts are is_clean = 0 by
         # definition (survivorship-biased / defect-flagged) and are evaluated on their own track.
+        # A cohort scored late (R13), or named by a late-price event, is not clean-live evidence either.
         "SELECT cohort_id, as_of FROM cohorts WHERE track = ? AND as_of <= ? "
-        "AND (is_clean = 1 OR track != 'live') ORDER BY as_of",
+        f"AND ((is_clean = 1 AND {excluded_late_cohorts_sql()}) OR track != 'live') ORDER BY as_of",
         (track, through),
     ).fetchall()
 

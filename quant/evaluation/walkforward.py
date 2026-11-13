@@ -58,11 +58,15 @@ def family_ic_history(
             family_factors[fam].append(fid)
 
     # 2. Query clean live cohorts
+    # (a cohort scored late, or named by a late-price event, is not clean-live evidence: MASTER_SPEC R13)
+    from quant.data.price_admission import excluded_late_cohorts_sql
+
     cohort_rows = conn.execute(
-        """
+        f"""
         SELECT cohort_id, as_of
         FROM cohorts
         WHERE track = 'live' AND is_clean = 1 AND as_of <= ?
+          AND {excluded_late_cohorts_sql()}
         ORDER BY as_of
         """,
         (as_of,),

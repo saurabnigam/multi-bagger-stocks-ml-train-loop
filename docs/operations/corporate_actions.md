@@ -1,5 +1,7 @@
 # Operator runbook: suspected corporate actions (D3 / T2)
 
+See also: [late_price_admission.md](late_price_admission.md) (month-end sequence and late-scored cohorts).
+
 Context: `quant.data.actions.detect` (run by `run monthly` only; `data capture` does not
 detect) flags an
 unexplained one-day total-return jump outside `[1/1.40, 1.40]` as a `suspected` corporate

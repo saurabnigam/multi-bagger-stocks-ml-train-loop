@@ -141,7 +141,13 @@ def prices_manifest_cmd(args: argparse.Namespace) -> int:
 
     state_conn = connect_state(cfg.paths.db, readonly=True)
     try:
-        store = PriceStore(cfg.paths.prices_db, state_conn=state_conn)
+        # a late-scored cohort's manifest is of its pinned price vintage: read it through the pins, never write them
+        from types import SimpleNamespace
+
+        from quant.data.price_admission import AdmittingPriceStore, published_pins
+
+        store = AdmittingPriceStore(cfg.paths.prices_db, state_conn=state_conn)
+        published_pins(SimpleNamespace(conn=state_conn, cfg=cfg), store, write=False)
         chk = store.manifest_verify(manifest_path)
     finally:
         state_conn.close()

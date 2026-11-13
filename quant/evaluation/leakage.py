@@ -591,6 +591,8 @@ def _t5_embargo(ctx: "RunContext" | None) -> Check:
             reason="No database connection available", blocking=True,
         )
 
+    from quant.data.price_admission import excluded_late_cohorts_sql
+
     row = conn.execute(
         """
         SELECT mw.cohort_id, c.as_of, c.generated_at
@@ -659,7 +661,8 @@ def _t5_embargo(ctx: "RunContext" | None) -> Check:
     candidate_as_of_dates = {
         r[0]
         for r in conn.execute(
-            "SELECT DISTINCT as_of FROM cohorts WHERE track = 'live' AND is_clean = 1 AND as_of <= ?",
+            f"SELECT DISTINCT as_of FROM cohorts WHERE track = 'live' AND is_clean = 1 AND as_of <= ? "
+            f"AND {excluded_late_cohorts_sql()}",
             (as_of,),
         ).fetchall()
     }

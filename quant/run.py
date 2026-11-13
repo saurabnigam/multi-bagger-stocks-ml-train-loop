@@ -451,7 +451,9 @@ def _stage_and_publish(ctx: RunContext, draft: Draft, stop_after: Optional[str])
         "knowledge_cutoff": draft.knowledge_cutoff, "definition_hash": draft.definition_hash,
         "membership_hash": draft.membership_hash,
         "source_refs_json": dbcore.canonical_json({k: v for k, v in draft.source_refs.items() if not k.startswith("_")}),
-        "published_at": now_iso, "generated_at": now_iso, "is_clean": 1, "run_id": ctx.run_id,
+        "published_at": now_iso, "generated_at": now_iso,
+        # a cohort scored late (R13) is kept out of clean-live evidence
+        "is_clean": 0 if draft.source_refs.get("scored_late") else 1, "run_id": ctx.run_id,
     }])
     append_rows(ctx, "cohorts", cohort_row, ["cohort_id"])
     panel = monthly_panel(ctx, draft)
@@ -531,6 +533,44 @@ def _commit_and_push(cfg: Config, as_of: str, *, commit: bool, push: bool, clock
     if push and code == 0:
         code, out = _git(["push"], root)
         _print(f"git push (explicit --push): {out.splitlines()[-1] if out else code}")
+
+
+def _admit_late_prices(ctx: RunContext, as_of: str, cutoff: str) -> Any:
+    """Decide whether the as_of closes are on time, admissible late (R13), or still missing.
+
+    Members are those ``build_draft`` will use. A late verdict pins the cutoff on ``ctx.store`` so every
+    price read at the cutoff (gates, factors, panel, manifest) sees the scoring-time vintage; a blocked
+    one leaves G3 to fail as it always did. Returns None when there are no members to price.
+    """
+    from quant.data import price_admission
+    from quant.data.universe import members_at
+
+    try:
+        members = members_at(ctx.conn, cutoff, index_name="NIFTY500")
+    except Blocked:
+        return None
+    if "security_id" not in members.columns or members.empty:
+        return None
+    adm = price_admission.decide(ctx, as_of, cutoff, sorted(int(x) for x in members["security_id"].unique()))
+    if adm.mode == "late":
+        ctx.store.pin(cutoff, adm.price_vintage, price_admission.RULE_BARS_AND_SUSPECTS)
+    elif adm.mode == "blocked":
+        ctx.notes["late_price_admission"] = adm.reason
+    return adm
+
+
+def _mark_scored_late(ctx: RunContext, draft: Draft, adm: Any) -> None:
+    """Record on the draft (and so in source_refs_json) that it was scored late, and why."""
+    from quant.data import price_admission
+
+    draft.source_refs["price_vintage"] = adm.price_vintage
+    draft.source_refs["scored_late"] = True
+    draft.source_refs["late_price_admission"] = {
+        "rule": price_admission.RULE_BARS_AND_SUSPECTS, "decision_id": adm.decision_id,
+        "coverage_at_cutoff": round(adm.coverage_at_cutoff, 6), "coverage_at_vintage": round(adm.coverage_at_vintage, 6),
+    }
+    ctx.notes["scored_late"] = True
+    ctx.notes["late_price_admission"] = adm.reason
 
 
 def monthly(
@@ -616,8 +656,8 @@ def monthly(
     published = False
     try:
         with RunContext(as_of=as_of, kind="monthly", track="live", cfg=cfg, clock=clock, actor=actor) as ctx:
-            from quant.data.prices import PriceStore
-            ctx.store = PriceStore(cfg.paths.prices_db, state_conn=ctx.conn)
+            from quant.data.price_admission import AdmittingPriceStore, published_pins
+            ctx.store = AdmittingPriceStore(cfg.paths.prices_db, state_conn=ctx.conn)
             ctx.calendar = _load_calendar(cfg, ctx.store)
 
             # 2. Authorized expiry/reversion effects, then captures for the next cutoff.
@@ -652,6 +692,9 @@ def monthly(
             ctx.checkpoint()
             if stop_after == "capture":
                 return 0
+            # Cohorts scored late (stored pin) or restamped after publication (derived pin) replay at their
+            # price vintage; detection above ran without pins. A no-op until such a cohort exists.
+            published_pins(ctx, ctx.store, write=True)
 
             # 3. Settle orders, mature labels, evaluate prior cohorts; preserve regardless of scoring.
             from quant.evaluation import curves, evaluate, labels
@@ -668,7 +711,10 @@ def monthly(
 
             # 4-5. Gates, staging, scoring, publication (atomic).
             try:
+                adm = _admit_late_prices(ctx, as_of, cutoff)
                 draft = build_draft(ctx, as_of, cutoff)
+                if adm is not None and adm.mode == "late":
+                    _mark_scored_late(ctx, draft, adm)
                 published = _stage_and_publish(ctx, draft, stop_after)
                 if published:
                     ctx.checkpoint()

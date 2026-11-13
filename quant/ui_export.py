@@ -208,6 +208,47 @@ def _load_model_weights(conn: sqlite3.Connection, cohort_id: str, model_id: str)
     return {family.title(): f"{(units / 10000.0) * 100:.1f}%" for family, units in rows}
 
 
+def _late_scoring_header(conn: sqlite3.Connection, cohort_row: sqlite3.Row | None) -> tuple[bool, str | None]:
+    """(scored_late, price_vintage) for the exported cohort (MASTER_SPEC 2.1, late price admission).
+
+    Read from the cohort's stored source_refs_json (which may be '[]', '{}', null or not an
+    object) or, for a cohort published before the rule, from a COHORT_SCORED_LATE event that
+    names it. Anything unreadable means "not late"; nothing is inferred beyond the stored rows.
+    """
+    if cohort_row is None:
+        return False, None
+    refs: Any = None
+    try:
+        refs = json.loads(cohort_row["source_refs_json"] or "null")
+    except (TypeError, ValueError):
+        refs = None
+    refs = refs if isinstance(refs, dict) else {}
+    vintage = refs.get("price_vintage")
+    vintage = str(vintage) if vintage else None
+    late = refs.get("scored_late") is True
+    if not late and vintage and cohort_row["track"] == "live" and not cohort_row["is_clean"]:
+        late = True
+    if not late or vintage is None:
+        try:
+            ev = conn.execute(
+                "SELECT detail_json FROM data_quality_events WHERE code = 'COHORT_SCORED_LATE' "
+                "AND json_extract(detail_json, '$.cohort_id') = ? ORDER BY event_id DESC LIMIT 1",
+                (cohort_row["cohort_id"],),
+            ).fetchone()
+        except sqlite3.Error:
+            ev = None
+        if ev is not None:
+            late = True
+            try:
+                detail = json.loads(ev[0] or "null")
+            except (TypeError, ValueError):
+                detail = None
+            ev_vintage = detail.get("price_vintage") if isinstance(detail, dict) else None
+            if vintage is None and ev_vintage:
+                vintage = str(ev_vintage)
+    return late, vintage
+
+
 def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
     """Export persisted database state into offline UI javascript files."""
     ui_dir = Path(cfg.paths.ui_dir)
@@ -227,6 +268,8 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
     gen_at = latest_cohort_row["generated_at"] if latest_cohort_row else ""
     cutoff = latest_cohort_row["knowledge_cutoff"] if latest_cohort_row else ""
     cohort_id = latest_cohort_row["cohort_id"] if latest_cohort_row else ""
+
+    scored_late, price_vintage = _late_scoring_header(conn, latest_cohort_row)
 
     scores_rows = []
     if cohort_id:
@@ -411,6 +454,8 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
         "track": track,
         "generated_at": gen_at,
         "source_cutoff": cutoff,
+        "scored_late": scored_late,
+        "price_vintage": price_vintage,
         "cohort_id": cohort_id,
         "freshness": gen_at[:10] if gen_at else as_of,
         "stocks": stocks,

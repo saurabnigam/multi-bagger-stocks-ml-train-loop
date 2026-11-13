@@ -143,6 +143,40 @@ def cmd_kb_apply(args: argparse.Namespace) -> int:
     return _run(args, "apply", _do)
 
 
+def cmd_kb_decide(args: argparse.Namespace) -> int:
+    """Record a human Tier-2 rule change that enables a governed rule (--kind rule_change)."""
+    from quant.knowledge.decisions import record_rule_change
+
+    kind, subject = getattr(args, "kind", None), getattr(args, "subject", None)
+    title, evidence = getattr(args, "title", None), getattr(args, "evidence", None)
+    if kind != "rule_change":
+        sys.stderr.write("Error: kb decide supports --kind rule_change only\n")
+        return 1
+    if not (subject and title and evidence):
+        sys.stderr.write("Error: kb decide requires --subject, --title and --evidence\n")
+        return 1
+
+    def _do(ctx: RunContext) -> int:
+        did = record_rule_change(
+            ctx, subject_id=subject, title=title, evidence=evidence,
+            context=getattr(args, "note", None) or f"Human Tier-2 decision enabling {subject} (MASTER_SPEC R13).",
+        )
+        adr = ctx.conn.execute("SELECT adr_path FROM decisions WHERE decision_id = ?", (did,)).fetchone()[0]
+        if subject == "late_price_admission" and Path(ctx.cfg.paths.prices_db).is_file():
+            # flag a cohort published before the rule at once (its derived pin and one COHORT_SCORED_LATE event)
+            from quant.data.price_admission import AdmittingPriceStore, published_pins
+
+            pins = published_pins(ctx, AdmittingPriceStore(ctx.cfg.paths.prices_db, state_conn=ctx.conn), write=True)
+            flagged = sorted(c for c, p in pins.items() if p["basis"] == "derived")
+            if flagged:
+                print(f"  flagged scored late (published before the rule): {', '.join(flagged)}")
+        print(f"Recorded decision {did}: {subject}")
+        print(f"  ADR: {adr}")
+        return 0
+
+    return _run(args, "decide", _do)
+
+
 def cmd_kb_check(args: argparse.Namespace) -> int:
     """Check ADR consistency across decisions (read-only)."""
     cfg = _cfg(args)
@@ -182,5 +216,6 @@ register("kb", "approve", cmd_kb_approve, "Approve a proposal")
 register("kb", "reject", cmd_kb_reject, "Reject a proposal")
 register("kb", "ratify", cmd_kb_ratify, "Ratify a provisional decision")
 register("kb", "apply", cmd_kb_apply, "Apply approved decisions prospectively")
+register("kb", "decide", cmd_kb_decide, "Record a human Tier-2 rule-change decision")
 register("kb", "check", cmd_kb_check, "Verify ADR consistency")
 register("kb", "report", cmd_kb_report, "Render monthly empirical report")

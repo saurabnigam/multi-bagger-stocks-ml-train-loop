@@ -99,6 +99,7 @@ def _build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argumen
             cmd_p.add_argument("--ratio", type=str, help="Corporate action split/bonus ratio (new per old)")
             cmd_p.add_argument("--evidence", type=str, help="Evidence citation for a governance decision")
             cmd_p.add_argument("--title", type=str, help="Decision title override")
+            cmd_p.add_argument("--subject", type=str, help="Subject of a rule-change decision (kb decide)")
             cmd_p.add_argument("--force", action="store_true", help="Override an implausible-factor sanity check")
             cmd_p.add_argument("--all", action="store_true", help="Include resolved/inactive rows in a listing")
             cmd_p.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")

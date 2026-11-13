@@ -34,6 +34,18 @@ document.addEventListener('DOMContentLoaded', () => {
         sysTrack.textContent = track.toUpperCase();
         sysTrack.className = 'status-badge badge-' + track;
     }
+    const sysLate = document.getElementById('sys-late-badge');
+    if (sysLate) {
+        if (data.scored_late === true) {
+            sysLate.textContent = 'SCORED LATE';
+            sysLate.title = 'Closing prices were recorded after the cutoff (as of ' + (data.price_vintage || 'unknown') +
+                '). Shown for reference; not counted as clean live evidence.';
+            sysLate.hidden = false;
+        } else {
+            sysLate.hidden = true;
+            sysLate.removeAttribute('title');
+        }
+    }
     if (sysAsOf) sysAsOf.textContent = data.as_of || '--';
     if (sysCutoff) sysCutoff.textContent = data.source_cutoff ? data.source_cutoff.slice(0, 19).replace('T', ' ') : '--';
     if (sysGenerated) sysGenerated.textContent = data.generated_at ? data.generated_at.slice(0, 19).replace('T', ' ') : (data.freshness || '--');

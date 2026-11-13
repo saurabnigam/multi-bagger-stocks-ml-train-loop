@@ -55,6 +55,7 @@ It combines:
    * Capture timestamps must be $\le$ the observation cutoff (`knowledge_cutoff`).
    * Publication timestamps must be $\ge$ the observation cutoff.
    * No future endpoints, backfilled data, or unadjusted corporate actions may leak into live inference.
+   * Exception (MASTER_SPEC §2.1): price bars of a late-scored cohort are read at a pinned price vintage. Everything else keeps the cutoff. The cohort is flagged `scored_late`, `is_clean = 0`, and the path needs the recorded Tier-2 decision `late_price_admission`.
    * A fresh install with insufficient prior captures reports `BLOCKED: BOOTSTRAP_REQUIRED` and publishes no live cohort — this is expected, not a bug (MASTER_SPEC §2.2).
 5. **Keep the frontend zero-dependency & fully offline:**
    * `ui/` must remain browser-native vanilla HTML/JS/CSS with **zero** external CDN or Google Font requests.
@@ -234,6 +235,19 @@ python3 -m quant run monthly --dry-run
 # Execute the full monthly run (never pushes; logs to data/logs/, which is git-ignored)
 ./monthly_cron.sh
 ```
+
+### Playbook B2: Month-end sequence with late price admission
+
+Full runbook: [docs/operations/late_price_admission.md](docs/operations/late_price_admission.md). Needs the one-time `kb decide` decision.
+
+```bash
+python3 -m quant universe capture && python3 -m quant data capture   # last week; ~60-75 min
+python3 -m quant prices update --through 2026-10-30                   # as_of evening ~20:30 IST (exits 1 without --through); repeat 22:00, 23:30 if coverage < 98%
+python3 -m quant triage list --as-of 2026-10-30                       # prints as-of bar coverage; resolve suspected actions before 23:59 IST
+python3 -m quant run monthly                                          # next day or later
+```
+
+The cohort is clean only if at least 98% of the as_of closes are recorded before 23:59:59 IST that day; otherwise it is published flagged scored late (`is_clean = 0`). `kb decide` also flags an older cohort whose as_of closes were recorded after its cutoff, and `prices manifest --verify` understands late cohorts.
 
 ### Playbook C: Triage a suspected corporate action (cohort evening)
 

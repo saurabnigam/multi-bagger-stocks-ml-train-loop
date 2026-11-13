@@ -60,6 +60,8 @@ evaluation groups by code): `wrong_label`, `wrong_factor`, `bad_evidence`, `stal
 
 ## 3. The cohort evening
 
+See also: [late_price_admission.md](late_price_admission.md) for what happens when the as-of closes are recorded after the cutoff.
+
 The October cohort is dated **2026-10-30**. 2026-10-31 is a Saturday, so the cohort takes the last trading day.
 Times are IST; the clock times are a suggested rhythm, only the cutoff is fixed.
 
