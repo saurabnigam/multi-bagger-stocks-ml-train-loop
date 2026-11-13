@@ -77,3 +77,33 @@ NSE's file for 11 Nov was already published at about 20:30 IST
 these are the right six decisions, and 1 and 2 are the ones gating November:    ~85%
 November publishes cleanly if 1, 2 and 6 are done:                               ~75%
 ```
+
+## Addendum, 2026-11-14: the owner's "count a closing price by its own date" rule (option 1D)
+
+Owner's point: a closing price is fixed and public at 15:30 on its date, so the time we recorded it should
+not matter. Tested in a sandbox copy of the real state (`decisions_2026-11-11_evidence/bar_date_rule_experiment.py`):
+price bars for a cohort are read at a pinned price vintage (the time the cohort is scored); fundamentals,
+index membership and corporate-action records keep the cutoff.
+
+```
+                                      today's rule               option 1D
+replay of live:2026-09-30             4,042 of 12,024 differ     0 of 12,024 differ
+run monthly, as_of 2026-10-30         blocked (G3, G4)           published; G1-G10 pass; 491 eligible
+```
+The October sandbox cohort used fundamentals captured 2026-09-11 and the 2026-09-11 member list (the only
+captures before its cutoff): point-in-time correct, seven weeks stale.
+
+Revised recommendation:
+- **Decision 1: option 1D** replaces 1A. No new data source; the NSE terms question falls away. Run once at
+  least 98% of the as-of closes are in. Store the price vintage with the cohort.
+- **Decision 2: no invalidation needed.** September's content is reproducible. Mark cohorts scored after their
+  cutoff day as "scored late"; show them, and keep them out of model-promotion evidence.
+- Decisions 3-6 unchanged.
+
+Limits: simulated by patching the price-store reads, not implemented (the code-identity guard refused the
+first attempt, as it should). A late download can miss a stock delisted in between, and vendor corrections
+change history between downloads, which is why the vintage must be pinned. The rule does not extend to
+fundamentals: the vendor shows only the current version, so the provable knowledge time is our fetch time.
+Correction: my earlier statement that late-recorded prices "could carry later knowledge", and that this is
+what went wrong with September, was wrong for prices. What went wrong was that record times were altered to
+pass a check.
