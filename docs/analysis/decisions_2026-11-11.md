@@ -107,3 +107,30 @@ fundamentals: the vendor shows only the current version, so the provable knowled
 Correction: my earlier statement that late-recorded prices "could carry later knowledge", and that this is
 what went wrong with September, was wrong for prices. What went wrong was that record times were altered to
 pass a check.
+
+## Addendum 2, 2026-11-14: do financials need on-time capture? (owner's question)
+
+Owner's point: results are released for quarters, so the download time should not matter; only news needs
+timely capture. Finding: a quarter's results are released on a company-specific announcement day, two to six
+weeks after the quarter ends. That announcement is a dated event (news in the owner's sense). From the
+11 Nov download (`cap_yah_81f98c823d90`), September-quarter status of the 501 index members:
+
+```
+announcement date known in Yahoo   351     on or before 30 Oct 220 | 31 Oct-4 Nov 69 | 5-11 Nov 62
+numbers present, no date            91
+neither numbers nor date yet        59
+```
+A 30 Oct cohort that took "the latest quarter" from the 4 Nov download would use 69 results announced after
+30 Oct (131 from the 11 Nov download), including top-ranked names: NTPC 31 Oct, Lupin 3 Nov, Glenmark 5 Nov,
+MRF 10 Nov. Yahoo's announcement dates matched press-reported dates in 18 of 18 spot checks (TCS, Wipro,
+HDFC Bank, Bajaj Finance, HPCL, Infosys, Dr Reddy's, Coforge, IndusInd, BPCL, Kotak, IDFC First, L&T, Maruti,
+Cipla, HUL, Hero MotoCorp, Welspun).
+
+Engine today: availability = later of (announcement date + 1 session, or period end + 45/60 days) and our
+fetch time (`quant/data/fundamentals.py::available_from`). The owner's rule drops the fetch-time term.
+
+Recommendation: keep on-time capture as the standard path (it cannot be early). For a cohort scored late,
+allow results by announcement date (fallback: the 45/60-day filing deadline) together with option 1D for
+prices, and flag the cohort "scored late". Live snapshot fields (market cap, enterprise value) must then be
+recomputed from the as-of close; the index list and holdings still need on-time capture.
+Not tested end to end. Risks: restated or vendor-corrected numbers, the 91 undated companies, date errors.
