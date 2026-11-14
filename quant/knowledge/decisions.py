@@ -38,6 +38,8 @@ def record_rule_change(ctx: RunContext, *, subject_id: str, title: str, context:
     if existing:
         raise Refused("already_recorded", f"{subject_id} is already enabled under decision {existing[0]}")
 
+    # the kb commands pass --by through whole ("human:NAME"); do not prefix the kind a second time
+    decided_by = ctx.actor.name if ctx.actor.name.startswith(f"{ctx.actor.kind}:") else ctx.actor.by
     seq = ctx.conn.execute("SELECT coalesce(max(rowid), 0) + 1 FROM decisions").fetchone()[0]
     decision_id = f"D-{ctx.as_of[:7]}-{seq:02d}"
     k_dir = Path(ctx.cfg.paths.knowledge_dir)
@@ -65,7 +67,7 @@ def record_rule_change(ctx: RunContext, *, subject_id: str, title: str, context:
             f"Enable {subject_id} from {ctx.as_of} (human Tier-2 rule change)",
             json.dumps([evidence]),
             ctx.clock.iso(),
-            ctx.actor.by,
+            decided_by,
             ctx.actor.kind,
             ctx.as_of,
             adr_path,

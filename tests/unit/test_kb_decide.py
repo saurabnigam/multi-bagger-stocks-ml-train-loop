@@ -52,7 +52,7 @@ def test_human_records_the_decision_and_its_adr(db, capsys):
     assert row["decision_id"] == "D-2026-11-01" and row["decision_id"] in out
     assert (row["kind"], row["tier"], row["subject_id"], row["status"], row["approver_kind"]) == \
         ("rule_change", 2, SUBJECT, "approved", "human")
-    assert row["effective_from"] == "2026-11-14" and row["decided_by"].endswith("owner")
+    assert row["effective_from"] == "2026-11-14" and row["decided_by"] == "human:owner"   # no doubled prefix
     assert "MASTER_SPEC R13" in row["evidence_refs_json"]
     adr = Path(row["adr_path"])
     assert adr.is_file() and str(adr) in out and "Admit closes by trading date" in adr.read_text(encoding="utf-8")
