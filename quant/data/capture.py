@@ -16,6 +16,7 @@ import pandas as pd
 from quant.data.attributes import capture as attributes_capture
 from quant.data.fundamentals import ingest as fundamentals_ingest
 from quant.data.holdings import capture as holdings_capture
+from quant.data import price_fallback
 from quant.data.identity import tracked_securities, yahoo_ticker
 from quant.data.universe import members_at
 from quant.data.yahoo import RawBundle, YahooClient
@@ -74,6 +75,7 @@ def run(ctx: RunContext, client: YahooClient) -> Result:
     from quant.data.prices import PriceStore
     store = getattr(ctx, "store", None) or PriceStore(ctx.cfg.paths.prices_db, state_conn=ctx.conn)
     price_res = store.update(ctx, client, list(ticker_map.keys()), through=ctx.as_of)
+    fb = price_fallback.fill_missing(ctx, store, list(ticker_map.keys()), ctx.as_of)
 
     return Result(
         status="ok",
@@ -83,7 +85,8 @@ def run(ctx: RunContext, client: YahooClient) -> Result:
             "price_rows": int(price_res.counts.get("rows", 0)),
             "price_quarantined": int(price_res.counts.get("quarantined", 0)),
         },
-        details={"capture_id": capture_id, "price_capture": price_res.details},
+        details={"capture_id": capture_id, "price_capture": price_res.details,
+                 "price_fallback": price_fallback.summary(fb)},
     )
 
 
@@ -203,16 +206,20 @@ def ingest_archive(
     counts.update(ingest_bundles(ctx, by_sid))
 
     price_details: Dict[str, Any] = {"skipped": True}
+    fallback_details: Dict[str, Any] = {"skipped": True}
     if prices and client is not None and by_sid:
         from quant.data.prices import PriceStore
         store = getattr(ctx, "store", None) or PriceStore(ctx.cfg.paths.prices_db, state_conn=ctx.conn)
         res = store.update(ctx, client, list(by_sid.keys()), through=ctx.as_of)
+        fb = price_fallback.fill_missing(ctx, store, list(by_sid.keys()), ctx.as_of)
         counts["price_rows"] = int(res.counts.get("rows", 0))
         counts["price_quarantined"] = int(res.counts.get("quarantined", 0))
         price_details = res.details
+        fallback_details = price_fallback.summary(fb)
 
     return Result(
         status="ok",
         counts=counts,
-        details={"capture_id": capture_id, "sha256": sha256, "unmapped_tickers": unmapped[:20], "prices": price_details},
+        details={"capture_id": capture_id, "sha256": sha256, "unmapped_tickers": unmapped[:20], "prices": price_details,
+                "price_fallback": fallback_details},
     )

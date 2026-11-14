@@ -97,7 +97,7 @@ def test_missing_arguments_and_other_kinds_are_usage_errors(db, capsys):
 def test_library_refuses_non_human_and_unknown_subject(db):
     from quant.knowledge.decisions import ALLOWED_RULE_SUBJECTS, record_rule_change
 
-    assert ALLOWED_RULE_SUBJECTS == {SUBJECT}
+    assert ALLOWED_RULE_SUBJECTS == {SUBJECT, "price_fallback_sources"}
     cfg = load_config().with_paths(db=db)
     for kind in ("llm", "system"):
         with pytest.raises(Refused) as exc:

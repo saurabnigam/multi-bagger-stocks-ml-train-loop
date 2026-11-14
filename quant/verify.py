@@ -21,6 +21,8 @@ from pathlib import Path
 import sqlite3
 from typing import Any
 
+import pandas as pd
+
 from quant.config import Config
 from quant.types import Check, CheckReport
 
@@ -187,6 +189,51 @@ def _end_month(as_of: str, horizon_m: int) -> str:
     return f"{end_y:04d}-{end_m:02d}"
 
 
+def _open_price_store(conn: sqlite3.Connection, cfg: Config):
+    """(read-only price store or None, cohort_id -> pin, why the store is unavailable)."""
+    from types import SimpleNamespace
+
+    from quant.data.price_admission import AdmittingPriceStore, published_pins
+
+    path = getattr(getattr(cfg, "paths", None), "prices_db", None)
+    if not path or not Path(path).is_file():
+        return None, {}, "price store not found"
+    store = AdmittingPriceStore.open_readonly(path, state_conn=conn)
+    with store.conn() as p_conn:
+        if p_conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'prices_daily'").fetchone() is None:
+            return None, {}, "price store has no prices_daily table"
+    pins = published_pins(SimpleNamespace(conn=conn, cfg=cfg), store, write=False)
+    return store, pins, ""
+
+
+def _price_provenance_check(store, conn, cohort_id, cutoff, pin, as_of, members, note) -> Check:
+    """No price row of a member visible at the cohort's price vintage may come from a capture registered after it.
+
+    The vintage is the cohort's pin (stored or derived) when it has one, else its knowledge cutoff; the window is
+    400 calendar days before as_of through as_of. An unreadable price store is DEFERRED, never PASS.
+    """
+    check_id = f"verify:pit:{cohort_id}:prices_no_backdated_capture"
+    if store is None:
+        return Check(id=check_id, status="DEFERRED", observed=None, expected=0,
+                     reason=f"Price provenance not checked: {note}", blocking=False)
+    from quant.data.price_admission import dishonest_rows
+
+    vintage = pin or cutoff
+    start = (pd.Timestamp(as_of) - pd.Timedelta(days=400)).strftime("%Y-%m-%d")
+    d = dishonest_rows(store, conn, members, start, as_of, vintage)
+    if not d["rows"]:
+        return Check(id=check_id, status="PASS", observed=0, expected=0,
+                     reason=f"No price row of a cohort member at vintage {vintage} comes from a later-registered capture",
+                     blocking=True)
+    first = d["sample"][0] if d["sample"] else {}
+    return Check(id=check_id, status="FAIL", observed=d["rows"], expected=0,
+                 reason=(f"{d['rows']} price rows of {d['securities']} members come from a capture registered after the "
+                         f"price vintage {vintage} (record time earlier than fetch time): {d['captures'][0]}"
+                         + (f" (e.g. security {first['security_id']} {first['date']} observed_at {first['observed_at']} "
+                            f"captured_at {first['captured_at']})" if first else "")),
+                 blocking=True)
+
+
 def pit(conn: sqlite3.Connection, months: int, cfg: Config) -> CheckReport:
     """Verify point-in-time integrity for the last `months` live cohorts.
 
@@ -224,6 +271,8 @@ def pit(conn: sqlite3.Connection, months: int, cfg: Config) -> CheckReport:
             )
         )
         return CheckReport(checks=checks)
+
+    price_store, price_pins, price_store_note = _open_price_store(conn, cfg)
 
     for c in cohort_rows:
         cohort_id, as_of, cutoff, published_at = c["cohort_id"], c["as_of"], c["knowledge_cutoff"], c["published_at"]
@@ -328,6 +377,10 @@ def pit(conn: sqlite3.Connection, months: int, cfg: Config) -> CheckReport:
                 blocking=True,
             )
         )
+
+        checks.append(_price_provenance_check(
+            price_store, conn, cohort_id, cutoff, (price_pins.get(cohort_id) or {}).get("price_vintage"),
+            as_of, sorted(members), price_store_note))
 
         for table in ("holdings", "security_attributes"):
             if members:

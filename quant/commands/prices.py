@@ -110,6 +110,19 @@ def prices_update_cmd(args: argparse.Namespace) -> int:
         client = YahooClient(cfg=cfg, clock=clock, sleep=time.sleep)
         res = ctx.store.update(ctx, client, sids, through=through)
         print(f"Prices update [through {through}]: status={res.status} counts={res.counts}")
+        from quant.data import price_fallback
+
+        res_fb = price_fallback.fill_missing(ctx, ctx.store, sids, through)
+        if res_fb.status == "disabled":
+            print("Price fallback: disabled (no decision recorded)")
+        else:
+            used = list(res_fb.details.get("sources_used", []))
+            print(f"Price fallback [through {through}]: mode={res_fb.details.get('mode')} "
+                  f"filled={res_fb.counts.get('filled', 0)} still_missing={res_fb.counts.get('still_missing', 0)} "
+                  f"sources_used={used} disagreements={res_fb.counts.get('disagreements', 0)}")
+            for f in res_fb.details.get("needed_files", []):
+                print(f"Price fallback: download {f['file_name']} from {f['url']} into {f['inbox']}, "
+                      f"then run this command again.")
         from quant.data.actions import detect
         ca = detect(ctx, sids, since=str(getattr(cfg.yahoo, "history_start", "2015-01-01")), store=ctx.store)
         print(f"Suspected corporate actions recorded: {ca.counts.get('suspected', 0)} {ca.details.get('new', [])[:10]}")

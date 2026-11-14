@@ -26,6 +26,16 @@ max_retries = 5
 history_start = "2015-01-01"
 lookback_months = 13
 required_capture_share = 0.90
+[price_sources]
+fallback = ["nse_udiff", "bse_udiff"]
+fallback_sessions = 3
+disagreement_warn = 0.005
+disagreement_warn_cross_exchange = 0.02
+http_timeout_s = 30
+http_retries = 2
+mode = "manual"
+inbox_subdir = "inbox/prices"
+
 [universe]
 min_rows = 480
 stale_block_days = 62

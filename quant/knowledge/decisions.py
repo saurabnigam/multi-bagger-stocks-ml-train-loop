@@ -13,7 +13,7 @@ from quant.errors import Refused
 from quant.knowledge.adr import write as write_adr
 from quant.run import RunContext
 
-ALLOWED_RULE_SUBJECTS = {"late_price_admission"}
+ALLOWED_RULE_SUBJECTS = {"late_price_admission", "price_fallback_sources"}
 
 
 def record_rule_change(ctx: RunContext, *, subject_id: str, title: str, context: str, evidence: str) -> str:

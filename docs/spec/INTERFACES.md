@@ -135,6 +135,21 @@ quant.data.benchmarks.series(conn: Connection, benchmark_id: str, start: str, en
 
 Read frames have date index, security_id columns; no forward fill. adv_inr returns security-indexed adv_63_inr,n_days_63. normalized frame contains the price_schema.sql fields plus source adjustment metadata in its archive. TRI reads approved actions from state_conn and selects only accepted price observations available by vintage_at. For live replay, vintage_at comes from frozen input_refs, not wall-clock now. Close_split is rebased to end with only that version's splits. monthly_panel returns state-schema columns in memory, publication-owned. Data decision APIs validate actual decision authority through stored rows (C09 implementation is integrated before real mutation commands run); WS02 tests create explicit synthetic decisions.
 
+```
+quant.data.price_fallback.SOURCES: dict[str, Source]            # "nse_udiff", "bse_udiff"
+  Source.parse(raw: bytes, session: str, zipped: bool|None=None) -> DataFrame[isin, symbol, series, date, open, high, low, close, volume]
+  Source.url_for(session) / .file_name(session) / .inbox_names(session)
+quant.data.price_fallback.ExchangeFileClient(cfg, clock, fetch=None, sleep=None)
+  .get(source: str, session: str) -> (raw_bytes, fetched_at)        # SourceUnavailable on HTTP 404; auto mode only
+quant.data.price_fallback.enabled_decision(conn) -> str | None      # subject price_fallback_sources (human Tier-2)
+quant.data.price_fallback.fill_missing(ctx, store, security_ids, through, client=None) -> Result
+  # status "disabled" | "ok"; counts sessions, filled, still_missing, disagreements, sources_used, sources_failed
+  # details mode, sessions[], sources_used[], needed_files[] (manual mode: {source, session, file_name, url, inbox})
+quant.data.price_fallback.inbox_dir(cfg) -> Path / mode_of(cfg) -> "manual"|"auto" / configured_sources(cfg) -> list[str]
+```
+
+The chain writes only closes that are missing for a date, never overwrites one, and records `PRICE_FALLBACK_USED` (INFO), `VENDOR_CLOSE_DISAGREEMENT` (WARN) and `PRICE_FALLBACK_SOURCE_FAILED` (WARN) through `quant.data.gates.record_event`. Config: `[price_sources]` (fallback, fallback_sessions, disagreement_warn, http_timeout_s, http_retries, mode, inbox_subdir).
+
 ## C04 — Data quality (WS04)
 
 ```

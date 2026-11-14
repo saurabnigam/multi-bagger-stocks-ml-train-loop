@@ -319,7 +319,8 @@ class PriceStore:
 
         New dates are appended. For an existing date, a close within 2% of the
         latest stored version is accepted as a new observation of the same fact
-        (byte-identical rows are ignored by the PK). A larger difference without
+        (byte-identical rows are ignored by the PK; a re-delivery counts as unchanged only when its split
+        ratio and dividend equal the stored ones too). A larger difference without
         an accepted revision is quarantined and never enters prices_daily.
         `metadata` is accepted for callers that still pass a raw source frame.
         """
@@ -333,7 +334,7 @@ class PriceStore:
                 d = str(row["date"])
                 new_close = float(row["close_raw"])
                 cur.execute(
-                    "SELECT close_raw FROM prices_daily WHERE security_id = ? AND date = ? "
+                    "SELECT close_raw, split_ratio, dividend_raw FROM prices_daily WHERE security_id = ? AND date = ? "
                     "ORDER BY observed_at DESC LIMIT 1",
                     (sid, d),
                 )
@@ -361,8 +362,12 @@ class PriceStore:
                             )
                             quarantined += 1
                             continue
-                    if abs(new_close - old_close) <= 1e-12:
-                        # unchanged fact: do not duplicate the observation
+                    old_split, old_div = float(prev[1]), float(prev[2])
+                    if (abs(new_close - old_close) <= 1e-12
+                            and abs(float(row["split_ratio"]) - old_split) <= 1e-12
+                            and abs(float(row["dividend_raw"]) - old_div) <= 1e-9 * max(1.0, abs(old_div))):
+                        # unchanged fact (close, split ratio and dividend all equal): do not duplicate the observation.
+                        # A row that adds a split or dividend to a stored bar is a new observation.
                         continue
                 self._insert_row(cur, row)
                 accepted += 1

@@ -270,7 +270,10 @@ def test_verify_pit_fails_on_seeded_backdated_fundamentals(tmp_path):
     assert fund_checks[0].observed == 1
     # No other check for this cohort should be dragged down by an unrelated seed.
     other_checks = [c for c in rep.checks if c.id != fund_checks[0].id]
-    assert all(c.status == "PASS" for c in other_checks)
+    # (this world has no price store, so the price provenance check is DEFERRED, never PASS and never FAIL)
+    assert all(c.status == "PASS" for c in other_checks if not c.id.endswith(":prices_no_backdated_capture"))
+    price = [c for c in other_checks if c.id.endswith(":prices_no_backdated_capture")]
+    assert [c.status for c in price] == ["DEFERRED"] and not price[0].blocking
 
 
 def test_verify_pit_does_not_flag_benign_later_revision_fetch(tmp_path):

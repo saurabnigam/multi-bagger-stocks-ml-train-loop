@@ -112,6 +112,25 @@ def _closes_at(ctx: RunContext, draft: Draft) -> Optional[pd.Series]:
     return ser
 
 
+def _g3_provenance(ctx: RunContext, draft: Draft) -> Optional[tuple]:
+    """(honest as_of coverage, dishonest-row summary) at the vintage the draft is read at, or None.
+
+    The vintage is the draft's pin when its store has one, else the knowledge cutoff. None when the store or its
+    state connection is unavailable, in which case G3 keeps the plain closes it already has.
+    """
+    store = getattr(ctx, "store", None)
+    state_conn = getattr(store, "state_conn", None)
+    sids = _member_ids(draft)
+    if store is None or state_conn is None or not sids or not hasattr(store, "conn"):
+        return None
+    from quant.data.price_admission import coverage, dishonest_rows
+
+    vintage = store._bar_vintage(draft.knowledge_cutoff) if hasattr(store, "_bar_vintage") else draft.knowledge_cutoff
+    start = (pd.Timestamp(draft.as_of) - pd.Timedelta(days=400)).strftime("%Y-%m-%d")
+    return (coverage(store, sids, draft.as_of, vintage),
+            dishonest_rows(store, state_conn, sids, start, draft.as_of, vintage))
+
+
 def _listing_info(ctx: RunContext, draft: Draft, max_lookback: int) -> Optional[tuple[pd.Series, list[str]]]:
     """(first bar date per member, market session list) on or before as_of at the cohort vintage.
 
@@ -308,7 +327,16 @@ def _run_pre_gates(ctx: RunContext, draft: Draft) -> List[Check]:
                              f"{BOOTSTRAP_PREFIX}: no members at the cutoff, so no closes can be checked"))
     elif closes is not None:
         cov = float(closes.notna().sum()) / n_members if n_members else 0.0
-        if cov == 0.0:
+        provenance = _g3_provenance(ctx, draft)
+        dishonest = None
+        if provenance is not None:
+            cov, dishonest = provenance
+        if dishonest is not None and dishonest["rows"]:
+            checks.append(_check("G3", False, round(cov, 4), min_price_cov,
+                                 f"{dishonest['rows']} price rows of {dishonest['securities']} members come from a capture "
+                                 f"registered after the price vintage (record time earlier than fetch time): "
+                                 f"{dishonest['captures'][0]}"))
+        elif cov == 0.0:
             checks.append(_check("G3", False, 0.0, min_price_cov,
                                  f"{BOOTSTRAP_PREFIX}: no completed as_of closes in the price store at the cohort vintage"))
         else:

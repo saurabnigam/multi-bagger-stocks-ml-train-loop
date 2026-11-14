@@ -474,7 +474,7 @@ def export(conn: sqlite3.Connection, cfg: Config) -> list[Path]:
     # Single canonical payload; accepted/rejected/turnaround are id arrays into `stocks`
     # (no duplicated stock objects, no orphaned top-level globals) to keep the export
     # under the UI payload budget (MASTER_SPEC 10.7).
-    js_content = f"window.QUANT_DATA = {json.dumps(data_payload, separators=(",", ":"))};\n"
+    js_content = "window.QUANT_DATA = " + json.dumps(data_payload, separators=(",", ":")) + ";\n"
     data_path.write_text(js_content, encoding="utf-8")
     out_files.append(data_path)
 

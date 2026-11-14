@@ -143,6 +143,9 @@ def cmd_kb_apply(args: argparse.Namespace) -> int:
     return _run(args, "apply", _do)
 
 
+_RULE_OF = {"late_price_admission": "R13", "price_fallback_sources": "R18"}
+
+
 def cmd_kb_decide(args: argparse.Namespace) -> int:
     """Record a human Tier-2 rule change that enables a governed rule (--kind rule_change)."""
     from quant.knowledge.decisions import record_rule_change
@@ -159,7 +162,7 @@ def cmd_kb_decide(args: argparse.Namespace) -> int:
     def _do(ctx: RunContext) -> int:
         did = record_rule_change(
             ctx, subject_id=subject, title=title, evidence=evidence,
-            context=getattr(args, "note", None) or f"Human Tier-2 decision enabling {subject} (MASTER_SPEC R13).",
+            context=getattr(args, "note", None) or f"Human Tier-2 decision enabling {subject} (MASTER_SPEC {_RULE_OF.get(subject, 'R13')}).",
         )
         adr = ctx.conn.execute("SELECT adr_path FROM decisions WHERE decision_id = ?", (did,)).fetchone()[0]
         if subject == "late_price_admission" and Path(ctx.cfg.paths.prices_db).is_file():

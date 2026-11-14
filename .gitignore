@@ -30,6 +30,8 @@ data/logs/
 data/.locks/
 .cache/
 *.lock
+!requirements.lock
 
 # Local settings for scripts/capture_routine.sh and scripts/backup_state.sh (docs/operations/month_end.md)
 routine.env
+data/inbox/

@@ -9,8 +9,10 @@ import sqlite3
 from typing import Any
 
 from quant.config import Config
+from quant.errors import Refused
 
 _CAPTURE_KINDS = ("nifty500", "yahoo_bundle", "yahoo_prices")
+_PRICE_KINDS = ("yahoo_prices", "nse_udiff_bhavcopy", "bse_udiff_bhavcopy")
 _TRACKED_HORIZON_FALLBACK = [1, 3, 6, 12, 24, 36]
 
 
@@ -43,10 +45,11 @@ def read(conn: sqlite3.Connection, cfg: Config) -> dict[str, Any]:
     last_capture: dict[str, Any] = {k: None for k in _CAPTURE_KINDS}
     if "captures" in tables:
         for kind in _CAPTURE_KINDS:
+            kinds = _PRICE_KINDS if kind == "yahoo_prices" else (kind,)     # the newest price capture of any source
             cap_row = cur.execute(
                 "SELECT capture_id, captured_at, archive_path, sha256 FROM captures "
-                "WHERE kind = ? ORDER BY captured_at DESC LIMIT 1",
-                (kind,),
+                f"WHERE kind IN ({','.join('?' for _ in kinds)}) ORDER BY captured_at DESC LIMIT 1",
+                kinds,
             ).fetchone()
             if cap_row:
                 last_capture[kind] = dict(cap_row)
@@ -165,6 +168,7 @@ def read(conn: sqlite3.Connection, cfg: Config) -> dict[str, Any]:
             "missing": archive_missing,
         },
         "write_lock": write_lock(cfg.paths.db),
+        "price_fallback": price_fallback_state(conn, cfg, "decisions" in tables),
     }
 
 
@@ -179,3 +183,15 @@ def write_lock(db_path: Any) -> Any:
     if holder is None:
         return "free"
     return {k: holder.get(k) for k in ("actor", "kind", "pid", "started_at")}
+
+
+def price_fallback_state(conn: sqlite3.Connection, cfg: Config, has_decisions: bool) -> dict[str, Any]:
+    """Whether the price source chain is enabled in this database, its mode, sources and inbox folder."""
+    from quant.data import price_fallback as pf
+
+    decision_id = pf.enabled_decision(conn) if has_decisions else None
+    try:
+        return {"enabled": decision_id is not None, "decision_id": decision_id, "sources": pf.configured_sources(cfg),
+                "mode": pf.mode_of(cfg), "inbox": str(pf.inbox_dir(cfg).resolve())}
+    except (Refused, TypeError, ValueError) as exc:            # a bad [price_sources] value must not stop `status`
+        return {"enabled": decision_id is not None, "error": str(exc)}

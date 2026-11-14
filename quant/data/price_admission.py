@@ -155,16 +155,101 @@ class AdmittingPriceStore(PriceStore):
 
 # ----------------------------------------------------------------------------- coverage and decision
 
-def coverage(store: PriceStore, security_ids: List[int], as_of: str, vintage_at: str) -> float:
-    """Share of ``security_ids`` with a non-null close on ``as_of`` at ``vintage_at``, read strictly (pins ignored).
+_CHUNK = 500        # ids per statement: well under SQLite's variable limit on every build
 
-    No securities gives 0.0: an unknown universe is never complete.
+
+def _chunks(items: List[Any], n: int = _CHUNK):
+    for i in range(0, len(items), n):
+        yield items[i:i + n]
+
+
+def _captured_at(state_conn: sqlite3.Connection, capture_ids: List[str]) -> Dict[str, str]:
+    """captures.captured_at for the capture ids registered in the state database (unknown ids are absent)."""
+    out: Dict[str, str] = {}
+    for part in _chunks(sorted(capture_ids)):
+        marks = ",".join("?" for _ in part)
+        for cid, at in state_conn.execute(
+                f"SELECT capture_id, captured_at FROM captures WHERE capture_id IN ({marks})", part):
+            out[str(cid)] = str(at)
+    return out
+
+
+def dishonest_rows(store: PriceStore, state_conn: Optional[sqlite3.Connection], security_ids: List[int],
+                   start: str, end: str, vintage_at: str) -> Dict[str, Any]:
+    """Price rows that are visible at ``vintage_at`` only because their record time precedes their fetch time.
+
+    A row is dishonest when ``observed_at <= vintage_at`` but its capture is registered in ``captures`` with
+    ``captured_at > vintage_at``. A row whose capture_id is empty or not in ``captures`` is not judged. Counts
+    cover dates in ``[start, end]`` of the given securities. One grouped query on the price store (by capture_id)
+    and one lookup of those ids in ``captures``; sample rows are fetched only when something is dishonest.
+    """
+    empty: Dict[str, Any] = {"rows": 0, "securities": 0, "captures": [], "sample": []}
+    ids = sorted({int(s) for s in security_ids})
+    if not ids or state_conn is None:
+        return empty
+    per_capture: Dict[str, int] = {}
+    with store.conn() as p_conn:
+        for part in _chunks(ids):
+            marks = ",".join("?" for _ in part)
+            for cid, n in p_conn.execute(
+                    f"SELECT capture_id, COUNT(*) FROM prices_daily WHERE security_id IN ({marks}) "
+                    f"AND date >= ? AND date <= ? AND observed_at <= ? AND capture_id IS NOT NULL AND capture_id != '' "
+                    f"GROUP BY capture_id", [*part, start, end, vintage_at]):
+                per_capture[str(cid)] = per_capture.get(str(cid), 0) + int(n)
+        registered = _captured_at(state_conn, list(per_capture))
+        bad = sorted(c for c, at in registered.items() if at > vintage_at)
+        if not bad:
+            return empty
+        secs: set = set()
+        sample: List[Dict[str, Any]] = []
+        for part in _chunks(ids):
+            marks = ",".join("?" for _ in part)
+            for cpart in _chunks(bad):
+                cmarks = ",".join("?" for _ in cpart)
+                where = (f"security_id IN ({marks}) AND date >= ? AND date <= ? AND observed_at <= ? "
+                         f"AND capture_id IN ({cmarks})")
+                args = [*part, start, end, vintage_at, *cpart]
+                secs.update(int(r[0]) for r in p_conn.execute(f"SELECT DISTINCT security_id FROM prices_daily WHERE {where}", args))
+                if len(sample) < 5:
+                    sample.extend(
+                        {"security_id": int(r[0]), "date": str(r[1]), "observed_at": str(r[2]), "capture_id": str(r[3]),
+                         "captured_at": registered[str(r[3])]}
+                        for r in p_conn.execute(
+                            f"SELECT security_id, date, observed_at, capture_id FROM prices_daily WHERE {where} "
+                            f"ORDER BY date, security_id, observed_at LIMIT 5", args))
+    return {"rows": sum(per_capture[c] for c in bad), "securities": len(secs), "captures": bad,
+            "sample": sorted(sample, key=lambda r: (r["date"], r["security_id"], r["observed_at"]))[:5]}
+
+
+def coverage(store: PriceStore, security_ids: List[int], as_of: str, vintage_at: str) -> float:
+    """Share of ``security_ids`` with an honest, non-null close on ``as_of`` at ``vintage_at``, read strictly (pins ignored).
+
+    A close that is visible only from dishonest rows (see :func:`dishonest_rows`) does not count. Without a state
+    connection on the store nothing can be judged and the plain read applies. No securities gives 0.0: an unknown
+    universe is never complete.
     """
     ids = sorted({int(s) for s in security_ids})
     if not ids:
         return 0.0
-    df = PriceStore._versioned(store, ids, as_of, as_of, vintage_at, "close_raw")
-    return float(df["close_raw"].notna().sum()) / len(ids) if not df.empty else 0.0
+    state_conn = getattr(store, "state_conn", None)
+    if state_conn is None:
+        df = PriceStore._versioned(store, ids, as_of, as_of, vintage_at, "close_raw")
+        return float(df["close_raw"].notna().sum()) / len(ids) if not df.empty else 0.0
+    rows: List[tuple] = []
+    with store.conn() as p_conn:
+        for part in _chunks(ids):
+            marks = ",".join("?" for _ in part)
+            rows.extend(p_conn.execute(
+                f"SELECT security_id, observed_at, capture_id, close_raw FROM prices_daily "
+                f"WHERE security_id IN ({marks}) AND date = ? AND observed_at <= ?", [*part, as_of, vintage_at]))
+    registered = _captured_at(state_conn, sorted({str(r[2]) for r in rows if r[2]}))
+    newest: Dict[int, tuple] = {}
+    for sid, obs, cid, close in rows:
+        if cid and cid in registered and registered[cid] > vintage_at:
+            continue                                        # dishonest: not a visible close
+        if int(sid) not in newest or obs > newest[int(sid)][0]:
+            newest[int(sid)] = (obs, close)
+    return sum(1 for _, close in newest.values() if close is not None and not pd.isna(close)) / len(ids)
 
 
 def enabled_decision(conn: sqlite3.Connection) -> Optional[str]:
