@@ -184,7 +184,7 @@ load_facts() {
 # prices and fundamentals need a state database that exists and has its tables: one clear line, exit 1.
 require_db() {   # require_db MODE
   if [[ ! -f "$QUANT_DB_PATH" ]]; then
-    say "$1: no database yet at $QUANT_DB_PATH; run the first capture by hand (python -m quant data capture)"; exit 1
+    say "$1: no database yet at $QUANT_DB_PATH; run the first capture by hand ($CODE_ROOT/scripts/q.sh data capture)"; exit 1
   fi
   load_facts "$1: cannot read the state (the interpreter $PY failed)"        # quick: no coverage
   if [[ -n "${F_db_error:-}" ]]; then
@@ -278,7 +278,7 @@ except Exception:
       [[ "$OPEN" =~ ^[0-9]+$ ]] || OPEN="?"
       echo "price-jump flags open:   $OPEN"
       if [[ "$OPEN" != "0" && "$OPEN" != "?" ]]; then
-        echo "ACTION NEEDED: $OPEN price-jump flag(s) await a person (python -m quant triage list --as-of $MONTH_END)."
+        echo "ACTION NEEDED: $OPEN price-jump flag(s) await a person ($CODE_ROOT/scripts/q.sh triage list --as-of $MONTH_END)."
       fi
     fi
     backup_line
