@@ -164,4 +164,18 @@ def read(conn: sqlite3.Connection, cfg: Config) -> dict[str, Any]:
             "available": archive_available,
             "missing": archive_missing,
         },
+        "write_lock": write_lock(cfg.paths.db),
     }
+
+
+def write_lock(db_path: Any) -> Any:
+    """The write-lock state for `quant status`: "free", or {actor, kind, pid, started_at} of the holder.
+
+    Reads the holder line only; takes no lock (quant.db.lock.holder_of).
+    """
+    from quant.db import lock as dblock
+
+    holder = dblock.holder_of(db_path)
+    if holder is None:
+        return "free"
+    return {k: holder.get(k) for k in ("actor", "kind", "pid", "started_at")}

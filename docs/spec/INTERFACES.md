@@ -34,7 +34,8 @@ quant.db.core.table_hash(conn: Connection, table: str) -> str
 quant.db.ledger.export(conn: Connection, ledger_dir: Path) -> list[Path]
 quant.db.ledger.rebuild(ledger_dir: Path, output_db: Path) -> None
 quant.db.ledger.verify(conn: Connection, ledger_dir: Path) -> CheckReport
-quant.db.ledger.size(cfg: Config) -> dict[str,int]
+quant.db.ledger.size(cfg: Config) -> dict[str,int]   # db_bytes, ledger_bytes (every file under data/ledger), journal_bytes (the files the reader uses: .gz, else a plain twin)
+quant.db.ledger.journal_sizes(cfg: Config) -> list[dict]   # per month: month, file, path, bytes, compressed
 quant.cli.main(argv: list[str]|None = None) -> int
 quant.cli.register(group: str, name: str, handler: Callable, help: str) -> None
 ```
@@ -292,7 +293,7 @@ quant.run.monthly(cfg: Config, clock: Clock, actor: Actor, *, as_of: str|None=No
 quant.ui_export.export(conn: Connection, cfg: Config) -> list[Path]
 quant.verify.report(conn: Connection, as_of: str, cfg: Config) -> CheckReport
 quant.verify.pit(conn: Connection, months: int, cfg: Config) -> CheckReport
-quant.status.read(conn: Connection, cfg: Config) -> dict
+quant.status.read(conn: Connection, cfg: Config) -> dict   # includes write_lock: "free" or {actor, kind, pid, started_at}
 ```
 
 UI files: data.js ranking, data_learning.js curves, data_scoreboard.js portfolios, data_factors.js diagnostics, data_kb.js decisions. Inferential records contain value,n,n_eff,method,ci_lo,ci_hi,uncertainty_status,track,subject_version,evidence_hash; unavailable bands are permitted only with the documented status and explicit visible label. Export raises on a claimed estimable interval whose endpoints are absent. verify.report re-renders from the exact report evidence references, not whatever revisions are newest today. status includes last publication, last capture, blocked reason, pending orders/proposals, overdue ratifications, next possible maturities and source archive availability.

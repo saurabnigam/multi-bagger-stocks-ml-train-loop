@@ -23,10 +23,28 @@ from quant.run import RunContext
 from quant.types import Result
 
 
+def _select_securities(ctx: RunContext, horizons: List[int]) -> List[int]:
+    """Securities to fetch: tracked at ctx.as_of UNION tracked at the capture date.
+
+    Inside a monthly run ``ctx.as_of`` is the target month-end, so a security that joined the
+    index after that date would never be fetched by the as_of set alone. The capture-date set is
+    best effort: when it fails, the as_of set is used as before.
+    """
+    at_as_of = [int(s) for s in tracked_securities(ctx.conn, ctx.as_of, horizons)]
+    capture_date = ctx.clock.iso()[:10]
+    if capture_date == ctx.as_of[:10]:
+        return sorted(set(at_as_of))
+    try:
+        at_capture = [int(s) for s in tracked_securities(ctx.conn, capture_date, horizons)]
+    except Exception:
+        at_capture = []
+    return sorted(set(at_as_of) | set(at_capture))
+
+
 def run(ctx: RunContext, client: YahooClient) -> Result:
     """Run full Yahoo data acquisition and archive orchestration."""
     horizons = getattr(ctx.cfg.horizons, "tracked_m", [1, 3, 6, 12, 24, 36])
-    sids = tracked_securities(ctx.conn, ctx.as_of, horizons)
+    sids = _select_securities(ctx, horizons)
 
     if not sids:
         # Fallback to current universe members if no prior cohorts exist

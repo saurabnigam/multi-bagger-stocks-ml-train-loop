@@ -27,6 +27,7 @@ import pandas as pd
 
 from quant.config import Config
 from quant.db import core as dbcore
+from quant.db import lock as dblock
 from quant.db.core import append_rows, connect, update_control
 from quant.errors import Blocked, Refused
 from quant.types import Actor, Check, Clock, Draft, Result
@@ -62,6 +63,7 @@ class RunContext:
         self.notes: dict[str, Any] = {}
         self._audit: list[tuple[str, pd.DataFrame, list[str]]] = []
         self._staging_open = False
+        self._lock: Any = None
 
     @staticmethod
     def _get_git_sha() -> str:
@@ -73,6 +75,24 @@ class RunContext:
 
     # ------------------------------------------------------------------ lifecycle
     def __enter__(self) -> RunContext:
+        # One writer at a time: take the lock before any connection or transaction.
+        self._lock = dblock.acquire(
+            self.cfg.paths.db,
+            {"actor": self.actor.by, "kind": self.kind, "as_of": self.as_of},
+        )
+        try:
+            return self._enter()
+        except BaseException:
+            if self.conn is not None:
+                try:
+                    self.conn.close()
+                except Exception:
+                    pass
+            dblock.release(self._lock)
+            self._lock = None
+            raise
+
+    def _enter(self) -> RunContext:
         self.conn = connect(self.cfg.paths.db)
         max_att = self.conn.execute(
             "SELECT max(attempt) FROM runs WHERE as_of = ? AND kind = ? AND track = ?",
@@ -136,6 +156,13 @@ class RunContext:
         self._staging_open = True
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
+        try:
+            return self._finish(exc_type, exc_val, exc_tb)
+        finally:
+            dblock.release(self._lock)
+            self._lock = None
+
+    def _finish(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
         finished_at = self.clock.iso()
         if exc_type is not None:
             if self._staging_open:
@@ -475,41 +502,30 @@ def _git(args: list[str], cwd: Path) -> tuple[int, str]:
     return res.returncode, (res.stdout + res.stderr).strip()
 
 
-def _state_over_budget(cfg: Config, as_of: str, clock: Clock, actor: Actor) -> bool:
-    """MASTER_SPEC 10.5: measure state growth after every monthly run, committed or not.
+def _warn_big_journals(cfg: Config) -> None:
+    """Print-only: GitHub warns at 50 MiB and blocks at 100 MiB per file.
 
-    Non-blocking: an oversized state file is a recorded WARN (decision D8), never a
-    publication block. Journaled through its own short RunContext, since the monthly
-    run's own RunContext has already committed and closed by this point.
+    Runs after the journal export and writes nothing to the state database, so the committed
+    journal always equals the database (a write here would make the journal lag by one run).
     """
-    warn_bytes = int(_cfg(cfg, "budgets", "state_warn_bytes", 50_000_000))
-    db_path = Path(cfg.paths.db)
-    if not db_path.exists() or db_path.stat().st_size <= warn_bytes:
-        return False
-    actual_bytes = db_path.stat().st_size
-    _print(f"State database {db_path} is {actual_bytes} bytes (> state_warn_bytes {warn_bytes}); "
-           "not staged. Record a capacity decision before committing it.")
-    try:
-        from quant.data.gates import record_event
-        with RunContext(as_of=as_of, kind="maintenance", track="live", cfg=cfg, clock=clock, actor=actor) as budget_ctx:
-            record_event(
-                budget_ctx,
-                code="STATE_BUDGET_EXCEEDED",
-                severity="WARN",
-                detail={"bytes": actual_bytes, "budget": warn_bytes, "db_path": str(db_path)},
-            )
-    except Exception as exc:
-        _print(f"Failed to record STATE_BUDGET_EXCEEDED event: {exc!r}")
-    return True
+    from quant.db import ledger
+
+    for j in ledger.journal_sizes(cfg):
+        if j["bytes"] > ledger.JOURNAL_WARN_BYTES:
+            _print(f"WARN journal file {j['path']} is {j['bytes']} bytes, above "
+                   f"{ledger.JOURNAL_WARN_BYTES} bytes; GitHub warns at 50 MiB and blocks at 100 MiB")
 
 
 def _commit_and_push(cfg: Config, as_of: str, *, commit: bool, push: bool, clock: Clock, actor: Actor) -> None:
-    """Commit only intended data/report files; push only with the explicit flag."""
-    over_budget = _state_over_budget(cfg, as_of, clock, actor)
+    """Commit only intended data/report files; push only with the explicit flag.
+
+    The state database is git-ignored and never staged: the journal under data/ledger is the committed state.
+    ``clock`` and ``actor`` are kept for call compatibility and are not used.
+    """
     if not commit:
         return
     root = Path(cfg.paths.db).resolve().parent
-    intended = [cfg.paths.db, Path(cfg.paths.data_dir) / "ledger", Path(cfg.paths.data_dir) / "manifests",
+    intended = [Path(cfg.paths.data_dir) / "ledger", Path(cfg.paths.data_dir) / "manifests",
                 Path(cfg.paths.knowledge_dir), Path(cfg.paths.ui_dir)]
     rel = []
     for p in intended:
@@ -521,14 +537,9 @@ def _commit_and_push(cfg: Config, as_of: str, *, commit: bool, push: bool, clock
                 continue
     if not rel:
         return
-    # An oversized state file is a recorded capacity issue, never silently committed.
-    if over_budget:
-        db_path = Path(cfg.paths.db)
-        rel = [r for r in rel if Path(root / r).resolve() != db_path.resolve()]
-        if not rel:
-            return
     _git(["add", "--", *rel], root)
-    code, out = _git(["commit", "-m", f"monthly run {as_of}: state, ledger, reports and UI payloads"], root)
+    # Pathspec commit: only these paths, whatever else another agent has staged in the same checkout.
+    code, out = _git(["commit", "-m", f"monthly run {as_of}: ledger, reports and UI payloads", "--", *rel], root)
     _print(f"git commit: {out.splitlines()[-1] if out else code}")
     if push and code == 0:
         code, out = _git(["push"], root)
@@ -637,21 +648,50 @@ def monthly(
         _print(f"Dry run: would run monthly for as_of={as_of} (cutoff {cutoff}); no writes, network or git.")
         return 0
 
-    # Lock against concurrent runs
-    lock_path = Path(str(cfg.paths.db) + ".lock")
-    lock_file = None
+    # One writer at a time (quant.db.lock). The lock covers the whole run, including the journal
+    # export, verification, VACUUM and the optional commit and push; RunContexts below re-enter it.
     try:
-        import fcntl
-        lock_file = open(lock_path, "w")
+        state_lock = dblock.acquire(
+            cfg.paths.db, {"actor": actor.by, "kind": "monthly", "as_of": as_of}
+        )
+    except dblock.StateLocked as exc:
+        _print(f"Another writer holds the state lock: {exc}")
+        return 1
+    except Refused as exc:
+        _print(f"Refused: {exc}")
+        return 1
+    try:
+        # A writer that waited for the lock may find another run already published this date.
+        recheck = connect(cfg.paths.db, readonly=True)
         try:
-            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except (BlockingIOError, OSError):
-            _print(f"Another monthly run holds {lock_path}.")
-            lock_file.close()
-            return 1
-    except ImportError:
-        lock_file = None
+            published_now = recheck.execute(
+                "SELECT cohort_id FROM cohorts WHERE as_of = ? AND track = 'live'", (as_of,)
+            ).fetchone()
+        finally:
+            recheck.close()
+        if published_now:
+            _print(f"Live cohort for {as_of} already published ({published_now[0]}); nothing to do.")
+            return 0
+        return _monthly_locked(cfg, clock, actor, as_of=as_of, cutoff=cutoff, skip_capture=skip_capture,
+                               stop_after=stop_after, commit=commit, push=push, client=client)
+    finally:
+        dblock.release(state_lock)
 
+
+def _monthly_locked(
+    cfg: Config,
+    clock: Clock,
+    actor: Actor,
+    *,
+    as_of: str,
+    cutoff: str,
+    skip_capture: bool,
+    stop_after: str | None,
+    commit: bool,
+    push: bool,
+    client: Any,
+) -> int:
+    """The monthly pipeline proper. The caller holds the state lock for the whole call."""
     blocked_reason: Optional[str] = None
     published = False
     try:
@@ -760,15 +800,6 @@ def monthly(
     except Exception as exc:
         _print(f"Runner error: {exc!r}")
         return 1
-    finally:
-        if lock_file:
-            try:
-                import fcntl
-                fcntl.flock(lock_file, fcntl.LOCK_UN)
-                lock_file.close()
-                lock_path.unlink(missing_ok=True)
-            except Exception:
-                pass
 
     # 8 (cont.). Export ledger, verify rebuild, checkpoint/VACUUM outside any transaction.
     from quant.db import ledger
@@ -776,6 +807,7 @@ def monthly(
     try:
         ledger_dir = Path(cfg.paths.data_dir) / "ledger"
         ledger.export(post_conn, ledger_dir)
+        _warn_big_journals(cfg)
         verify_report = ledger.verify(post_conn, ledger_dir)
         if not verify_report.passed:
             failed = [c.id for c in verify_report.checks if c.status == "FAIL"]

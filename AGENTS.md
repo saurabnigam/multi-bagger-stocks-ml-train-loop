@@ -41,6 +41,11 @@ It combines:
    the **legacy** engine's database; it is not written to or read from by any V2
    scoring path.
 
+The state database `quant.db` is **not committed** (it is git-ignored and derived). The
+committed record is the compressed ledger `data/ledger/YYYY-MM/events.jsonl.gz`; rebuild
+the database with `python -m quant db rebuild --output quant.db`. `quant_engine.db`
+stays frozen and tracked.
+
 ---
 
 ## 📋 Prime Directives for Agents
@@ -122,6 +127,24 @@ The rules that actually govern `quant/model` are:
   with `ctx.keep_after_rollback(table, rows_df, keys)`. `db export` / `db rebuild`
   / `db verify` round-trip the ledger to reproduce a state database from its
   journal.
+* **One writer at a time.** Every engine write to a state database holds an exclusive
+  advisory lock `<db>.lock`: every `RunContext`, `db init`, `db export`, `db verify` (they write the journal files), `db migrate-legacy` and the whole of
+  `run monthly` (through the journal export, verification, VACUUM and any commit or push). A second
+  writer fails fast (after a one-second retry) or waits up to `QUANT_LOCK_WAIT_S` seconds, and the
+  lock frees itself when its process ends. Read-only commands (`status`,
+  `db size`, `db rebuild` to a new file) take none; `quant status` shows the holder under `write_lock`
+  ([docs/operations/concurrency.md](docs/operations/concurrency.md)).
+* **Several agents, separate workspaces.** Edit code in your own git worktree, never in the pinned
+  runtime checkout (`mb-runtime`, branch `runtime`) that scheduled jobs and real runs use. Experiments
+  run against a copy of the data: point `QUANT_DB_PATH`, `QUANT_PRICES_DB_PATH` and the other `QUANT_*`
+  paths at the copy. Never run a writing command against the real database from a checkout with
+  unreviewed code. The lock stops two writers from interleaving; it does not make unreviewed code safe.
+  Real-data commands go through `scripts/q.sh` in the runtime checkout
+  ([docs/operations/month_end.md](docs/operations/month_end.md)).
+* **The ledger is the committed state.** `db export` writes deterministic gzip partitions
+  (`events.jsonl.gz`); readers also accept an old plain `events.jsonl` and prefer `.gz`.
+  The database file, the price store and the raw archives stay out of git
+  ([docs/operations/storage_and_backup.md](docs/operations/storage_and_backup.md)).
 * **Gates are computed from evidence, not asserted.** `quant.data.gates.run` derives
   G1-G10 from the actual captured/computed data for a draft cohort; it does not
   default a missing check to "passing."
@@ -155,7 +178,9 @@ The rules that actually govern `quant/model` are:
 ├── README.md                   # Public repository documentation
 ├── requirements.txt            # Python dependencies
 ├── config.py                   # LEGACY path/threshold config (do not confuse with quant/config.py)
-├── quant_engine.db             # FROZEN legacy SQLite reference database (SHA256: 03fe228b8...)
+├── quant_engine.db             # FROZEN legacy SQLite reference database (SHA256: 03fe228b8...); tracked
+├── quant.db                    # V2 state database: git-ignored, rebuilt from data/ledger (not committed)
+├── data/ledger/YYYY-MM/        # events.jsonl.gz: the committed, canonical, compressed journal
 │
 ├── quant/                      # V2 modular package
 │   ├── config.py               # V2 Config & repository-relative paths
@@ -177,7 +202,11 @@ The rules that actually govern `quant/model` are:
 │
 ├── scripts/
 │   ├── check.sh                 # check_spec.py + full pytest, interpreter-resolved
-│   └── signoff.sh                # Phased sign-off runner (S01-S15); see --help
+│   ├── signoff.sh                # Phased sign-off runner (S01-S15); see --help
+│   ├── backup_state.sh           # Snapshot of the state db, price store and archives, with INVENTORY.json
+│   ├── capture_routine.sh        # Idempotent month-end routine: prices | fundamentals | status
+│   ├── q.sh                      # Engine CLI with this checkout's code against the data root
+│   └── routine_env.sh            # Parser for the optional local settings file routine.env
 │
 ├── monthly_cron.sh              # Scheduled runner: lock, no --push, logs to data/logs/
 ├── daily_cron.sh                # Legacy pipeline runner
@@ -268,3 +297,16 @@ python3 -m quant data actions-resolve ... --proposal-id ID --confirm SHA8 --acto
 `--actor-kind llm --by llm:<model id>`, may run only `triage list`, `show`, `submit` and `attach --url`, and
 never runs `triage build` (refused for llm actors), `data actions-resolve`, `triage reject` or `kb reject`. The label is not authentication; the contract is in
 `docs/operations/triage_agent_contract.md`.
+
+### Playbook D: Rebuild and back up state
+
+Full note: [docs/operations/storage_and_backup.md](docs/operations/storage_and_backup.md).
+
+```bash
+python3 -m quant db rebuild --output quant.db     # fresh clone: replay data/ledger into a database
+python3 -m quant db verify                        # export, rebuild a temp copy, compare every table
+python3 -m quant db size                          # prints compressed journal bytes; WARN above 45 MiB
+scripts/backup_state.sh [--dry-run] [DEST_DIR]    # state db + price store + archives; KEEP=6 snapshots
+```
+
+The backup folder must be outside the repository; copying it off the laptop is the owner's choice.

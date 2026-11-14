@@ -8,7 +8,7 @@ from pathlib import Path
 from quant.cli import register
 from quant.config import load as load_config
 from quant.db.core import connect
-from quant.status import read as read_status
+from quant.status import read as read_status, write_lock
 
 
 def cmd_status_show(args: argparse.Namespace) -> int:
@@ -17,7 +17,8 @@ def cmd_status_show(args: argparse.Namespace) -> int:
     if db_path:
         cfg = cfg.with_paths(db=Path(db_path))
     if not Path(cfg.paths.db).exists():
-        print(json.dumps({"status": "no_database", "db": str(cfg.paths.db)}, indent=2))
+        print(json.dumps({"status": "no_database", "db": str(cfg.paths.db),
+                          "write_lock": write_lock(cfg.paths.db)}, indent=2, default=str))
         return 0
     conn = connect(cfg.paths.db, readonly=True)
     try:

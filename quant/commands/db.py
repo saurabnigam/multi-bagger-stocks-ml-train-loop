@@ -7,6 +7,7 @@ from pathlib import Path
 from quant.cli import register
 from quant.config import load as load_config
 from quant.db import ledger
+from quant.db import lock as dblock
 from quant.db.core import apply_schema, connect, install_journal_triggers
 
 
@@ -25,24 +26,32 @@ def _ledger_dir(cfg) -> Path:
 def cmd_db_init(args: argparse.Namespace) -> int:
     """Create the state schema (idempotent) and install journal triggers."""
     cfg = _cfg(args)
-    conn = connect(cfg.paths.db)
+    handle = dblock.acquire(cfg.paths.db, {"actor": getattr(args, "by", None) or "system:db-init", "kind": "db-init"})
     try:
-        apply_schema(conn, kind="state")
-        n = install_journal_triggers(conn)
-        print(f"Schema applied at {cfg.paths.db}; {n} journal triggers installed.")
+        conn = connect(cfg.paths.db)
+        try:
+            apply_schema(conn, kind="state")
+            n = install_journal_triggers(conn)
+            print(f"Schema applied at {cfg.paths.db}; {n} journal triggers installed.")
+        finally:
+            conn.close()
     finally:
-        conn.close()
+        dblock.release(handle)
     return 0
 
 
 def cmd_db_export(args: argparse.Namespace) -> int:
-    """Export ledger_events to data/ledger/YYYY-MM/events.jsonl."""
+    """Export ledger_events to data/ledger/YYYY-MM/events.jsonl.gz."""
     cfg = _cfg(args)
-    conn = connect(cfg.paths.db, readonly=True)
+    handle = dblock.acquire(cfg.paths.db, {"actor": getattr(args, "by", None) or "system:db-export", "kind": "db-export"})
     try:
-        paths = ledger.export(conn, _ledger_dir(cfg))
+        conn = connect(cfg.paths.db, readonly=True)
+        try:
+            paths = ledger.export(conn, _ledger_dir(cfg))
+        finally:
+            conn.close()
     finally:
-        conn.close()
+        dblock.release(handle)
     print(f"Exported {len(paths)} ledger partition(s) to {_ledger_dir(cfg)}")
     return 0
 
@@ -54,6 +63,10 @@ def cmd_db_rebuild(args: argparse.Namespace) -> int:
     if not output:
         print("db rebuild requires --output PATH")
         return 1
+    if Path(output).exists():
+        print(f"db rebuild refused: {output} already exists and would be overwritten; "
+              "choose a new --output PATH or move the file away first")
+        return 1
     ledger.rebuild(_ledger_dir(cfg), Path(output))
     print(f"Rebuilt {output} from {_ledger_dir(cfg)}")
     return 0
@@ -62,12 +75,16 @@ def cmd_db_rebuild(args: argparse.Namespace) -> int:
 def cmd_db_verify(args: argparse.Namespace) -> int:
     """Export the ledger, rebuild a temporary database and compare every state table."""
     cfg = _cfg(args)
-    conn = connect(cfg.paths.db, readonly=True)
+    handle = dblock.acquire(cfg.paths.db, {"actor": getattr(args, "by", None) or "system:db-verify", "kind": "db-verify"})
     try:
-        ledger.export(conn, _ledger_dir(cfg))
-        report = ledger.verify(conn, _ledger_dir(cfg))
+        conn = connect(cfg.paths.db, readonly=True)
+        try:
+            ledger.export(conn, _ledger_dir(cfg))
+            report = ledger.verify(conn, _ledger_dir(cfg))
+        finally:
+            conn.close()
     finally:
-        conn.close()
+        dblock.release(handle)
     failed = [c for c in report.checks if c.status == "FAIL"]
     for c in report.checks:
         if c.status == "FAIL":
@@ -82,11 +99,21 @@ def cmd_db_size(args: argparse.Namespace) -> int:
     warn = int(getattr(getattr(cfg, "budgets", None), "state_warn_bytes", 50_000_000))
     flag = " (above state_warn_bytes)" if sizes["db_bytes"] > warn else ""
     print(f"state db {sizes['db_bytes']} bytes{flag}; ledger {sizes['ledger_bytes']} bytes")
+    journal = ledger.journal_sizes(cfg)
+    for j in journal:
+        note = "" if j["compressed"] else " (plain, not compressed)"
+        print(f"journal {j['month']} {j['file']} {j['bytes']} bytes{note}")
+    print(f"journal total {sizes['journal_bytes']} bytes")
+    limit = ledger.JOURNAL_WARN_BYTES
+    for j in journal:
+        if j["bytes"] > limit:
+            print(f"WARN journal file {j['path']} is {j['bytes']} bytes, above 45 MiB ({limit} bytes); "
+                  f"GitHub warns at 50 MiB and blocks at 100 MiB")
     return 0
 
 
 register("db", "init", cmd_db_init, "Create the state schema and journal triggers")
-register("db", "export", cmd_db_export, "Export ledger_events to JSONL partitions")
+register("db", "export", cmd_db_export, "Export ledger_events to gzip JSONL partitions")
 register("db", "rebuild", cmd_db_rebuild, "Rebuild a database from the ledger (--output PATH)")
 register("db", "verify", cmd_db_verify, "Verify the state database against a ledger rebuild")
-register("db", "size", cmd_db_size, "Report state database and ledger sizes")
+register("db", "size", cmd_db_size, "Report state database, ledger and compressed journal sizes")

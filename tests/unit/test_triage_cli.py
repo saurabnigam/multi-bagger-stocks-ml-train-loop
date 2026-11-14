@@ -128,7 +128,8 @@ class World:
 
     def files(self):
         return sorted(p.relative_to(self.root).as_posix() for p in self.root.rglob("*")
-                      if p.is_file() and p.name not in ("state.db", "p.db") and not p.name.startswith("state.db-"))
+                      if p.is_file() and p.name not in ("state.db", "p.db", "state.db.lock")      # the write lock file
+                      and not p.name.startswith("state.db-"))
 
 
 class FakeYahoo:

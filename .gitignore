@@ -7,9 +7,12 @@ __pycache__/
 .coverage
 .pytest_cache/
 
-# State-DB write-ahead/shared-memory files (transient SQLite journal state; the
-# committed artifact is quant.db itself, never these). Do NOT add quant.db or
-# data/ledger here - MASTER_SPEC commits both as the reproducibility record.
+# The state database is derived, not committed: the record is data/ledger (committed, gzip
+# partitions). Rebuild with `python -m quant db rebuild --output quant.db`. quant_engine.db stays tracked.
+quant.db
+quant.db.lock
+# Its write-ahead/shared-memory files are transient SQLite state. Do NOT add data/ledger here:
+# it is the committed record (MASTER_SPEC 4.2).
 quant.db-wal
 quant.db-shm
 *.db-wal
@@ -27,3 +30,6 @@ data/logs/
 data/.locks/
 .cache/
 *.lock
+
+# Local settings for scripts/capture_routine.sh and scripts/backup_state.sh (docs/operations/month_end.md)
+routine.env

@@ -20,6 +20,10 @@ from quant.run import RunContext
 from quant.types import Check, CheckReport, Draft
 
 UNKNOWN_SECTORS = {"UNCLASSIFIED", "UNKNOWN", "", "None", "nan"}
+# A price factor's coverage denominator drops members listed too recently for its lookback only while they
+# are at most this share of its applicable members; above it (a vendor outage that truncated history)
+# the strict denominator is used. An index reshuffle adds about 5%.
+UNSEASONED_MAX_SHARE = 0.10
 PRICE_INPUTS = {"tri", "close_split", "close_raw", "volume", "adv_inr", "benchmark_tri"}
 # Assumption (not in the spec table): a fresh install is BOOTSTRAP_REQUIRED when
 # fewer than this share of members has any admissible fundamental statement.
@@ -106,6 +110,69 @@ def _closes_at(ctx: RunContext, draft: Draft) -> Optional[pd.Series]:
     ser = df.iloc[-1].reindex(sids) if not df.empty else pd.Series(np.nan, index=sids)
     cache["closes"] = ser
     return ser
+
+
+def _listing_info(ctx: RunContext, draft: Draft, max_lookback: int) -> Optional[tuple[pd.Series, list[str]]]:
+    """(first bar date per member, market session list) on or before as_of at the cohort vintage.
+
+    The session list is the sorted set of dates on which any member has a close in the window,
+    with as_of itself always included. One query over the members for the longest lookback window,
+    cached on the draft. None when there is no price store (callers keep the old denominator).
+    """
+    cache = draft.source_refs.setdefault("_cache", {})
+    hit = cache.get("listing_info")
+    if hit is not None and hit[0] >= max_lookback:
+        return hit[1]
+    store = getattr(ctx, "store", None)
+    sids = _member_ids(draft)
+    if store is None or not sids:
+        return None
+    start = (pd.Timestamp(draft.as_of) - pd.Timedelta(days=int(max_lookback * 3.0) + 90)).strftime("%Y-%m-%d")
+    df = store.close_raw(sids, start=start, end=draft.as_of, vintage_at=draft.knowledge_cutoff)
+    if df is None or df.empty:
+        first = pd.Series(np.nan, index=sids, dtype=object)
+        sessions: list[str] = []
+    else:
+        notna = df.notna()
+        sessions = sorted(str(d) for d in notna.index[notna.any(axis=1)])
+        first = notna.apply(lambda col: str(col.index[col.to_numpy().argmax()]) if col.any() else np.nan)
+        first = first.reindex(sids).astype(object)
+    if draft.as_of not in sessions:
+        sessions.append(draft.as_of)
+        sessions.sort()
+    info = (first, sessions)
+    cache["listing_info"] = (max_lookback, info)
+    return info
+
+
+def _seasoned_mask(first: pd.Series, sessions: list[str], lookback: int) -> pd.Series:
+    """True where a member's first bar is on or before the session ``lookback`` sessions before as_of.
+
+    A member could then hold ``lookback + 1`` bars. With fewer than ``lookback + 1`` market sessions
+    in the window nobody can be seasoned. Holes after the first bar do not matter.
+    """
+    if len(sessions) < lookback + 1:
+        return pd.Series(False, index=first.index)
+    threshold = sessions[-(lookback + 1)]
+    return first.map(lambda d: isinstance(d, str) and d <= threshold).astype(bool)
+
+
+def _lookback_known(factor_id: str) -> bool:
+    try:
+        from quant.factors.registry import LAUNCH_FACTOR_CLASSES
+        return str(factor_id).split("@")[0] in LAUNCH_FACTOR_CLASSES
+    except Exception:
+        return False
+
+
+def _factor_lookback(factor_id: str) -> int:
+    """lookback_days of the factor's launch spec; 0 (everyone seasoned) when unknown or missing."""
+    try:
+        from quant.factors.registry import LAUNCH_FACTOR_CLASSES
+        cls = LAUNCH_FACTOR_CLASSES.get(str(factor_id).split("@")[0])
+        return max(int(getattr(cls().spec, "lookback_days", 0) or 0), 0) if cls is not None else 0
+    except Exception:
+        return 0
 
 
 def _latest_attributes(ctx: RunContext, draft: Draft) -> pd.DataFrame:
@@ -358,12 +425,21 @@ def _run_pre_gates(ctx: RunContext, draft: Draft) -> List[Check]:
 def factor_coverage(ctx: RunContext, draft: Draft) -> pd.DataFrame:
     """Actual computed coverage per factor over applicable members.
 
-    Columns: factor_id, status, family, is_price, applicable, finite, coverage,
-    threshold, excluded. Structural non-applicability (financials for
-    nonfinancial factors) is removed from the denominator.
+    Columns: factor_id, status, family, is_price, applicable, unseasoned, unseasoned_share,
+    strict_fallback, lookback_unknown, finite, coverage, threshold, excluded.
+    Structural non-applicability (financials for nonfinancial factors) is removed from the
+    denominator. For a price factor the denominator is the members seasoned by listing age
+    (MASTER_SPEC R16): the first bar is on or before the session ``lookback_days`` sessions before
+    as_of, in the market session list built from the closes of all members at the cohort vintage.
+    The others are ``unseasoned`` (outside the denominator, reported). A seasoned member with a
+    missing value, holes included, stays in the denominator and counts as missing. If the unseasoned
+    share of the applicable members exceeds UNSEASONED_MAX_SHARE the strict denominator (all
+    applicable members) is used and ``strict_fallback`` is set. A price factor with no launch
+    spec gets lookback 0 and ``lookback_unknown``. Without a price store the old denominator is kept.
     """
-    cols = ["factor_id", "status", "family", "is_price", "applicable", "finite", "coverage", "threshold", "excluded",
-            "prerequisite", "prerequisite_met"]
+    cols = ["factor_id", "status", "family", "is_price", "applicable", "unseasoned", "unseasoned_share",
+            "strict_fallback", "lookback_unknown", "finite", "coverage",
+            "threshold", "excluded", "prerequisite", "prerequisite_met"]
     fv = draft.factor_values
     if fv is None or len(fv) == 0:
         return pd.DataFrame(columns=cols)
@@ -385,16 +461,37 @@ def factor_coverage(ctx: RunContext, draft: Draft) -> pd.DataFrame:
                 "is_price": bool(inputs) and inputs <= PRICE_INPUTS,
             }
     records = []
-    for fid, group in fv.groupby("factor_id"):
+    groups = list(fv.groupby("factor_id"))
+
+    def _is_price(fid: Any) -> bool:
+        meta = reg.get(fid, {})
+        return meta.get("is_price", meta.get("family", "") in ("momentum", "low_risk") or str(fid).split("@")[0] in
+                        ("mom_12_1", "mom_6_1", "trend_200", "vol_252", "dist_52w_high", "rev_1m", "max_ret_21"))
+
+    lookbacks = {fid: _factor_lookback(fid) for fid, _ in groups if _is_price(fid)}
+    max_lb = max(lookbacks.values(), default=0)
+    listing = _listing_info(ctx, draft, max_lb) if max_lb > 0 else None
+    for fid, group in groups:
         meta = reg.get(fid, {})
         family = meta.get("family", "")
-        is_price = meta.get("is_price", family in ("momentum", "low_risk") or str(fid).split("@")[0] in
-                            ("mom_12_1", "mom_6_1", "trend_200", "vol_252", "dist_52w_high", "rev_1m", "max_ret_21"))
+        is_price = _is_price(fid)
         if "applies_to_financials" in group.columns and group["applies_to_financials"].notna().any():
             applies_fin = bool(group["applies_to_financials"].dropna().iloc[0])
         else:
             applies_fin = meta.get("applies_fin", True)
         applicable = group if applies_fin else group[group["sector_group"] != "Financial Services"]
+        n_unseasoned, share, strict_fallback = 0, 0.0, False
+        lookback_unknown = bool(is_price) and not _lookback_known(fid)
+        if is_price and listing is not None and lookbacks.get(fid, 0) > 0 and len(applicable):
+            first, sessions = listing
+            keys = applicable["security_id"] if "security_id" in applicable.columns else applicable.index.to_series()
+            ok = _seasoned_mask(first.reindex(keys.to_numpy()), sessions, lookbacks[fid])
+            n_unseasoned = int((~ok).sum())
+            share = n_unseasoned / len(applicable)
+            if share > UNSEASONED_MAX_SHARE:
+                strict_fallback = True              # an outage, not a reshuffle: keep every applicable member
+            else:
+                applicable = applicable[ok.to_numpy()]
         n_app = int(len(applicable))
         n_fin = int(applicable["z"].notna().sum()) if n_app else 0
         cov = n_fin / n_app if n_app else 0.0
@@ -402,7 +499,9 @@ def factor_coverage(ctx: RunContext, draft: Draft) -> pd.DataFrame:
         prereq, met = _prerequisite_status(ctx, draft, str(fid))
         records.append({
             "factor_id": fid, "status": meta.get("status", "active"), "family": family,
-            "is_price": is_price, "applicable": n_app, "finite": n_fin, "coverage": cov,
+            "is_price": is_price, "applicable": n_app, "unseasoned": n_unseasoned, "unseasoned_share": share,
+            "strict_fallback": strict_fallback, "lookback_unknown": lookback_unknown,
+            "finite": n_fin, "coverage": cov,
             "threshold": thr, "excluded": cov < thr, "prerequisite": prereq, "prerequisite_met": met,
         })
     return pd.DataFrame(records, columns=cols)
@@ -479,6 +578,18 @@ def _run_post_gates(
         reason = f"{len(excluded_active)} active factors excluded on coverage (limit {max_excluded}): {excluded_active}"
         if awaiting:
             reason += f"; awaiting history prerequisites (not counted, excluded from composites): {awaiting}"
+        unseasoned = {r["factor_id"]: int(r["unseasoned"]) for _, r in cov.iterrows()
+                      if bool(r["is_price"]) and int(r["unseasoned"]) > 0 and not bool(r["strict_fallback"])}
+        if unseasoned:
+            reason += (f"; price-factor coverage counts members with enough history "
+                       f"({max(unseasoned.values())} unseasoned at most)")
+        for _, r in cov.iterrows():
+            if bool(r["strict_fallback"]):
+                reason += (f"; {r['factor_id']}: unseasoned share {float(r['unseasoned_share']) * 100:.1f}% exceeds "
+                           f"{UNSEASONED_MAX_SHARE * 100:.0f}%: strict denominator used")
+        unknown = sorted(str(r["factor_id"]) for _, r in cov.iterrows() if bool(r["lookback_unknown"]))
+        if unknown:
+            reason += f"; lookback unknown (treated as 0): {unknown}"
         checks.append(_check(
             "G8", len(excluded_active) <= max_excluded, len(excluded_active), max_excluded, reason,
         ))

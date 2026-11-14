@@ -7,6 +7,7 @@ from pathlib import Path
 
 from quant.cli import register
 from quant.config import load
+from quant.db import lock as dblock
 from quant.db.core import apply_schema, connect
 from quant.migrate.legacy import reconcile, run as run_migration
 from quant.run import RunContext
@@ -34,22 +35,30 @@ def cmd_migrate_legacy(args: argparse.Namespace) -> int:
 
     # RunContext.__enter__ inserts the run's `runs` row immediately, so the schema (and its
     # journal triggers) must already exist on the target file before it opens its connection.
-    bootstrap_conn = connect(db_path)
-    apply_schema(bootstrap_conn, kind="state")
-    bootstrap_conn.close()
-
     clock = SystemClock()
     actor = Actor(
         kind=getattr(args, "actor_kind", "system"),
         name=getattr(args, "by", "system:migration"),
     )
+    # The bootstrap writes the schema, so it holds the write lock; the RunContext below re-enters
+    # the same lock and the whole migration is one critical section.
+    handle = dblock.acquire(db_path, {"actor": actor.by, "kind": "migration", "as_of": "2026-09-03"})
+    try:
+        bootstrap_conn = connect(db_path)
+        try:
+            apply_schema(bootstrap_conn, kind="state")
+        finally:
+            bootstrap_conn.close()
 
-    with RunContext(as_of="2026-09-03", kind="migration", track="legacy", cfg=cfg, clock=clock, actor=actor) as ctx:
-        res = run_migration(ctx, legacy_db_path=legacy_db, dry_run=False)
-        print(f"Migration result: {res.status}, counts={res.counts}, details={res.details}")
+        with RunContext(as_of="2026-09-03", kind="migration", track="legacy", cfg=cfg, clock=clock,
+                        actor=actor) as ctx:
+            res = run_migration(ctx, legacy_db_path=legacy_db, dry_run=False)
+            print(f"Migration result: {res.status}, counts={res.counts}, details={res.details}")
 
-        df = reconcile(ctx.conn, legacy_db_path=legacy_db)
-        print(df.to_string(index=False))
+            df = reconcile(ctx.conn, legacy_db_path=legacy_db)
+            print(df.to_string(index=False))
+    finally:
+        dblock.release(handle)
     return 0
 
 

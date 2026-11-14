@@ -569,97 +569,33 @@ def test_never_weighted_families_are_control_and_legacy():
 
 
 # =============================================================================
-# T3/T5: STATE_BUDGET_EXCEEDED non-blocking WARN event
+# State size: the database is no longer committed (MASTER_SPEC 4.2), so the end of a monthly run
+# must not open another run to record its size. The journal-size warning is print-only and is
+# tested in tests/unit/test_monthly_lock_and_commit.py.
 # =============================================================================
 
-def test_state_budget_exceeded_recorded_as_warn_event(tmp_path):
-    """When the state DB exceeds cfg.budgets.state_warn_bytes at the end of a
-    monthly run, a non-blocking WARN data_quality_events row is recorded (the
-    print is kept; no publication is blocked)."""
+@pytest.mark.parametrize("commit", [False, True])
+def test_commit_and_push_writes_nothing_to_the_state_database(tmp_path, commit):
+    """Whatever the size budget says, ``_commit_and_push`` adds no run and no data-quality event:
+    a write after the journal export would leave the committed journal one run behind the database."""
     base_dir = tmp_path / "budget"
     base_dir.mkdir(parents=True, exist_ok=True)
     cfg = _make_cfg(base_dir)
-
     conn = connect(cfg.paths.db)
     apply_schema(conn, kind="state")
     conn.close()
 
-    actual_bytes = cfg.paths.db.stat().st_size
-    assert actual_bytes > 0
-
     raw = cfg.to_dict()
-    raw["budgets"]["state_warn_bytes"] = 1  # force the oversized-state path
+    raw["budgets"]["state_warn_bytes"] = 1          # the old trigger for the STATE_BUDGET_EXCEEDED run
     from quant.config import Config
     tiny_cfg = Config(raw, cfg._root, policy_hash=cfg.policy_sha256)
 
-    clock = FrozenClock("2026-09-07T09:00:00.000000Z")
-    actor = Actor(kind="system", name="test")
-
-    _commit_and_push(tiny_cfg, as_of="2026-09-07", commit=True, push=False, clock=clock, actor=actor)
+    _commit_and_push(tiny_cfg, as_of="2026-09-07", commit=commit, push=False,
+                     clock=FrozenClock("2026-09-07T09:00:00.000000Z"), actor=Actor(kind="system", name="test"))
 
     check_conn = connect(tiny_cfg.paths.db)
     try:
-        rows = check_conn.execute(
-            "SELECT severity, code, detail_json FROM data_quality_events WHERE code = 'STATE_BUDGET_EXCEEDED'"
-        ).fetchall()
-        assert len(rows) == 1
-        row = rows[0]
-        assert row["severity"] == "WARN"
-        import json
-        detail = json.loads(row["detail_json"])
-        assert detail["budget"] == 1
-        assert detail["bytes"] == actual_bytes
-
-        # Non-blocking: the run row for this maintenance write is 'ok', not blocked/failed.
-        run_row = check_conn.execute(
-            "SELECT status FROM runs WHERE kind = 'maintenance' ORDER BY run_id DESC LIMIT 1"
-        ).fetchone()
-        assert run_row is not None
-        assert run_row["status"] == "ok"
+        assert check_conn.execute("SELECT count(*) FROM runs").fetchone()[0] == 0
+        assert check_conn.execute("SELECT count(*) FROM data_quality_events").fetchone()[0] == 0
     finally:
         check_conn.close()
-
-
-def test_state_budget_not_exceeded_records_no_event(tmp_path):
-    """Below budget: no STATE_BUDGET_EXCEEDED row (the check is a threshold,
-    not an unconditional log on every commit)."""
-    base_dir = tmp_path / "budget_ok"
-    base_dir.mkdir(parents=True, exist_ok=True)
-    cfg = _make_cfg(base_dir)
-
-    conn = connect(cfg.paths.db)
-    apply_schema(conn, kind="state")
-    conn.close()
-
-    clock = FrozenClock("2026-09-07T09:00:00.000000Z")
-    actor = Actor(kind="system", name="test")
-
-    # Default budget (50 MB) comfortably exceeds a freshly-created empty schema.
-    _commit_and_push(cfg, as_of="2026-09-07", commit=True, push=False, clock=clock, actor=actor)
-
-    check_conn = connect(cfg.paths.db)
-    try:
-        n = check_conn.execute(
-            "SELECT count(*) FROM data_quality_events WHERE code = 'STATE_BUDGET_EXCEEDED'"
-        ).fetchone()[0]
-        assert n == 0
-    finally:
-        check_conn.close()
-
-
-def test_state_budget_recorded_even_without_commit(tmp_path):
-    """Review finding: the WARN must not depend on --commit (monthly() defaults to commit=False)."""
-    cfg = _make_cfg(tmp_path)
-    tmp_path.mkdir(parents=True, exist_ok=True)
-    conn = connect(cfg.paths.db)
-    apply_schema(conn, kind="state")
-    conn.close()
-    from quant.config import Config
-    raw = cfg.to_dict()
-    raw["budgets"]["state_warn_bytes"] = 1
-    tiny_cfg = Config(raw, cfg._root, policy_hash=cfg.policy_sha256)
-    _commit_and_push(tiny_cfg, as_of="2026-09-07", commit=False, push=False,
-                     clock=FrozenClock("2026-09-08T00:00:00.000000Z"), actor=Actor(kind="system", name="t"))
-    c = connect(cfg.paths.db)
-    n = c.execute("SELECT count(*) FROM data_quality_events WHERE code = 'STATE_BUDGET_EXCEEDED'").fetchone()[0]
-    assert n == 1
