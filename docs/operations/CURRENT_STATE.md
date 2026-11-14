@@ -28,7 +28,7 @@ Runbooks: [month_end.md](month_end.md), [price_sources.md](price_sources.md),
 | Published lists | `live:2026-09-30` (flagged scored late), `live:2026-10-30` (scored late, not clean evidence) |
 | Next list | as of 2026-11-30 (Monday). It is the first one that can be clean |
 | Late price admission (R13) | Enabled by owner decision D-2026-11-08 |
-| Other price sources (R18) | Built. NOT enabled in the real database: the owner has to record the decision |
+| Other price sources (R18) | Enabled by owner decision D-2026-11-09, manual inbox mode (the owner puts the exchange file into `data/inbox/prices`) |
 | Last captures | Index list 4 Nov; financials and prices 11 Nov |
 | Open price-jump flags | 3 (HEG spin-off waiting for listing; two Concord Biotech entries) |
 | Committed record | Journal `data/ledger/2026-09..11/events.jsonl.gz`; `db verify` matched 45 of 45 tables on 14 Nov |
@@ -37,8 +37,8 @@ Runbooks: [month_end.md](month_end.md), [price_sources.md](price_sources.md),
 
 ## 3. Open items that need the owner
 
-1. **Enable the other price sources.** `scripts/q.sh kb decide --kind rule_change --subject price_fallback_sources ...`
-   (see price_sources.md). Until then closing prices come from Yahoo only.
+1. **On a month-end evening when Yahoo is late,** download the exchange's end-of-day file into the price inbox
+   (see price_sources.md). The sources are enabled; the file is the manual step.
 2. **Manual or automatic exchange files.** The default is manual: a person downloads the day's file into the
    inbox. NSE's terms of use prohibit automated data collection, so automatic fetching is the owner's choice.
 3. **When Yahoo is late and no exchange file is supplied,** the month is published "scored late" and does not
