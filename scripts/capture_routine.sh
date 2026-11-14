@@ -27,7 +27,12 @@ if [[ -r "$CODE_ROOT/scripts/routine_env.sh" ]]; then
   load_routine_env "$CODE_ROOT"
 fi
 DATA_ROOT="${MBQ_DATA_ROOT:-$CODE_ROOT}"
-if [[ -n "${QUANT_PYTHON:-}" ]]; then PY="$QUANT_PYTHON"
+# One interpreter for every checkout: scripts/resolve_python.sh (QUANT_PYTHON, this checkout's venv, the main
+# working directory's venv, python3). The inline rule below is only for a copy of this script without it.
+if [[ -f "$CODE_ROOT/scripts/resolve_python.sh" ]]; then
+  # shellcheck source=scripts/resolve_python.sh
+  . "$CODE_ROOT/scripts/resolve_python.sh"; PY="$(resolve_python "$CODE_ROOT")"
+elif [[ -n "${QUANT_PYTHON:-}" ]]; then PY="$QUANT_PYTHON"
 elif [[ -x "$CODE_ROOT/venv/bin/python" ]]; then PY="$CODE_ROOT/venv/bin/python"
 else PY="python3"; fi
 
@@ -94,6 +99,9 @@ try:
         for kind in ("nifty500", "yahoo_bundle", "yahoo_prices"):
             r = conn.execute("SELECT max(captured_at) FROM captures WHERE kind = ?", (kind,)).fetchone()
             out[f"last_{kind}"] = r[0]
+        r = conn.execute("SELECT max(captured_at), count(*) FROM captures WHERE kind IN "
+                         "('nse_udiff_bhavcopy', 'bse_udiff_bhavcopy')").fetchone()
+        out["last_exchange_file"] = r[0]                  # official NSE/BSE end-of-day files (price_sources.md)
         live = conn.execute("SELECT cohort_id, as_of, is_clean FROM cohorts WHERE track = 'live' "
                             "ORDER BY as_of DESC LIMIT 1").fetchone()
         out["latest_live_id"] = live["cohort_id"] if live else None
@@ -204,12 +212,18 @@ case "$MODE" in
       say "prices: closes for $TODAY already complete (${F_with_close:-} of ${F_members:-}, need ${THR})"; exit 0
     fi
     say "prices: closes for $TODAY at ${F_with_close:-} of ${F_members:-}; downloading"
-    q prices update --through "$TODAY" "${ACTOR[@]}" >>"$LOG" 2>&1 || { say "prices: update FAILED (see $LOG)"; exit 1; }
+    if OUT="$(q prices update --through "$TODAY" "${ACTOR[@]}" 2>&1)"; then UPDATE_RC=0; else UPDATE_RC=$?; fi
+    mkdir -p "$LOG_DIR"; printf '%s\n' "$OUT" >>"$LOG"
+    if [[ "$UPDATE_RC" -ne 0 ]]; then say "prices: update FAILED (see $LOG)"; exit 1; fi
     load_facts "prices: cannot read the state after the download" cov
     if at_least "${F_coverage:-}" "$THR"; then
       say "prices: closes for $TODAY complete after download (${F_with_close:-} of ${F_members:-})"; exit 0
     fi
     say "prices: closes for $TODAY still incomplete (${F_with_close:-} of ${F_members:-}, need ${THR}); run again later"
+    # What the other price sources did, and which exchange file a person can put into the inbox (price_sources.md).
+    while IFS= read -r hint; do
+      [[ -n "$hint" ]] && say "prices: $hint"
+    done < <(printf '%s\n' "$OUT" | grep '^Price fallback' || true)
     exit 10
     ;;
   fundamentals)
@@ -246,6 +260,7 @@ case "$MODE" in
       echo "last universe capture:   ${F_last_nifty500:-}"
       echo "last fundamentals:       ${F_last_yahoo_bundle:-}   (${F_fundamentals_age_days:-} days ago)"
       echo "last price download:     ${F_last_yahoo_prices:-}"
+      echo "last exchange file:      ${F_last_exchange_file:-none}"
       echo "closes for $TODAY:  ${F_with_close:-} of ${F_members:-}   (need $(percent "${F_threshold:-}"))"
       if [[ -z "${F_latest_live_id:-}" ]]; then
         echo "latest live list:        none yet"
@@ -267,6 +282,20 @@ try:
 except Exception:
     print("write lock: unknown")' 2>/dev/null)" || LOCK_LINE=""
       echo "${LOCK_LINE:-write lock: unknown}"
+      # One line from the JSON key "price_fallback" (docs/operations/price_sources.md).
+      FB_LINE="$(printf '%s' "$RAW" | "$PY" -c 'import json, sys
+try:
+    d, _ = json.JSONDecoder().raw_decode(sys.stdin.read().lstrip())
+    f = d["price_fallback"]
+    if f.get("error"):
+        print("other price sources:     configuration error (%s)" % f["error"])
+    elif not f.get("enabled"):
+        print("other price sources:     not enabled (the owner records the decision; see docs/operations/price_sources.md)")
+    else:
+        print("other price sources:     enabled, mode %s, sources %s, inbox %s" % (f.get("mode"), ", ".join(f.get("sources") or []), f.get("inbox")))
+except Exception:
+    print("other price sources:     unknown")' 2>/dev/null)" || FB_LINE=""
+      echo "${FB_LINE:-other price sources:     unknown}"
       MONTH_END="${F_month_end_weekday:-}"
       TRIAGE="$(q triage list --as-of "$MONTH_END" --json "${ACTOR[@]}" 2>/dev/null)" || TRIAGE=""
       OPEN="$(printf '%s' "$TRIAGE" | "$PY" -c 'import json,sys

@@ -4,15 +4,19 @@
 ![SQLite](https://img.shields.io/badge/sqlite-database-green.svg)
 ![Vanilla JS](https://img.shields.io/badge/frontend-vanilla_js-yellow.svg)
 
+**Agents and contributors:** read [AGENTS.md](AGENTS.md) first (section "Working Together": what is shared,
+what is throwaway) and [docs/operations/CURRENT_STATE.md](docs/operations/CURRENT_STATE.md). One Python
+environment serves every checkout: `scripts/bootstrap_env.sh`.
+
 A quantitative research platform that scores, ranks, and tracks Indian equities across
 the **Nifty 500** universe, built to a written specification
 (`docs/spec/MASTER_SPEC.md`, revision 2) with point-in-time (PIT) data discipline,
 evidence-based quality gates, and an append-only decision ledger.
 
-> **Status, as of 2026-09-10:**
-> - V2 has been implemented and reviewed against the spec. **No live cohort has been
->   published yet, and no out-of-sample performance is claimed.** A first live cutoff
->   requires bootstrap captures (below) and at least one clean monthly run.
+> **Status, as of 2026-11-14** (kept current in `docs/operations/CURRENT_STATE.md`):
+> - Two live lists are published (30 Sep and 30 Oct 2026). Both are flagged "scored late" and are not
+>   clean evidence. **No out-of-sample performance is claimed.** The first list that can be clean is
+>   30 Nov 2026.
 > - The historical legacy database (`quant_engine.db`) is migrated read-only as four
 >   flagged legacy cohorts (June/July/Aug/Sep 2026) for comparison; it is not a V2
 >   scoring input and its own defects (see `docs/analysis/red_team_review.md`) are

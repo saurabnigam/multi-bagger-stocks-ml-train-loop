@@ -77,7 +77,12 @@ if [[ -n "${MBQ_DATA_ROOT:-}" && -d "$MBQ_DATA_ROOT" ]]; then
     esac
 fi
 
-if [[ -n "${QUANT_PYTHON:-}" ]]; then PY="$QUANT_PYTHON"
+# One interpreter for every checkout: scripts/resolve_python.sh (QUANT_PYTHON, this checkout's venv, the main
+# working directory's venv, python3). The inline rule below is only for a copy of this script without it.
+if [[ -f "$ROOT/scripts/resolve_python.sh" ]]; then
+  # shellcheck source=scripts/resolve_python.sh
+  . "$ROOT/scripts/resolve_python.sh"; PY="$(resolve_python "$ROOT")"
+elif [[ -n "${QUANT_PYTHON:-}" ]]; then PY="$QUANT_PYTHON"
 elif [[ -x "$ROOT/venv/bin/python" ]]; then PY="$ROOT/venv/bin/python"
 else PY="python3"; fi
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}" PYTHONDONTWRITEBYTECODE=1

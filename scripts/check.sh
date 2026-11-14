@@ -5,16 +5,10 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
 
-# Interpreter resolution (MASTER_SPEC 10.1/10.5): $QUANT_PYTHON, else venv/bin/python, else python3.
+# Interpreter resolution (MASTER_SPEC 10.1/10.5): scripts/resolve_python.sh: $QUANT_PYTHON, else this checkout's venv, else the main working directory's venv, else python3.
 # This must match scripts/signoff.sh and monthly_cron.sh so all three agree on which
 # Python actually runs the engine.
-if [[ -n "${QUANT_PYTHON:-}" ]]; then
-    PY="${QUANT_PYTHON}"
-elif [[ -x "venv/bin/python" ]]; then
-    PY="venv/bin/python"
-else
-    PY="python3"
-fi
+PY="$(bash "${REPO_ROOT}/scripts/resolve_python.sh")"
 
 export PYTHONPATH="${REPO_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 

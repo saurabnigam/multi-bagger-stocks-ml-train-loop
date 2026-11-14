@@ -73,6 +73,62 @@ stays frozen and tracked.
 
 ---
 
+## 🤝 Working Together: what is shared, what is throwaway
+
+Several agents work on this repository at the same time (Claude Code, Antigravity, Codex, Cursor and
+others). All of them read this file: `CLAUDE.md`, `GEMINI.md`, `.cursorrules` and `.windsurfrules` are
+links to it. Follow these rules so that every agent sees the same code, the same data, the same
+environment and the same facts.
+
+### Shared and central: one copy, used by everyone
+
+| What | Where | How it changes |
+|---|---|---|
+| Rules for agents | `AGENTS.md` (this file) | Edit here only. Never keep a private variant |
+| Specification | `docs/spec/MASTER_SPEC.md` | A change of rule needs the owner's decision |
+| Code | git, branch `codex/v2-implementation` | Work on your own branch in your own worktree. Merge after review. The owner authorises every push |
+| Python environment | `venv/` in the main working directory, pinned by `requirements.lock` | `scripts/bootstrap_env.sh` creates or repairs it. Every script finds it through `scripts/resolve_python.sh`. Never create another environment somewhere else |
+| Real data: state database, price store, raw archives, journal, reports, dashboard data | The main working directory: `quant.db`, `data/`, `knowledge/`, `ui/data*.js` | Only through the engine's commands, which take the write lock. Reach it with `scripts/q.sh` in the runtime checkout |
+| Decisions | `knowledge/decisions/` and the `decisions` table | Recorded by the owner. An agent never records an approval |
+| Current state, open items, hazards | `docs/operations/CURRENT_STATE.md` | Update it in the same change that alters the state |
+| Runbooks | `docs/operations/` | Keep them matching the code |
+| Findings worth keeping | `docs/analysis/`, with the evidence beside the report | Commit them. A finding that lives only in a chat or in one agent's private memory is lost to the others |
+
+### Throwaway: stays in your scratch space
+
+* Copies of the data for experiments, trial scripts, logs of your own runs, drafts and notes to yourself.
+* Keep them in your tool's scratch or temporary folder, outside the repository. Never commit them and
+  never leave them in the main working directory.
+* If something in scratch turns out to matter to others (a finding, a script that will run again, a
+  number someone will rely on), move it to its shared place in the table above before you finish.
+
+### Before you start
+
+1. Read this file and `docs/operations/CURRENT_STATE.md`.
+2. Run `git worktree list` and `git log --oneline -5 codex/v2-implementation`. See what others are
+   doing and build on the newest code.
+3. Run `scripts/q.sh status`. The key `write_lock` shows whether someone is writing to the real data.
+
+### While you work
+
+* **Code:** your own worktree and branch. Do not edit code in the main working directory or in the
+  runtime checkout, and do not leave uncommitted changes there.
+* **Data:** experiments run on a copy. Point `MBQ_DATA_ROOT` (or the `QUANT_*` paths) at the copy. Real
+  data is changed only by the engine's commands, with reviewed code.
+* **Time:** never change a record's time to make a check pass. Record the true fetch time and let the
+  run be flagged late. Gate G3 and `verify pit` reject a price row that claims to be older than its
+  own download (MASTER_SPEC R17).
+* **Files:** never hand-edit `quant.db`, the price store, the journal or a published report.
+
+### When you finish
+
+* Commit your work on your branch, with tests. Say in the commit what changed and why.
+* Update `docs/operations/CURRENT_STATE.md` if the state, an open item or a hazard changed.
+* Leave the main working directory clean: `git status` there shows no code change of yours.
+* Tell the owner what you did not finish. Do not push; the owner authorises pushes.
+
+---
+
 ## ⚖️ V2 Invariants (MASTER_SPEC §6.3, §6.4) — supersede the legacy invariants below
 
 The legacy engine's "active weights in [0.05, 0.30] summing to strictly 1.000" and
@@ -151,6 +207,9 @@ The rules that actually govern `quant/model` are:
 * **A fresh install reports `BLOCKED: BOOTSTRAP_REQUIRED`.** Run
   `python -m quant data capture` at least once before the intended first cutoff
   (MASTER_SPEC §2.2) — there is no scoring cohort without it.
+* **Closing prices have a source chain** (Yahoo, then the NSE and BSE end-of-day files from an inbox
+  folder; auto-fetch is off by default). Enabling it is a human decision; an agent never records it.
+  Runbook: `docs/operations/price_sources.md` (MASTER_SPEC R18).
 * **CLI groups** (see MASTER_SPEC §10.3 for the full command list; run any group
   with `--help` for its exact current subcommands): `db`, `status`, `universe`,
   `prices`, `data`, `factors`, `model`, `evaluate`, `portfolio`, `kb`, `triage`,
@@ -177,6 +236,7 @@ The rules that actually govern `quant/model` are:
 ├── AGENTS.md                   # This operating manual
 ├── README.md                   # Public repository documentation
 ├── requirements.txt            # Python dependencies
+├── requirements.lock           # Exact versions every agent and every run uses (scripts/bootstrap_env.sh)
 ├── config.py                   # LEGACY path/threshold config (do not confuse with quant/config.py)
 ├── quant_engine.db             # FROZEN legacy SQLite reference database (SHA256: 03fe228b8...); tracked
 ├── quant.db                    # V2 state database: git-ignored, rebuilt from data/ledger (not committed)
@@ -205,6 +265,8 @@ The rules that actually govern `quant/model` are:
 │   ├── signoff.sh                # Phased sign-off runner (S01-S15); see --help
 │   ├── backup_state.sh           # Snapshot of the state db, price store and archives, with INVENTORY.json
 │   ├── capture_routine.sh        # Idempotent month-end routine: prices | fundamentals | status
+│   ├── resolve_python.sh         # The one rule for which Python runs the engine (shared venv)
+│   ├── bootstrap_env.sh          # Creates or repairs the shared venv from requirements.lock
 │   ├── q.sh                      # Engine CLI with this checkout's code against the data root
 │   └── routine_env.sh            # Parser for the optional local settings file routine.env
 │
@@ -236,10 +298,10 @@ The rules that actually govern `quant/model` are:
 ### Playbook A: Verification & Regression Checks
 
 ```bash
-# Interpreter resolution used by every script below: $QUANT_PYTHON if set, else
-# venv/bin/python if present, else python3. Antigravity sessions typically export
-# QUANT_PYTHON to the scratch venv rather than creating venv/ inside the repo —
-# set it if venv/bin/python does not exist on your machine.
+# One Python environment for every agent and every checkout: venv/ in the main working directory,
+# pinned by requirements.lock. scripts/resolve_python.sh finds it ($QUANT_PYTHON if set, else this
+# checkout's venv, else the main working directory's venv, else python3), so a git worktree needs no
+# environment of its own. Create or repair it with: scripts/bootstrap_env.sh
 
 # 1. Run specification checks & the full test suite
 ./scripts/check.sh

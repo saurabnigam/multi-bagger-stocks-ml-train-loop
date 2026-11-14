@@ -12,7 +12,7 @@ times, because every mode first checks whether there is anything to do.
 | Mode | What it does | When it does nothing |
 |---|---|---|
 | `fundamentals` | `universe capture`, then `data capture` (about 60-75 minutes) | On an ordinary day: the last capture is under 3 days old. On the month-end evening: the last capture finished after 16:00 IST today. On any session day: the market has not closed yet (before 16:00 IST) |
-| `prices` | `prices update --through TODAY`, then checks coverage | Weekend; before 16:00 IST; or at least 98% of today's closes are already recorded |
+| `prices` | `prices update --through TODAY` (Yahoo, then exchange files from the inbox when enabled), then checks coverage | Weekend; before 16:00 IST; or at least 98% of today's closes are already recorded |
 | `status` | Prints capture times, today's close coverage, the latest live list, the write lock, open price-jump flags, the last backup and `ACTION NEEDED` lines | Never writes anything |
 
 Exit codes: 0 means done or nothing to do. Exit code 10 from `prices` means the closes are still incomplete; run it again later that evening. Exit code 1 means a failure, or, for `prices` and `fundamentals`, that there is no readable state database yet (one line says so). Exit code 64 means a bad mode. `status` always exits 0: a part it cannot read is printed as "no database yet" or "unknown".
@@ -42,6 +42,12 @@ month-end evening, after the 20:35 report   review the open price-jump flags:
 next day or later                           scripts/q.sh run monthly
 afterwards                                  scripts/backup_state.sh
 ```
+
+If the 20:35 report says the closes are incomplete, Yahoo is late. When the other price sources are
+enabled (see [price_sources.md](price_sources.md)), the report names the exchange's end-of-day file for
+that day. Download it from the exchange's reports page into the price inbox folder the report prints. The
+next retry (22:05 or 23:05) reads it and fills the missing closes; or run `scripts/q.sh prices update
+--through DATE` yourself. The exchange publishes that file at about 16:35 India time.
 
 `scripts/q.sh` runs any engine command with the pinned code against the real data (section 4). Use the
 copy in `~/Desktop/Projects/mb-runtime/scripts/`. A plain `python3 -m quant ...` typed inside another

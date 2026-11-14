@@ -13,14 +13,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT_DIR}"
 
 # Interpreter resolution (must match scripts/check.sh and scripts/signoff.sh):
-# $QUANT_PYTHON, else venv/bin/python, else python3.
-if [[ -n "${QUANT_PYTHON:-}" ]]; then
-    PY="${QUANT_PYTHON}"
-elif [[ -x "venv/bin/python" ]]; then
-    PY="venv/bin/python"
-else
-    PY="python3"
-fi
+# scripts/resolve_python.sh: $QUANT_PYTHON, else this checkout's venv, else the main working directory's venv, else python3.
+PY="$(bash "${ROOT_DIR}/scripts/resolve_python.sh")"
 
 export PYTHONPATH="${ROOT_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
 
