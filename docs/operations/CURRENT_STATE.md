@@ -33,6 +33,7 @@ Runbooks: [month_end.md](month_end.md), [price_sources.md](price_sources.md),
 | Open price-jump flags | 3 (HEG spin-off waiting for listing; two Concord Biotech entries) |
 | Committed record | Journal `data/ledger/2026-09..11/events.jsonl.gz`; `db verify` matched 45 of 45 tables on 14 Nov |
 | Last backup | `snapshot-20261114T082719Z` |
+| Main working directory | At the branch head, clean, `db verify` 45 of 45 tables on 14 Nov after the update |
 
 ## 3. Open items that need the owner
 

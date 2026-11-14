@@ -38,12 +38,11 @@ An older checkout may still hold a plain `events.jsonl` in a month folder. It st
 holds the data folder. The commit names only those paths, so files another agent has staged there are left
 alone. It never pushes without `--push`.
 
-Known limit (2026-11-14). The data folder is the main checkout. It is 16 commits behind and holds another
-agent's uncommitted code changes, so it cannot take that commit and push it yet. Until that is resolved,
-copy `data/ledger`, `data/manifests`, `knowledge/` and `ui/data*.js` into a clean worktree and commit them
-there. The main checkout also still tracks the old `quant.db` in its own history: a `git stash`,
-`git reset --hard` or `git checkout -f` typed there replaces the real database with that old file. Run the
-backup first if you ever need one of those commands there.
+Since 2026-11-14 the main working directory is on the current code, has no uncommitted code and no longer
+tracks `quant.db`, so this commit works there. Keep it that way: agents edit code in their own worktrees
+(AGENTS.md, "Working Together"). The files another agent had left uncommitted there are saved in
+`mb-backups/main_folder_2026-11-14/` (a patch of its code edits, and copies of the state files that the
+branch already held).
 
 ## Run the backup
 
