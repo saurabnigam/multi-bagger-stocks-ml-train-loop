@@ -123,6 +123,14 @@ Agents edit code in their own worktrees, never in `mb-runtime`.
 
 - See the tasks: Claude desktop app, Scheduled tab. Their definitions are files under
   `~/.claude/scheduled-tasks/`.
+- The tasks run without asking because their three command lines are approved in advance. The approval is
+  three rules in `.claude/settings.local.json` in the main working directory (git ignores the file; it
+  applies to this machine only). Each rule matches one whole command line: `capture_routine.sh status`,
+  `capture_routine.sh prices` and `capture_routine.sh fundamentals`, with the full path of the runtime
+  checkout. If you move the runtime checkout or change a command line in a task, change the rule too.
+- A task stops at a permission prompt when its agent adds anything to the command line (for example
+  `; echo $?`). Each task's prompt forbids that. If a run still stops, open it from the Scheduled tab; the
+  waiting prompt shows the command it tried.
 - See what ran: `data/logs/routine_YYYY-MM.log` in the data folder.
 - Run a step by hand (without `routine.env`, name the data location yourself):
 

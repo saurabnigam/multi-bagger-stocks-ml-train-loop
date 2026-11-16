@@ -1,6 +1,6 @@
 # Current state (shared by every agent)
 
-Last updated: 2026-11-14. Update this file in the same change that alters anything below.
+Last updated: 2026-11-16. Update this file in the same change that alters anything below.
 Rules for working together are in [AGENTS.md](../../AGENTS.md), section "Working Together".
 
 ## 1. Where things are
@@ -14,6 +14,9 @@ runtime checkout         ~/Desktop/Projects/mb-runtime   branch `runtime`; pinne
 backups                  ~/Desktop/Projects/mb-backups   snapshot-* folders (same disk only)
 scheduled tasks          Claude desktop app, Scheduled tab: mbq-fundamentals, mbq-prices-evening,
                          mbq-prices-retry, mbq-month-start-reminder
+task approval            .claude/settings.local.json in the main working directory (git-ignored, this
+                         machine only): three exact Bash rules for capture_routine.sh
+                         status | prices | fundamentals, approved by the owner on 2026-11-16
 price inbox              data/inbox/prices in the main working directory (exchange end-of-day files)
 ```
 
@@ -43,12 +46,16 @@ Runbooks: [month_end.md](month_end.md), [price_sources.md](price_sources.md),
    inbox. NSE's terms of use prohibit automated data collection, so automatic fetching is the owner's choice.
 3. **When Yahoo is late and no exchange file is supplied,** the month is published "scored late" and does not
    count as clean evidence. Decide whether a short grace window should keep such a month clean.
-4. **Approve each scheduled task once** (Run now, then allow the command), or the first real run waits.
-5. **Pushes.** Nothing is pushed without the owner's word.
+4. **Pushes.** Nothing is pushed without the owner's word.
 
 ## 4. Known hazards
 
 - **The Mac must be awake and the Claude app open** when a scheduled task is due.
+- **A scheduled task is an agent that follows a prompt.** Only the three exact command lines are approved in
+  advance. If the agent adds anything to a command line, the run stops at a permission prompt and that
+  step does not happen. Seen on 16 Nov: two runs appended `; echo "EXIT_CODE=$?"` and stopped. The task
+  prompts now forbid any addition, and all four tasks then ran unattended in a test (16 Nov, before 16:00
+  India time, so nothing was downloaded). Check the 20:35 report on a month-end evening.
 - **Backups are on the same disk** as the data, and the disk was 98% full on 14 Nov.
 - **Yahoo delivered a session's closes on time on 1 of the 4 evenings checked.** The exchange file for the
   same day was published at about 16:35 India time. On real data for 13 Nov the NSE file alone filled 500 of 501
