@@ -1,0 +1,21 @@
+{
+  "captured_on": "2026-09-07",
+  "purpose": "Read-only regression inventory; intentional legacy changes require owner review and a new specification baseline.",
+  "sha256": {
+    "quant_engine.db": "03fe228b8fc90c63e8deddd33d1f9308693972af931aec7000c6870a34cb48a8",
+    "harness_v16_learning.py": "311b8d5b00e1021f9a9baae02ab5deb03808037b9bfeb1dc4c8e719537c7b8f5",
+    "weight_optimizer.py": "b7d59093b624d42434fec24ee04f2b353ad838dace86e209dc8fb77683bbcbe8",
+    "quant_math.py": "0c5de2d71daa81ed481c3235bb23baf9cf54e9ab51bbe94be1f890304e142386",
+    "eval_portfolio_health.py": "cd4d30b27ffea07cfe118ee5cf37d7dd6dfd0ed003ba34854dc4e137f290d91e",
+    "update_ui_v16.py": "f9ed6b6145421111cd75a751a3e724a0000d524005012ead4caef30927e88b4e",
+    "db_setup.py": "3f98d419f5ff957e9e7e40fc275137c34c9b58ae1cc47a3473239278cd026a93",
+    "config.py": "71d7c0e4d6940c1d703e008869a23cf35bc91afb8de5e5e931e3c9ec17190ca3",
+    "test_quant_math.py": "164f14c88de15985a500b016a8f54a7c1a53de56005479005c3ca3814e0cdde2",
+    "test_optimizer.py": "822acc04e801ede28bded3d86527a7f30c2dd158de45e6323cfd71ce21069edf"
+  },
+  "row_counts": {
+    "daily_predictions": 2543,
+    "active_weights": 12,
+    "performance_tracking": 4773
+  }
+}

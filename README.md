@@ -1,128 +1,149 @@
-# 🚀 Multi-Bagger Stocks ML Train Loop & Quant UI
+# Multi-Bagger Stocks ML Train Loop & Quant Engine (V2)
 
-![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
+![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![SQLite](https://img.shields.io/badge/sqlite-database-green.svg)
-![Claude Code Ready](https://img.shields.io/badge/Claude%20Code-ready-blueviolet.svg)
 ![Vanilla JS](https://img.shields.io/badge/frontend-vanilla_js-yellow.svg)
 
-A quantitative factor engine that scores, ranks, and tracks Nifty 500 stocks. It pulls fundamental and technical data from Yahoo Finance, scores eight factors, applies value-trap and trend multipliers, and adjusts factor weights from realised forward returns using a bounded exponentiated-gradient step.
+**Agents and contributors:** read [AGENTS.md](AGENTS.md) first (section "Working Together": what is shared,
+what is throwaway) and [docs/operations/CURRENT_STATE.md](docs/operations/CURRENT_STATE.md). One Python
+environment serves every checkout: `scripts/bootstrap_env.sh`.
 
-> **Status (Sep 2026):** after three monthly holding periods the model's measured edge is dominated by its 50/200-day trend filter; the fundamental composite and the learning loop have not yet shown out-of-sample value beyond noise. See [docs/analysis/red_team_review.md](docs/analysis/red_team_review.md) before quoting any performance figure from this repository.
+A quantitative research platform that scores, ranks, and tracks Indian equities across
+the **Nifty 500** universe, built to a written specification
+(`docs/spec/MASTER_SPEC.md`, revision 2) with point-in-time (PIT) data discipline,
+evidence-based quality gates, and an append-only decision ledger.
 
-The output is presented in a modern, glassmorphism-style web dashboard complete with an "AI Factor Breakdown" and raw quantitative metrics.
+> **Status, as of 2026-11-14** (kept current in `docs/operations/CURRENT_STATE.md`):
+> - Two live lists are published (30 Sep and 30 Oct 2026). Both are flagged "scored late" and are not
+>   clean evidence. **No out-of-sample performance is claimed.** The first list that can be clean is
+>   30 Nov 2026.
+> - The historical legacy database (`quant_engine.db`) is migrated read-only as four
+>   flagged legacy cohorts (June/July/Aug/Sep 2026) for comparison; it is not a V2
+>   scoring input and its own defects (see `docs/analysis/red_team_review.md`) are
+>   preserved, not corrected, on migration.
+> - **Simulated research & paper trading only.** All scoreboard rankings and portfolio
+>   positions are research artifacts and paper simulations. No probability of future
+>   profitability is claimed.
+> - **Frozen legacy invariant:** `quant_engine.db` is strictly frozen at SHA256
+>   `03fe228b8fc90c63e8deddd33d1f9308693972af931aec7000c6870a34cb48a8` and is never
+>   written to by any V2 code path.
+> - **No automatic pushes:** pipeline execution and automation scripts never push to
+>   a remote repository automatically; `monthly_cron.sh` refuses an explicit `--push`.
 
 ---
 
-## 🤖 Claude Code & AI Agent Ready
-This repository is configured for immediate use with **Claude Code** and other AI agents. See [CLAUDE.md](CLAUDE.md) for architectural invariants, development conventions, database schemas, and CLI workflows.
+## Architecture
 
----
-
-## 🏗️ Architecture
-
-The system is broken down into three distinct layers: **Data Acquisition (Harness)**, **Machine Learning (Optimizer)**, and **Presentation (UI)**.
+The system enforces strict point-in-time (PIT) information boundaries, evidence-based
+pre/post-compute quality gates (G1-G10), HAC-adjusted inferential statistics, paper
+portfolio execution, and offline evidence presentation:
 
 ```mermaid
 graph TD
-    subgraph Data Acquisition
-        H[Data Harness: harness_v16_learning.py] -->|Yahoo Finance API| S(Nifty 500 Universe)
-        S --> |Raw Financials & Technicals| DB[(SQLite: quant_engine.db)]
+    subgraph Data Layer & Quality Gates
+        V[Yahoo Finance via a throttled YahooClient] -->|Rate-limited fetch| C[Source captures / data dir]
+        C -->|Cutoff & integrity gates G1-G7| DI[Point-in-time factor inputs]
     end
 
-    subgraph Machine Learning Loop
-        DB -->|Historical Transitions| O[V18 Multi-Period Panel Optimizer]
-        O -->|Rank-IC Exponentiated Gradient| O2{Recalibrate Weights}
-        O2 -->|Update active_weights| DB
-        M[Quant Math Engine] <--> O
-        E[Portfolio Health & Backtest Suite] <--> DB
+    subgraph Quantitative Scoring & Models
+        DI --> FR[Factor registry]
+        FR --> M[EW_HIER_v1 champion / IC_SHRUNK_v1 challenger]
+        M -->|Coverage & bounds G8| S[Cohort scores & ranks]
     end
 
-    subgraph Presentation Layer
-        DB -->|Fetch Latest Ranks & Weights| U[UI Updater: update_ui_v16.py]
-        U -->|Export JSON| JS[ui/data.js]
-        JS --> UI[index.html / app.js]
+    subgraph Evaluation & Paper Portfolios
+        S --> L[Label maturation: 1M / 3M / 6M / 12M horizons]
+        L --> EV[Evaluation: oriented Rank IC + HAC covariance G9]
+        S --> P[Paper portfolios: rebalance orders & next-session settlement]
     end
 
-    H -.->|Cron Schedule| O
-    O -.->|Cron Schedule| U
+    subgraph Presentation & Governance
+        S & EV & P --> EX[Offline UI exporter: quant.ui_export]
+        EX --> UI[Offline dashboard: 8 tabs]
+        KB[ADRs & proposals] --> UI
+    end
 ```
 
----
-
-## 🧩 Core Components
-
-### 1. The Data Harness (`harness_v16_learning.py`)
-Fetches fundamental and technical data (P/E Ratios, ROCE, FCF Yield, SMA 50/200, Institutional Holdings) for all stocks in the Nifty 500. It rate-throttles requests (0.5s) to protect against API blocks and inserts clean snapshot records into SQLite.
-
-### 2. The Quant Math Engine (`quant_math.py`)
-Houses proprietary scoring and valuation algorithms:
-- **Growth** (Compound revenue, EBIT, FCF, EPS growth)
-- **Quality** (ROCE, FCF conversion ratio)
-- **Valuation** (DCF intrinsic value with growth caps, Bank Justified P/B model, Margin of Safety)
-- **Risk** (Strategic & disruption risk scoring)
-- **Smart Money** (Institutional holding levels and historical delta)
-- **Momentum** (Golden Cross vs Death Cross hard-kill protection)
-
-### 3. The ML Optimizer (`weight_optimizer.py`)
-Discovers full-universe snapshot dates, evaluates each forward-holding period from prices already in SQLite (excluding suspected unadjusted splits), computes per-factor Spearman Rank ICs with t-statistics, and prints an attribution table separating the fundamental composite from the momentum filter. Each period is learned from exactly once (idempotent); weights stay within `[5.0%, 30.0%]` and sum to exactly 1.000. `--dry-run` shows the step without writing.
-
-### 4. The Quantitative Verification Suite (`eval_portfolio_health.py`)
-Verifies bounds, the momentum hard kill, input units (dividend/FCF yields), near-constant factors, `final == base × multipliers`, weight constraints and provenance, then runs the multi-period audit and a strict walk-forward test of the learning rule (weights learned only from earlier periods vs equal weights). Exit code 1 on errors.
-
-### 5. The Presentation Layer (`ui/` & `update_ui_v16.py`)
-`update_ui_v16.py` extracts the latest predictions, active weights, data-quality flags, and turnaround screen candidates into `ui/data.js`. The frontend (`index.html`, `app.js`, `style.css`) is vanilla HTML/JS/CSS with no build step (it does load Chart.js and a Google font from CDNs).
+There is no death-cross multiplier, trap-score multiplier, or momentum multiplier in
+V2 scoring, and no exponentiated-gradient optimizer — those are legacy-only facts
+about the frozen 2026 snapshots. See `AGENTS.md` for the actual V2 invariants
+(integer family-weight units summing to 10000, the EW_HIER/IC_SHRUNK model pair, and
+the eligibility screens) and the real journaling/staging architecture.
 
 ---
 
-## 🚀 Getting Started
+## Core packages (`quant/`)
 
-### Prerequisites
-- Python 3.10+
-- A modern web browser
-
-### Installation
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/saurabnigam/multi-bagger-stocks-ml-train-loop.git
-   cd multi-bagger-stocks-ml-train-loop
-   ```
-2. Set up virtual environment and install dependencies:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
-
-3. Run the complete pipeline (or `./daily_cron.sh`):
-   ```bash
-   python db_setup.py
-   python harness_v16_learning.py
-   python weight_optimizer.py
-   python update_ui_v16.py
-   python eval_portfolio_health.py
-   ```
-   All paths are relative to the repository; set `QUANT_DB_PATH` to point at another database.
-
-4. View the Dashboard:
-   Open `ui/index.html` in your web browser.
+1. **`quant.universe`**: Nifty 500 constituents, ISINs, corporate actions (splits/bonuses), and symbol transitions.
+2. **`quant.data`**: raw captures, observation cutoffs, and quality gates (G1-G7 pre-compute, G8-G10 post-compute).
+3. **`quant.factors`**: pure, vectorized factor calculators.
+4. **`quant.model`**: EW_HIER_v1 (champion) and IC_SHRUNK_v1 (challenger) family-weight models — integer weight units, no legacy multipliers.
+5. **`quant.evaluation`**: forward returns, oriented Rank IC, Newey-West HAC covariance, learning curves, and the leakage audit suite.
+6. **`quant.portfolio`**: paper portfolio simulation, order generation, execution settlement, cost models, and benchmark comparisons.
+7. **`quant.knowledge`**: Architecture Decision Records (ADRs), proposals, review budget, and human co-sign ratifications (60-day rule).
+8. **`quant.migrate`**: read-only, idempotent legacy migration of the four historical 2026 snapshots — never modifies `quant_engine.db`.
+9. **`quant.run` & `quant.ui_export`**: monthly orchestration with staged-transaction rollback (`RunContext`) and the zero-dependency offline UI export.
 
 ---
 
-## 🧪 Testing & Verification
+## Zero-dependency offline UI
+
+`ui/` has 8 tabs: Ranking, Learning, Scoreboard, Factors, Sectors, Data, Knowledge,
+Legacy — each with explicit empty/blocked states rather than a silent absence. All
+scripts, styles, and libraries (`ui/vendor/chart.umd.js`) are locally vendored with
+system font stacks; there are no external CDN or Google Font requests.
+
+---
+
+## Bootstrapping a real run (MASTER_SPEC §2.2, §3.2, §10.4)
+
+V2 does not backfill a live cutoff from current statements — it requires real
+captures taken before that cutoff. The sequence:
+
 ```bash
-# Run unit tests (scoring math, optimizer pure functions, red-team regressions)
-pytest -q
+# 1. Initialize the state schema (idempotent; installs the journal triggers)
+python3 -m quant db init
 
-# Run portfolio health evaluation
-python eval_portfolio_health.py
+# 2. Capture at least once before your intended first cutoff — preferably during
+#    the last trading week of the month, and again after the final session closes.
+#    This archives constituents, attributes, holdings, statements and price
+#    windows at actual capture time. It requires no prior scoring cohort.
+python3 -m quant data capture
+
+# 3. In the FOLLOWING month, run the monthly pipeline. It captures fresh
+#    observations for the next cutoff, updates price history, and selects only
+#    admissible pre-cutoff captures for the target cohort.
+./monthly_cron.sh
 ```
+
+A run without sufficient earlier captures reports `BLOCKED: BOOTSTRAP_REQUIRED` and
+publishes no live cohort — this is the expected, honest outcome of running before
+bootstrap is complete, not a defect.
 
 ---
 
-## ⚙️ Automation (The "Train Loop")
+## Running tests & verification
 
-The system is designed to be autonomous. A cron job (`daily_cron.sh`) can be scheduled to run the entire pipeline on market days:
-1. **Pull Data:** Collects market closing data.
-2. **Train/Optimize:** Evaluates out-of-sample forward returns across historical transitions.
-3. **Re-weight:** Adjusts factor weights via continuous gradient ascent.
-4. **Publish:** Updates the dashboard data and commits to Git.
+```bash
+# Specification integrity check
+python3 docs/spec/check_spec.py
+
+# Full test suite (unit + integration); interpreter resolved as
+# $QUANT_PYTHON, else venv/bin/python, else python3
+./scripts/check.sh
+
+# Phased sign-off (engineering / operational / longitudinal); see --help for
+# --phase, --as-of and --output
+./scripts/signoff.sh --help
+./scripts/signoff.sh --phase engineering
+```
+
+`scripts/signoff.sh` reports real subprocess exit codes and elapsed times, not
+fabricated pass strings: engineering checks (S01-S08) run against isolated
+fixtures; operational checks (S09-S12) run only with `QUANT_NETWORK=1`,
+`QUANT_LEGACY_REAL=1`, or a real state database present, and otherwise report
+`DEFERRED` with the missing prerequisite named; longitudinal checks (S13-S14)
+report `DEFERRED` until at least 3 live cohorts have matured; S15 is a research
+observation that never affects the exit code. See
+`docs/spec/TEST_AND_VERIFICATION_PLAN.md` section 8 for the full row table and
+`docs/spec/SIGNOFF_2026-09-08.md` for why the original report needed correcting.

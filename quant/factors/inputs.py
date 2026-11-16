@@ -1,0 +1,444 @@
+"""Restricted point-in-time FactorInputs container."""
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+from typing import Any, Callable, Dict, List, Optional, Tuple
+import numpy as np
+import pandas as pd
+
+from quant.data.prices import PriceStore
+from quant.errors import LookaheadError, Refused
+from quant.run import RunContext
+from quant.types import Draft
+
+ALLOWED_ATTRIBUTES = {
+    "market_cap_inr",
+    "shares_outstanding",
+    "dividend_rate_inr",
+    "dividend_yield_frac",
+    "debt_to_equity_x",
+    "pe_ratio",
+    "roe_frac",
+    "roce_frac",
+    "inst_held_frac",
+    "insider_held_frac",
+}
+
+ALLOWED_STATEMENTS = {
+    "balance",
+    "balance_sheet",
+    "financials",
+    "income",
+    "income_statement",
+    "cashflow",
+    "info",
+}
+
+
+class FactorInputs:
+    """Restricted container providing point-in-time data for factor calculation.
+
+    Exposes no database connection, network client or label frames.
+    All accesses are strictly capped at as_of date and knowledge_cutoff timestamp.
+
+    G6 unit-bound masking (MASTER_SPEC section 4.6) happens here, at read time, not by
+    rewriting stored rows: `attribute()` masks trailing_pe with abs(PE) >= 1000,
+    mcap_inr <= 0, dividend_rate_inr < 0 and ev_inr <= 0 to NaN; `holdings()` masks
+    values outside [0, 1] to NaN. `ttm()` and `fundamental()` are unaffected by G6 --
+    their values are validated by each factor's own formula-specific denominator
+    checks, not by G6. `self.members` is always a pandas Index of security_id ints;
+    every series returned here is reindexed against it with an explicit float dtype.
+
+    Latest-annual staleness (MASTER_SPEC 4.4, 5.3; task T8), a separate rule from G6,
+    is also enforced here: `fundamental()` and `fundamental_dated()` blank every period
+    of a security at annual frequency whose newest admissible annual period_end is
+    older than `max_annual_age_days` before `as_of` (default 487 days / ~16 months).
+    Without this, a field Yahoo left null for the newest fiscal year silently reads as
+    the prior year's "latest annual" value with no signal that it is stale.
+    """
+
+    def __init__(
+        self,
+        as_of: str,
+        cutoff: str,
+        members: pd.Index,
+        sector_group: pd.Series,
+        price_store: PriceStore,
+        state_query_fn: Callable[[str, tuple], List[tuple]],
+        provenance_dict: Dict[str, Any],
+        fund_fn: Optional[Callable[[str, str, str, int, List[int]], pd.DataFrame]] = None,
+        ttm_fn: Optional[Callable[[str, int, List[int]], Tuple[pd.Series, pd.Series]]] = None,
+        holdings_fn: Optional[Callable[[int, List[int]], pd.Series]] = None,
+        fund_dates_fn: Optional[Callable[[str, str, str, int, List[int]], Tuple[pd.DataFrame, pd.DataFrame]]] = None,
+        max_annual_age_days: int = 487,
+    ):
+        self.as_of = str(as_of)
+        self.cutoff = str(cutoff)
+        self.members = members
+        self.sector_group = sector_group
+        self._price_store = price_store
+        self._query = state_query_fn
+        self._provenance = provenance_dict
+        self._fund_fn = fund_fn
+        self._ttm_fn = ttm_fn
+        self._holdings_fn = holdings_fn
+        self._fund_dates_fn = fund_dates_fn
+        self._max_annual_age_days = int(max_annual_age_days)
+
+    def _get_start_date(self, lookback_days: int) -> str:
+        if lookback_days < 0:
+            raise LookaheadError(f"Negative lookback_days ({lookback_days}) requests future data")
+        dt = datetime.strptime(self.as_of, "%Y-%m-%d") - timedelta(days=int(lookback_days * 3.0) + 90)
+        return dt.strftime("%Y-%m-%d")
+
+    def tri(self, lookback_days: int) -> pd.DataFrame:
+        """Point-in-time Total Return Index (TRI) series."""
+        start = self._get_start_date(lookback_days)
+        sids = [int(x) for x in self.members]
+        return self._price_store.tri(sids, start=start, end=self.as_of, vintage_at=self.cutoff)
+
+    def close_split(self, lookback_days: int) -> pd.DataFrame:
+        """Point-in-time split-adjusted close series rebased to end date."""
+        start = self._get_start_date(lookback_days)
+        sids = [int(x) for x in self.members]
+        return self._price_store.close_split(sids, start=start, end=self.as_of, vintage_at=self.cutoff)
+
+    def close_raw(self, lookback_days: int) -> pd.DataFrame:
+        """Point-in-time raw closing price series."""
+        start = self._get_start_date(lookback_days)
+        sids = [int(x) for x in self.members]
+        return self._price_store.close_raw(sids, start=start, end=self.as_of, vintage_at=self.cutoff)
+
+    def volume(self, lookback_days: int) -> pd.DataFrame:
+        """Point-in-time raw trading volume series."""
+        start = self._get_start_date(lookback_days)
+        sids = [int(x) for x in self.members]
+        return self._price_store.volume(sids, start=start, end=self.as_of, vintage_at=self.cutoff)
+
+    def attribute(self, field: str) -> pd.Series:
+        """Point-in-time cross-sectional security attribute.
+
+        G6 unit-bound masking (MASTER_SPEC section 4.6) is applied here, at read time,
+        rather than by rewriting stored rows: trailing_pe with abs(PE) >= 1000,
+        mcap_inr <= 0, dividend_rate_inr < 0, and ev_inr <= 0 are invalid raw inputs and
+        are masked to NaN before this series ever reaches a factor calculation.
+        Indexed by `self.members` (a pandas Index of security_id ints).
+        """
+        attr_map = {
+            "market_cap_inr": "mcap_inr",
+            "mcap_inr": "mcap_inr",
+            "shares_outstanding": "shares_out",
+            "shares_out": "shares_out",
+            "float_shares": "float_shares",
+            "ev_inr": "ev_inr",
+            "trailing_pe": "trailing_pe",
+            "pe_ratio": "trailing_pe",
+            "price_to_book": "price_to_book",
+            "dividend_rate_inr": "dividend_rate_inr",
+            "beta": "beta",
+            "yahoo_sector": "yahoo_sector",
+            "yahoo_industry": "yahoo_industry",
+        }
+        col = attr_map.get(field)
+        if not col:
+            raise LookaheadError(f"Undeclared or unknown attribute field requested: {field}")
+
+        query = f"""
+        WITH ranked AS (
+            SELECT security_id, {col} as val,
+                   ROW_NUMBER() OVER (PARTITION BY security_id ORDER BY captured_at DESC) as rn
+            FROM security_attributes
+            WHERE captured_at <= ?
+        )
+        SELECT security_id, val
+        FROM ranked
+        WHERE rn = 1
+        """
+        rows = self._query(query, (self.cutoff,))
+        res = {r[0]: float(r[1]) if r[1] is not None else np.nan for r in rows}
+        series = pd.Series(res, dtype=float).reindex(self.members)
+
+        if col == "trailing_pe":
+            series = series.where(series.abs() < 1000.0, other=np.nan)
+        elif col == "mcap_inr":
+            series = series.where(series > 0.0, other=np.nan)
+        elif col == "dividend_rate_inr":
+            series = series.where(series >= 0.0, other=np.nan)
+        elif col == "ev_inr":
+            series = series.where(series > 0.0, other=np.nan)
+
+        return series
+
+    def _normalise_request(self, statement: str, freq: str) -> Tuple[str, str]:
+        stmt_map = {
+            "income": "income",
+            "income_statement": "income",
+            "financials": "income",
+            "balance": "balance",
+            "balance_sheet": "balance",
+            "cashflow": "cashflow",
+            "info": "info",
+        }
+        if statement not in stmt_map and statement not in ALLOWED_STATEMENTS:
+            raise LookaheadError(f"Undeclared statement requested: {statement}")
+
+        canon_stmt = stmt_map.get(statement, statement)
+        freq_norm = freq.upper()
+        if freq_norm in ("ANNUAL", "A"):
+            freq_norm = "A"
+        elif freq_norm in ("QUARTERLY", "Q"):
+            freq_norm = "Q"
+        elif freq_norm in ("POINT", "P"):
+            freq_norm = "P"
+        return canon_stmt, freq_norm
+
+    def _query_frames(self, canon_stmt: str, field: str, freq_norm: str, n_periods: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        from quant.data.fundamentals import _alias_rank, _expand_fields
+        fields = _expand_fields(field)
+        placeholders = ",".join("?" for _ in fields)
+        rank_sql, rank_params = _alias_rank(fields)
+        query = f"""
+        WITH ranked AS (
+            SELECT security_id, period_end, value, fetched_at,
+                   ROW_NUMBER() OVER (PARTITION BY security_id, period_end ORDER BY fetched_at DESC, {rank_sql}) as rn
+            FROM fundamentals
+            WHERE statement = ?
+              AND field IN ({placeholders})
+              AND freq = ?
+              AND available_from <= ?
+              AND fetched_at <= ?
+        )
+        SELECT security_id, period_end, value
+        FROM ranked
+        WHERE rn = 1
+        ORDER BY period_end DESC
+        """
+        rows = self._query(query, (*rank_params, canon_stmt, *fields, freq_norm, self.cutoff, self.cutoff))
+        data = {sid: [np.nan] * n_periods for sid in self.members}
+        dates = {sid: [None] * n_periods for sid in self.members}
+        if rows:
+            df_rows = pd.DataFrame(rows, columns=["security_id", "period_end", "value"])
+            for sid, grp in df_rows.groupby("security_id"):
+                if sid not in data:
+                    continue
+                grp = grp.sort_values("period_end", ascending=False).head(n_periods)
+                for r, (pe, v) in enumerate(zip(grp["period_end"], grp["value"])):
+                    data[sid][r] = v
+                    dates[sid][r] = pe
+        cols = list(range(n_periods))
+        return (pd.DataFrame.from_dict(data, orient="index", columns=cols),
+                pd.DataFrame.from_dict(dates, orient="index", columns=cols))
+
+    def _mask_stale_annual(self, vals: pd.DataFrame, dates: pd.DataFrame) -> pd.DataFrame:
+        """Blank every period of a security whose newest admissible annual period_end
+        is older than ``max_annual_age_days`` before ``as_of`` (MASTER_SPEC 4.4, 5.3;
+        task T8). A missing newest date (no data at all) is left alone -- that is
+        "missing", not "stale" -- so only a security with a real, too-old date is
+        masked. Only the values are blanked; the dates frame keeps its original
+        content for provenance.
+        """
+        if dates.shape[1] == 0:
+            return vals
+        newest = pd.to_datetime(dates.iloc[:, 0], errors="coerce")
+        limit = pd.Timestamp(self.as_of) - pd.Timedelta(days=self._max_annual_age_days)
+        stale = newest.notna() & (newest < limit)
+        if not stale.any():
+            return vals
+        vals = vals.copy()
+        vals.loc[stale] = np.nan
+        return vals
+
+    def fundamental(self, statement: str, field: str, freq: str, n_periods: int) -> pd.DataFrame:
+        """Point-in-time fundamental statement series.
+
+        Annual frequency is masked for staleness -- see ``_mask_stale_annual`` -- when
+        a dated reader (``fund_dates_fn``, or the default query, both of which know
+        each value's period_end) is available. A custom ``fund_fn`` with no dates
+        function cannot know staleness and behaves as before.
+        """
+        canon_stmt, freq_norm = self._normalise_request(statement, freq)
+        sids = [int(x) for x in self.members]
+        if self._fund_dates_fn:
+            vals, dates = self._fund_dates_fn(canon_stmt, field, freq_norm, n_periods, sids)
+            vals = vals.reindex(index=self.members)
+            if freq_norm == "A":
+                vals = self._mask_stale_annual(vals, dates.reindex(index=self.members))
+            return vals
+        if self._fund_fn:
+            df = self._fund_fn(canon_stmt, field, freq_norm, n_periods, sids)
+            return df.reindex(index=self.members)
+        vals, dates = self._query_frames(canon_stmt, field, freq_norm, n_periods)
+        if freq_norm == "A":
+            vals = self._mask_stale_annual(vals, dates)
+        return vals
+
+    def fundamental_dated(self, statement: str, field: str, freq: str, n_periods: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """``fundamental()`` plus the period_end of every value (None where unknown).
+
+        Values are masked for staleness the same way ``fundamental()`` is; the
+        returned dates are never masked, so callers can still see what was blanked.
+        """
+        canon_stmt, freq_norm = self._normalise_request(statement, freq)
+        sids = [int(x) for x in self.members]
+        if self._fund_dates_fn:
+            vals, dates = self._fund_dates_fn(canon_stmt, field, freq_norm, n_periods, sids)
+            vals = vals.reindex(index=self.members)
+            dates = dates.reindex(index=self.members)
+            if freq_norm == "A":
+                vals = self._mask_stale_annual(vals, dates)
+            return vals, dates
+        if self._fund_fn:
+            vals = self._fund_fn(canon_stmt, field, freq_norm, n_periods, sids).reindex(index=self.members)
+            return vals, pd.DataFrame(None, index=self.members, columns=list(range(n_periods)), dtype=object)
+        vals, dates = self._query_frames(canon_stmt, field, freq_norm, n_periods)
+        if freq_norm == "A":
+            vals = self._mask_stale_annual(vals, dates)
+        return vals, dates
+
+    def splits(self, lookback_days: int) -> Dict[int, List[tuple]]:
+        """Point-in-time split/bonus events per security: sid -> [(date, ratio)], oldest first."""
+        if self._price_store is None or not hasattr(self._price_store, "split_events"):
+            return {}
+        start = self._get_start_date(lookback_days)
+        return self._price_store.split_events([int(x) for x in self.members], start=start, end=self.as_of,
+                                              vintage_at=self.cutoff)
+
+    def ttm(self, field: str, offset_quarters: int = 0) -> pd.Series:
+        """Point-in-time trailing twelve month sum from quarterly statements."""
+        if offset_quarters < 0:
+            raise LookaheadError(f"Negative offset_quarters ({offset_quarters}) requests future data")
+
+        sids = [int(x) for x in self.members]
+        if self._ttm_fn:
+            vals, _ = self._ttm_fn(field, offset_quarters, sids)
+            return vals.reindex(self.members)
+
+        return pd.Series(np.nan, index=self.members)
+
+    def holdings(self, lag_runs: int = 0) -> pd.Series:
+        """Point-in-time institutional holdings share.
+
+        G6 unit-bound masking (MASTER_SPEC section 4.6) is applied here, at read time: a
+        holdings fraction outside [0, 1] is invalid and is masked to NaN before this
+        series ever reaches a factor calculation. Indexed by `self.members` (a pandas
+        Index of security_id ints), regardless of which source (an injected holdings
+        function or the state query) produced the raw value.
+        """
+        if lag_runs < 0:
+            raise LookaheadError(f"Negative lag_runs ({lag_runs}) requests future holdings")
+
+        sids = [int(x) for x in self.members]
+        if self._holdings_fn:
+            ser = self._holdings_fn(lag_runs, sids)
+            ser = ser.reindex(self.members).astype(float)
+            return ser.where((ser >= 0.0) & (ser <= 1.0), other=np.nan)
+
+        query = """
+        WITH ranked AS (
+            SELECT security_id, inst_pct,
+                   ROW_NUMBER() OVER (PARTITION BY security_id ORDER BY captured_at DESC) as rn
+            FROM holdings
+            WHERE captured_at <= ?
+        )
+        SELECT security_id, inst_pct
+        FROM ranked
+        WHERE rn = ?
+        """
+        rows = self._query(query, (self.cutoff, lag_runs + 1))
+        res = {r[0]: float(r[1]) if r[1] is not None else np.nan for r in rows}
+        ser = pd.Series(res, dtype=float).reindex(self.members)
+        return ser.where((ser >= 0.0) & (ser <= 1.0), other=np.nan)
+
+    def adv_inr(self) -> pd.Series:
+        """Average daily turnover in INR over trailing 63 trading days."""
+        sids = [int(x) for x in self.members]
+        df = self._price_store.adv_inr(sids, as_of=self.as_of, vintage_at=self.cutoff, window=63)
+        return df["adv_63_inr"].reindex(self.members)
+
+    def benchmark_tri(self, symbol: str, lookback_days: int) -> pd.Series:
+        """Point-in-time benchmark TRI series."""
+        start = self._get_start_date(lookback_days)
+        query = """
+        WITH ranked AS (
+            SELECT month_end, tri,
+                   ROW_NUMBER() OVER (PARTITION BY month_end ORDER BY observed_at DESC) as rn
+            FROM benchmarks_monthly
+            WHERE benchmark_id = ?
+              AND month_end >= ?
+              AND month_end <= ?
+              AND observed_at <= ?
+        )
+        SELECT month_end, tri
+        FROM ranked
+        WHERE rn = 1
+        ORDER BY month_end ASC
+        """
+        rows = self._query(query, (symbol, start, self.as_of, self.cutoff))
+        if not rows:
+            return pd.Series(dtype=float, name=symbol)
+        dates = [r[0] for r in rows]
+        tris = [float(r[1]) for r in rows]
+        return pd.Series(tris, index=dates, name=symbol)
+
+    def provenance(self) -> Dict[str, Any]:
+        """Dictionary of exact observation references, hashes and timestamps."""
+        return {
+            "as_of": self.as_of,
+            "cutoff": self.cutoff,
+            "n_members": len(self.members),
+            **self._provenance,
+        }
+
+
+def build(ctx: RunContext, draft: Draft) -> FactorInputs:
+    """Construct a restricted FactorInputs container from RunContext and Draft."""
+    store = getattr(ctx, "store", None) or PriceStore(ctx.cfg.paths.prices_db, state_conn=ctx.conn)
+    sids = sorted([int(x) for x in draft.members["security_id"].unique()])
+    members_idx = pd.Index(sids, name="security_id")
+    sector_group = draft.groups.reindex(members_idx) if draft.groups is not None else pd.Series(index=members_idx, dtype=object)
+
+    def _state_query(query: str, params: tuple) -> List[tuple]:
+        cur = ctx.conn.cursor()
+        cur.execute(query, params)
+        return cur.fetchall()
+
+    def _fund_fn(statement: str, field: str, freq: str, n_periods: int, sids: List[int]) -> pd.DataFrame:
+        from quant.data.fundamentals import pit_frame
+        return pit_frame(ctx.conn, draft.knowledge_cutoff, statement, field, freq, n_periods, sids)
+
+    def _fund_dates_fn(statement: str, field: str, freq: str, n_periods: int, sids: List[int]):
+        from quant.data.fundamentals import pit_frame
+        return pit_frame(ctx.conn, draft.knowledge_cutoff, statement, field, freq, n_periods, sids, with_dates=True)
+
+    max_annual_age_days = int(getattr(ctx.cfg.factors, "max_annual_age_days", 487))
+
+    def _ttm_fn(field: str, offset_quarters: int, sids: List[int]) -> Tuple[pd.Series, pd.Series]:
+        from quant.data.fundamentals import ttm
+        return ttm(ctx.conn, draft.knowledge_cutoff, field, sids, offset_quarters=offset_quarters,
+                   as_of=draft.as_of, max_annual_age_days=max_annual_age_days)
+
+    def _holdings_fn(lag_runs: int, sids: List[int]) -> pd.Series:
+        from quant.data.holdings import series
+        return series(ctx.conn, draft.knowledge_cutoff, lag_runs, sids)
+
+    prov = {
+        "cohort_id": draft.cohort_id,
+        "track": draft.track,
+        "definition_hash": draft.definition_hash,
+        "price_manifest_sha": draft.source_refs.get("price_manifest_sha", ""),
+    }
+
+    return FactorInputs(
+        as_of=draft.as_of,
+        cutoff=draft.knowledge_cutoff,
+        members=members_idx,
+        sector_group=sector_group,
+        price_store=store,
+        state_query_fn=_state_query,
+        provenance_dict=prov,
+        fund_fn=_fund_fn,
+        ttm_fn=_ttm_fn,
+        holdings_fn=_holdings_fn,
+        fund_dates_fn=_fund_dates_fn,
+        max_annual_age_days=max_annual_age_days,
+    )

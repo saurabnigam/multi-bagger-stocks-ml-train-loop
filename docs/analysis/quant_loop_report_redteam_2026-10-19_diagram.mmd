@@ -1,0 +1,12 @@
+---
+title: "Why passing checks do not establish clean live evidence"
+---
+flowchart LR
+  archive["Archive<br/>fetched after cutoff"]
+  cache["Cache<br/>records earlier vintage"]
+  gate["Gate trusts cache timestamp"]
+  cohort["Cohort marked clean"]
+
+  archive -.->|"capture time conflicts with cache vintage"| cache
+  cache -->|"G3 selects by recorded vintage"| gate
+  gate -->|"G3 passes; clean flag is set"| cohort

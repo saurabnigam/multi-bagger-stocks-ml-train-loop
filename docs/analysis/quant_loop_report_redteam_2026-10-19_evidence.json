@@ -1,0 +1,1629 @@
+{
+  "audit_date": "2026-10-19",
+  "scope": "Read-only source/SQLite audit; source price accuracy not independently certified against exchange records. Derived outputs only.",
+  "git_head": "d65416dda7d45900ae773fba90bbdd92b91db992",
+  "input_report_sha256": "54fe4ee1ce1130935d578dcc4f93f10430a7da40c02c3538a29c6ddd0f12e0ee",
+  "queries": {
+    "cohorts": {
+      "sql": "select cohort_id,as_of,track,knowledge_cutoff,published_at,generated_at,is_clean,run_id from cohorts order by as_of",
+      "rows": [
+        {
+          "cohort_id": "legacy:2026-06-12",
+          "as_of": "2026-06-12",
+          "track": "legacy",
+          "knowledge_cutoff": "2026-06-12T18:29:59.999999Z",
+          "published_at": "2026-09-11T10:12:43.050903Z",
+          "generated_at": "2026-09-11T10:12:43.050903Z",
+          "is_clean": 0,
+          "run_id": 1
+        },
+        {
+          "cohort_id": "legacy:2026-07-10",
+          "as_of": "2026-07-10",
+          "track": "legacy",
+          "knowledge_cutoff": "2026-07-10T18:29:59.999999Z",
+          "published_at": "2026-09-11T10:12:43.050903Z",
+          "generated_at": "2026-09-11T10:12:43.050903Z",
+          "is_clean": 0,
+          "run_id": 1
+        },
+        {
+          "cohort_id": "legacy:2026-08-14",
+          "as_of": "2026-08-14",
+          "track": "legacy",
+          "knowledge_cutoff": "2026-08-14T18:29:59.999999Z",
+          "published_at": "2026-09-11T10:12:43.050903Z",
+          "generated_at": "2026-09-11T10:12:43.050903Z",
+          "is_clean": 0,
+          "run_id": 1
+        },
+        {
+          "cohort_id": "legacy:2026-09-03",
+          "as_of": "2026-09-03",
+          "track": "legacy",
+          "knowledge_cutoff": "2026-09-03T18:29:59.999999Z",
+          "published_at": "2026-09-11T10:12:43.050903Z",
+          "generated_at": "2026-09-11T10:12:43.050903Z",
+          "is_clean": 0,
+          "run_id": 1
+        },
+        {
+          "cohort_id": "live:2026-09-30",
+          "as_of": "2026-09-30",
+          "track": "live",
+          "knowledge_cutoff": "2026-09-30T18:29:59.999999Z",
+          "published_at": "2026-10-17T18:26:37.448458Z",
+          "generated_at": "2026-10-17T18:26:37.448458Z",
+          "is_clean": 1,
+          "run_id": 11
+        }
+      ]
+    },
+    "run_sequence": {
+      "sql": "select run_id,kind,status,started_at,finished_at,notes_json from runs where run_id>=6 order by run_id",
+      "rows": [
+        {
+          "run_id": 6,
+          "kind": "prices_update",
+          "status": "ok",
+          "started_at": "2026-10-17T18:18:16.538831Z",
+          "finished_at": "2026-10-17T18:19:51.912571Z",
+          "notes_json": null
+        },
+        {
+          "run_id": 7,
+          "kind": "monthly",
+          "status": "blocked",
+          "started_at": "2026-10-17T18:20:22.613764Z",
+          "finished_at": "2026-10-17T18:20:38.781347Z",
+          "notes_json": "{\"blocked\": \"BOOTSTRAP_REQUIRED: BOOTSTRAP_REQUIRED: no completed as_of closes in the price store at the cohort vintage\", \"suspected_actions_new\": 0}"
+        },
+        {
+          "run_id": 8,
+          "kind": "maintenance",
+          "status": "ok",
+          "started_at": "2026-10-17T18:20:43.795256Z",
+          "finished_at": "2026-10-17T18:20:43.808051Z",
+          "notes_json": null
+        },
+        {
+          "run_id": 9,
+          "kind": "test",
+          "status": "ok",
+          "started_at": "2026-10-17T18:25:06.237183Z",
+          "finished_at": "2026-10-17T18:25:12.168369Z",
+          "notes_json": null
+        },
+        {
+          "run_id": 10,
+          "kind": "test",
+          "status": "ok",
+          "started_at": "2026-10-17T18:25:48.464290Z",
+          "finished_at": "2026-10-17T18:25:54.463670Z",
+          "notes_json": null
+        },
+        {
+          "run_id": 11,
+          "kind": "monthly",
+          "status": "ok",
+          "started_at": "2026-10-17T18:26:08.320401Z",
+          "finished_at": "2026-10-17T18:26:43.410385Z",
+          "notes_json": "{\"n_eligible\": 488, \"n_scored\": 490, \"n_universe\": 501, \"suspected_actions_new\": 0}"
+        },
+        {
+          "run_id": 12,
+          "kind": "maintenance",
+          "status": "ok",
+          "started_at": "2026-10-17T18:26:50.339601Z",
+          "finished_at": "2026-10-17T18:26:50.358415Z",
+          "notes_json": null
+        }
+      ]
+    },
+    "gates": {
+      "sql": "select gate,phase,status,observed_json,reason from dq_runs where run_id=11 order by gate",
+      "rows": [
+        {
+          "gate": "G1",
+          "phase": "pre",
+          "status": "PASS",
+          "observed_json": "501",
+          "reason": "Universe has 501 unique members (threshold 480)"
+        },
+        {
+          "gate": "G10",
+          "phase": "post",
+          "status": "PASS",
+          "observed_json": "{\"deferred\": [\"T3_REPLAY\", \"T5_EMBARGO\", \"T9_SURVIVORSHIP\"]}",
+          "reason": "Leakage checks passed (7 evaluated)"
+        },
+        {
+          "gate": "G2",
+          "phase": "pre",
+          "status": "PASS",
+          "observed_json": "19",
+          "reason": "Universe capture age 19d (limit 62d)"
+        },
+        {
+          "gate": "G3",
+          "phase": "pre",
+          "status": "PASS",
+          "observed_json": "0.998",
+          "reason": "Completed as_of close coverage 99.80% (threshold 98%)"
+        },
+        {
+          "gate": "G4",
+          "phase": "pre",
+          "status": "DEFERRED",
+          "observed_json": "null",
+          "reason": "First month: no prior cohort prices; same-close check deferred"
+        },
+        {
+          "gate": "G5",
+          "phase": "pre",
+          "status": "PASS",
+          "observed_json": "0.0",
+          "reason": "0 members with quarantined revisions (0.00%)"
+        },
+        {
+          "gate": "G6",
+          "phase": "pre",
+          "status": "PASS",
+          "observed_json": "{\"dividend_yield\": 0, \"insider_pct\": 0, \"inst_pct\": 0, \"mcap_inr\": 0, \"trailing_pe\": 1}",
+          "reason": "Unit-bound violators per field (max 1, limit 5); invalid inputs masked"
+        },
+        {
+          "gate": "G7",
+          "phase": "pre",
+          "status": "PASS",
+          "observed_json": "1.0",
+          "reason": "Known sector coverage 100.00% (threshold 99%)"
+        },
+        {
+          "gate": "G8",
+          "phase": "post",
+          "status": "PASS",
+          "observed_json": "0",
+          "reason": "0 active factors excluded on coverage (limit 2): []; awaiting history prerequisites (not counted, excluded from composites): {'earn_mom@1': 'members with 8 quarters 0% (need 70%)', 'inst_hold_chg_3m@1': 'holdings months 1/4'}"
+        },
+        {
+          "gate": "G9",
+          "phase": "post",
+          "status": "DEFERRED",
+          "observed_json": "null",
+          "reason": "First cohort: no prior published cohort; replay deferred"
+        },
+        {
+          "gate": "W_PRICE_GAPS",
+          "phase": "pre",
+          "status": "PASS",
+          "observed_json": "{\"members_with_gaps\": 0, \"worst_dates\": {}}",
+          "reason": "0 members (0.0%) miss at least one of the last 63 sessions (warning above 20%); non-blocking"
+        }
+      ]
+    },
+    "model_weights": {
+      "sql": "select model_id,family,weight_units,n_eff,alpha,gate,evidence_hash from model_weights order by model_id,family",
+      "rows": [
+        {
+          "model_id": "EW_FLAT_v1",
+          "family": "growth",
+          "weight_units": 2000,
+          "n_eff": null,
+          "alpha": null,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        },
+        {
+          "model_id": "EW_FLAT_v1",
+          "family": "low_risk",
+          "weight_units": 2000,
+          "n_eff": null,
+          "alpha": null,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        },
+        {
+          "model_id": "EW_FLAT_v1",
+          "family": "momentum",
+          "weight_units": 2000,
+          "n_eff": null,
+          "alpha": null,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        },
+        {
+          "model_id": "EW_FLAT_v1",
+          "family": "quality",
+          "weight_units": 2000,
+          "n_eff": null,
+          "alpha": null,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        },
+        {
+          "model_id": "EW_FLAT_v1",
+          "family": "value",
+          "weight_units": 2000,
+          "n_eff": null,
+          "alpha": null,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        },
+        {
+          "model_id": "EW_HIER_v1",
+          "family": "growth",
+          "weight_units": 2000,
+          "n_eff": null,
+          "alpha": null,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        },
+        {
+          "model_id": "EW_HIER_v1",
+          "family": "low_risk",
+          "weight_units": 2000,
+          "n_eff": null,
+          "alpha": null,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        },
+        {
+          "model_id": "EW_HIER_v1",
+          "family": "momentum",
+          "weight_units": 2000,
+          "n_eff": null,
+          "alpha": null,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        },
+        {
+          "model_id": "EW_HIER_v1",
+          "family": "quality",
+          "weight_units": 2000,
+          "n_eff": null,
+          "alpha": null,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        },
+        {
+          "model_id": "EW_HIER_v1",
+          "family": "value",
+          "weight_units": 2000,
+          "n_eff": null,
+          "alpha": null,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        },
+        {
+          "model_id": "IC_SHRUNK_v1",
+          "family": "growth",
+          "weight_units": 2000,
+          "n_eff": 0.0,
+          "alpha": 0.0,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        },
+        {
+          "model_id": "IC_SHRUNK_v1",
+          "family": "low_risk",
+          "weight_units": 2000,
+          "n_eff": 0.0,
+          "alpha": 0.0,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        },
+        {
+          "model_id": "IC_SHRUNK_v1",
+          "family": "momentum",
+          "weight_units": 2000,
+          "n_eff": 0.0,
+          "alpha": 0.0,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        },
+        {
+          "model_id": "IC_SHRUNK_v1",
+          "family": "quality",
+          "weight_units": 2000,
+          "n_eff": 0.0,
+          "alpha": 0.0,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        },
+        {
+          "model_id": "IC_SHRUNK_v1",
+          "family": "value",
+          "weight_units": 2000,
+          "n_eff": 0.0,
+          "alpha": 0.0,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        },
+        {
+          "model_id": "MOM_ONLY_v1",
+          "family": "momentum",
+          "weight_units": 10000,
+          "n_eff": null,
+          "alpha": null,
+          "gate": "closed",
+          "evidence_hash": "empty_history"
+        }
+      ]
+    },
+    "labels_by_track": {
+      "sql": "select track,cohort_id,horizon_m,status,count(*) n,min(end_date) endpoint from labels group by 1,2,3,4",
+      "rows": [
+        {
+          "track": "legacy",
+          "cohort_id": "legacy:2026-06-12",
+          "horizon_m": 1,
+          "status": "missing",
+          "n": 1,
+          "endpoint": "2026-07-31"
+        },
+        {
+          "track": "legacy",
+          "cohort_id": "legacy:2026-06-12",
+          "horizon_m": 1,
+          "status": "ok",
+          "n": 816,
+          "endpoint": "2026-07-31"
+        },
+        {
+          "track": "legacy",
+          "cohort_id": "legacy:2026-06-12",
+          "horizon_m": 3,
+          "status": "excluded_ca",
+          "n": 2,
+          "endpoint": "2026-09-30"
+        },
+        {
+          "track": "legacy",
+          "cohort_id": "legacy:2026-06-12",
+          "horizon_m": 3,
+          "status": "missing",
+          "n": 1,
+          "endpoint": "2026-09-30"
+        },
+        {
+          "track": "legacy",
+          "cohort_id": "legacy:2026-06-12",
+          "horizon_m": 3,
+          "status": "ok",
+          "n": 496,
+          "endpoint": "2026-09-30"
+        },
+        {
+          "track": "legacy",
+          "cohort_id": "legacy:2026-07-10",
+          "horizon_m": 1,
+          "status": "missing",
+          "n": 1,
+          "endpoint": "2026-08-31"
+        },
+        {
+          "track": "legacy",
+          "cohort_id": "legacy:2026-07-10",
+          "horizon_m": 1,
+          "status": "ok",
+          "n": 816,
+          "endpoint": "2026-08-31"
+        },
+        {
+          "track": "legacy",
+          "cohort_id": "legacy:2026-08-14",
+          "horizon_m": 1,
+          "status": "excluded_ca",
+          "n": 2,
+          "endpoint": "2026-09-30"
+        },
+        {
+          "track": "legacy",
+          "cohort_id": "legacy:2026-08-14",
+          "horizon_m": 1,
+          "status": "ok",
+          "n": 497,
+          "endpoint": "2026-09-30"
+        }
+      ]
+    },
+    "label_count_live": {
+      "sql": "select count(*) n from labels where track='live'",
+      "rows": [
+        {
+          "n": 0
+        }
+      ]
+    },
+    "portfolio_orders": {
+      "sql": "select status,count(*) n,min(created_at) created_at,min(earliest_exec_at) earliest_exec_at from portfolio_orders group by status",
+      "rows": [
+        {
+          "status": "pending",
+          "n": 24438,
+          "created_at": "2026-10-17T18:26:41.969779Z",
+          "earliest_exec_at": "2026-10-19T10:00:00.000000Z"
+        }
+      ]
+    },
+    "portfolio_counts": {
+      "sql": "select (select count(*) from portfolio_positions) positions,(select count(*) from portfolio_trades) trades,(select count(*) from portfolio_returns) returns",
+      "rows": [
+        {
+          "positions": 0,
+          "trades": 0,
+          "returns": 0
+        }
+      ]
+    },
+    "price_vintages": {
+      "sql": "select observed_at,capture_id,source_sha256,count(*) n,count(distinct security_id) securities,min(date) first_date,max(date) last_date from prices_daily group by 1,2,3",
+      "rows": [
+        {
+          "observed_at": "2026-09-11T10:06:18.315318Z",
+          "capture_id": "cap_prices_d28fad503e3ddb58",
+          "source_sha256": "d28fad503e3ddb58fe4166756f7c7d92660cb02d07f8cc84ad9303e6f9dee6f4",
+          "n": 1142510,
+          "securities": 501,
+          "first_date": "2015-01-01",
+          "last_date": "2026-09-11"
+        },
+        {
+          "observed_at": "2026-09-30T18:29:59.999999Z",
+          "capture_id": "cap_prices_3cfc595b5984bfd7",
+          "source_sha256": "3cfc595b5984bfd7ebea1aa77d95da238ee797bcce296f36da12f998946e6a0c",
+          "n": 6200,
+          "securities": 500,
+          "first_date": "2026-09-07",
+          "last_date": "2026-09-30"
+        }
+      ]
+    },
+    "endpoint_prices": {
+      "sql": "select observed_at,capture_id,count(*) n from prices_daily where date='2026-09-30' group by 1,2",
+      "rows": [
+        {
+          "observed_at": "2026-09-30T18:29:59.999999Z",
+          "capture_id": "cap_prices_3cfc595b5984bfd7",
+          "n": 500
+        }
+      ]
+    },
+    "capture_registry": {
+      "sql": "select capture_id,captured_at,kind,archive_path,sha256,run_id from captures",
+      "rows": [
+        {
+          "capture_id": "cap_universe_7b90cc2fbfc268ca",
+          "captured_at": "2026-09-11T10:12:47.702862Z",
+          "kind": "nifty500",
+          "archive_path": "/Users/saurabhnigam/Desktop/Projects/multi-bagger-stocks-ml-train-loop/data/archive/captures/universe/cap_universe_7b90cc2fbfc268ca.csv",
+          "sha256": "7b90cc2fbfc268cae8eeb95cf1bd80218a0a41f81f0fd1b0ff1ebf64f4dd8bfa",
+          "run_id": 2
+        },
+        {
+          "capture_id": "cap_yah_95652802e4c5",
+          "captured_at": "2026-09-11T09:58:22.212449Z",
+          "kind": "yahoo_bundle",
+          "archive_path": "data/archive/captures/yahoo/cap_yah_95652802e4c5.json",
+          "sha256": "6b809d9c282e37647af24346541f40e463c0caace3a0a7e63650861f4904587a",
+          "run_id": 3
+        },
+        {
+          "capture_id": "cap_prices_3cfc595b5984bfd7",
+          "captured_at": "2026-10-17T18:19:38.773804Z",
+          "kind": "yahoo_prices",
+          "archive_path": "/Users/saurabhnigam/Desktop/Projects/multi-bagger-stocks-ml-train-loop/data/archive/captures/prices/cap_prices_3cfc595b5984bfd7.csv.gz",
+          "sha256": "3cfc595b5984bfd7ebea1aa77d95da238ee797bcce296f36da12f998946e6a0c",
+          "run_id": 6
+        }
+      ]
+    },
+    "sector_observations": {
+      "sql": "select observed_at,source,count(*) n from sector_map where valid_from='2026-09-30' group by 1,2",
+      "rows": [
+        {
+          "observed_at": "2026-10-17T18:25:06.320471Z",
+          "source": "nse_csv",
+          "n": 501
+        }
+      ]
+    },
+    "baseline_weights_equal": {
+      "sql": "select a.version,a.valid_from,a.weights_json,a.weights_json=b.weights_json weights_equal from model_versions a join model_versions b on a.version=b.version where a.model_id='LEGACY_V18' and b.model_id='LEGACY_V18_BASE' order by a.version",
+      "rows": [
+        {
+          "version": 1,
+          "valid_from": "2026-06-11",
+          "weights_json": "{\"quality\": 0.2, \"valuation\": 0.15, \"growth\": 0.2, \"moat\": 0.1, \"risk\": 0.15, \"balance_sheet\": 0.1, \"cap_alloc\": 0.05, \"smart_money\": 0.05}",
+          "weights_equal": 1
+        },
+        {
+          "version": 2,
+          "valid_from": "2026-06-11",
+          "weights_json": "{\"quality\": 0.19, \"valuation\": 0.14, \"growth\": 0.21, \"moat\": 0.1, \"risk\": 0.16, \"balance_sheet\": 0.1, \"cap_alloc\": 0.05, \"smart_money\": 0.05}",
+          "weights_equal": 1
+        },
+        {
+          "version": 3,
+          "valid_from": "2026-06-11",
+          "weights_json": "{\"quality\": 0.18, \"valuation\": 0.13, \"growth\": 0.22, \"moat\": 0.1, \"risk\": 0.17, \"balance_sheet\": 0.1, \"cap_alloc\": 0.05, \"smart_money\": 0.05}",
+          "weights_equal": 1
+        },
+        {
+          "version": 4,
+          "valid_from": "2026-06-11",
+          "weights_json": "{\"quality\": 0.17, \"valuation\": 0.12, \"growth\": 0.23, \"moat\": 0.1, \"risk\": 0.18, \"balance_sheet\": 0.1, \"cap_alloc\": 0.05, \"smart_money\": 0.05}",
+          "weights_equal": 1
+        },
+        {
+          "version": 5,
+          "valid_from": "2026-06-11",
+          "weights_json": "{\"quality\": 0.16, \"valuation\": 0.11, \"growth\": 0.24, \"moat\": 0.1, \"risk\": 0.19, \"balance_sheet\": 0.1, \"cap_alloc\": 0.05, \"smart_money\": 0.05}",
+          "weights_equal": 1
+        },
+        {
+          "version": 6,
+          "valid_from": "2026-06-14",
+          "weights_json": "{\"quality\": 0.158, \"valuation\": 0.099, \"growth\": 0.248, \"moat\": 0.099, \"risk\": 0.188, \"balance_sheet\": 0.099, \"cap_alloc\": 0.05, \"smart_money\": 0.059}",
+          "weights_equal": 1
+        },
+        {
+          "version": 7,
+          "valid_from": "2026-06-18",
+          "weights_json": "{\"quality\": 0.158, \"valuation\": 0.089, \"growth\": 0.258, \"moat\": 0.099, \"risk\": 0.188, \"balance_sheet\": 0.099, \"cap_alloc\": 0.05, \"smart_money\": 0.059}",
+          "weights_equal": 1
+        },
+        {
+          "version": 8,
+          "valid_from": "2026-06-22",
+          "weights_json": "{\"quality\": 0.158, \"valuation\": 0.079, \"growth\": 0.268, \"moat\": 0.099, \"risk\": 0.188, \"balance_sheet\": 0.099, \"cap_alloc\": 0.05, \"smart_money\": 0.059}",
+          "weights_equal": 1
+        },
+        {
+          "version": 9,
+          "valid_from": "2026-07-10",
+          "weights_json": "{\"quality\": 0.148, \"valuation\": 0.07, \"growth\": 0.281, \"moat\": 0.1, \"risk\": 0.2, \"balance_sheet\": 0.09, \"cap_alloc\": 0.051, \"smart_money\": 0.06}",
+          "weights_equal": 1
+        },
+        {
+          "version": 10,
+          "valid_from": "2026-08-14",
+          "weights_json": "{\"quality\": 0.148, \"valuation\": 0.07, \"growth\": 0.281, \"moat\": 0.1, \"risk\": 0.2, \"balance_sheet\": 0.09, \"cap_alloc\": 0.051, \"smart_money\": 0.06}",
+          "weights_equal": 1
+        },
+        {
+          "version": 11,
+          "valid_from": "2026-09-03",
+          "weights_json": "{\"quality\": 0.162, \"valuation\": 0.059, \"growth\": 0.282, \"moat\": 0.098, \"risk\": 0.189, \"balance_sheet\": 0.096, \"cap_alloc\": 0.051, \"smart_money\": 0.063}",
+          "weights_equal": 1
+        },
+        {
+          "version": 12,
+          "valid_from": "2026-09-03",
+          "weights_json": "{\"quality\": 0.152, \"valuation\": 0.055, \"growth\": 0.3, \"moat\": 0.09, \"risk\": 0.185, \"balance_sheet\": 0.099, \"cap_alloc\": 0.05, \"smart_money\": 0.069}",
+          "weights_equal": 1
+        }
+      ]
+    },
+    "weights_applied": {
+      "sql": "select distinct s.cohort_id,s.model_id,s.model_version,v.valid_from,v.weights_json from scores s join model_versions v on s.model_id=v.model_id and s.model_version=v.version where s.track='legacy' order by s.cohort_id,s.model_id",
+      "rows": [
+        {
+          "cohort_id": "legacy:2026-06-12",
+          "model_id": "LEGACY_V18",
+          "model_version": 6,
+          "valid_from": "2026-06-14",
+          "weights_json": "{\"quality\": 0.158, \"valuation\": 0.099, \"growth\": 0.248, \"moat\": 0.099, \"risk\": 0.188, \"balance_sheet\": 0.099, \"cap_alloc\": 0.05, \"smart_money\": 0.059}"
+        },
+        {
+          "cohort_id": "legacy:2026-06-12",
+          "model_id": "LEGACY_V18_BASE",
+          "model_version": 6,
+          "valid_from": "2026-06-14",
+          "weights_json": "{\"quality\": 0.158, \"valuation\": 0.099, \"growth\": 0.248, \"moat\": 0.099, \"risk\": 0.188, \"balance_sheet\": 0.099, \"cap_alloc\": 0.05, \"smart_money\": 0.059}"
+        },
+        {
+          "cohort_id": "legacy:2026-07-10",
+          "model_id": "LEGACY_V18",
+          "model_version": 9,
+          "valid_from": "2026-07-10",
+          "weights_json": "{\"quality\": 0.148, \"valuation\": 0.07, \"growth\": 0.281, \"moat\": 0.1, \"risk\": 0.2, \"balance_sheet\": 0.09, \"cap_alloc\": 0.051, \"smart_money\": 0.06}"
+        },
+        {
+          "cohort_id": "legacy:2026-07-10",
+          "model_id": "LEGACY_V18_BASE",
+          "model_version": 9,
+          "valid_from": "2026-07-10",
+          "weights_json": "{\"quality\": 0.148, \"valuation\": 0.07, \"growth\": 0.281, \"moat\": 0.1, \"risk\": 0.2, \"balance_sheet\": 0.09, \"cap_alloc\": 0.051, \"smart_money\": 0.06}"
+        },
+        {
+          "cohort_id": "legacy:2026-08-14",
+          "model_id": "LEGACY_V18",
+          "model_version": 10,
+          "valid_from": "2026-08-14",
+          "weights_json": "{\"quality\": 0.148, \"valuation\": 0.07, \"growth\": 0.281, \"moat\": 0.1, \"risk\": 0.2, \"balance_sheet\": 0.09, \"cap_alloc\": 0.051, \"smart_money\": 0.06}"
+        },
+        {
+          "cohort_id": "legacy:2026-08-14",
+          "model_id": "LEGACY_V18_BASE",
+          "model_version": 10,
+          "valid_from": "2026-08-14",
+          "weights_json": "{\"quality\": 0.148, \"valuation\": 0.07, \"growth\": 0.281, \"moat\": 0.1, \"risk\": 0.2, \"balance_sheet\": 0.09, \"cap_alloc\": 0.051, \"smart_money\": 0.06}"
+        },
+        {
+          "cohort_id": "legacy:2026-09-03",
+          "model_id": "LEGACY_V18",
+          "model_version": 12,
+          "valid_from": "2026-09-03",
+          "weights_json": "{\"quality\": 0.152, \"valuation\": 0.055, \"growth\": 0.3, \"moat\": 0.09, \"risk\": 0.185, \"balance_sheet\": 0.099, \"cap_alloc\": 0.05, \"smart_money\": 0.069}"
+        },
+        {
+          "cohort_id": "legacy:2026-09-03",
+          "model_id": "LEGACY_V18_BASE",
+          "model_version": 12,
+          "valid_from": "2026-09-03",
+          "weights_json": "{\"quality\": 0.152, \"valuation\": 0.055, \"growth\": 0.3, \"moat\": 0.09, \"risk\": 0.185, \"balance_sheet\": 0.099, \"cap_alloc\": 0.05, \"smart_money\": 0.069}"
+        }
+      ]
+    },
+    "legacy_base_availability": {
+      "sql": "select count(*) n,count(base_score) nonnull_base_scores from daily_predictions",
+      "rows": [
+        {
+          "n": 2543,
+          "nonnull_base_scores": 0
+        }
+      ]
+    },
+    "champion_challenger_equality": {
+      "sql": "select count(*) joined_rows,sum(a.final IS NOT b.final) different_final,sum(a.rank IS NOT b.rank) different_rank from scores a join scores b on a.cohort_id=b.cohort_id and a.security_id=b.security_id where a.model_id='EW_HIER_v1' and b.model_id='IC_SHRUNK_v1'",
+      "rows": [
+        {
+          "joined_rows": 501,
+          "different_final": 0,
+          "different_rank": 0
+        }
+      ]
+    },
+    "top15": {
+      "sql": "select s.rank,(select nse_symbol from symbol_history h where h.security_id=s.security_id order by h.valid_from desc limit 1) nse_symbol,s.sector_group,s.final,s.eligible from scores s where s.cohort_id='live:2026-09-30' and s.model_id='EW_HIER_v1' and s.rank<=15 order by s.rank",
+      "rows": [
+        {
+          "rank": 1,
+          "nse_symbol": "PNB",
+          "sector_group": "Financial Services",
+          "final": 2.560707206262348,
+          "eligible": 1
+        },
+        {
+          "rank": 2,
+          "nse_symbol": "LUPIN",
+          "sector_group": "Healthcare",
+          "final": 2.3109913382574203,
+          "eligible": 1
+        },
+        {
+          "rank": 3,
+          "nse_symbol": "MRF",
+          "sector_group": "Automobile and Auto Components",
+          "final": 2.221519588337836,
+          "eligible": 1
+        },
+        {
+          "rank": 4,
+          "nse_symbol": "LICHSGFIN",
+          "sector_group": "Financial Services",
+          "final": 2.152899965389783,
+          "eligible": 1
+        },
+        {
+          "rank": 5,
+          "nse_symbol": "EMMVEE",
+          "sector_group": "Capital Goods",
+          "final": 2.1491397077690335,
+          "eligible": 1
+        },
+        {
+          "rank": 6,
+          "nse_symbol": "WELCORP",
+          "sector_group": "Capital Goods",
+          "final": 2.1491397077690335,
+          "eligible": 1
+        },
+        {
+          "rank": 7,
+          "nse_symbol": "NYKAA",
+          "sector_group": "Consumer Services",
+          "final": 2.141198120972019,
+          "eligible": 1
+        },
+        {
+          "rank": 8,
+          "nse_symbol": "BBTC",
+          "sector_group": "Fast Moving Consumer Goods",
+          "final": 2.0853555660318293,
+          "eligible": 1
+        },
+        {
+          "rank": 9,
+          "nse_symbol": "SAGILITY",
+          "sector_group": "Information Technology",
+          "final": 2.0853555660318293,
+          "eligible": 1
+        },
+        {
+          "rank": 10,
+          "nse_symbol": "ATUL",
+          "sector_group": "Chemicals",
+          "final": 2.069901830895051,
+          "eligible": 1
+        },
+        {
+          "rank": 11,
+          "nse_symbol": "KAJARIACER",
+          "sector_group": "Consumer Durables",
+          "final": 1.959963984540054,
+          "eligible": 1
+        },
+        {
+          "rank": 12,
+          "nse_symbol": "AXISBANK",
+          "sector_group": "Financial Services",
+          "final": 1.9414695997522264,
+          "eligible": 1
+        },
+        {
+          "rank": 13,
+          "nse_symbol": "JSWSTEEL",
+          "sector_group": "Metals & Mining",
+          "final": 1.9145058250555569,
+          "eligible": 1
+        },
+        {
+          "rank": 14,
+          "nse_symbol": "ADANIPORTS",
+          "sector_group": "Services",
+          "final": 1.88950996033343,
+          "eligible": 1
+        },
+        {
+          "rank": 15,
+          "nse_symbol": "BPCL",
+          "sector_group": "Oil Gas & Consumable Fuels",
+          "final": 1.88950996033343,
+          "eligible": 1
+        }
+      ]
+    },
+    "disputed_ranking_rows": {
+      "sql": "select s.model_id,s.rank,h.nse_symbol,s.final from scores s join (select distinct security_id,nse_symbol from symbol_history) h on s.security_id=h.security_id where s.cohort_id='live:2026-09-30' and h.nse_symbol in ('CHAMBLFERT','GLENMARK','TORNTPHARM','AUROPHARMA','COROMANDEL','CESC','FEDERALBNK') order by s.model_id,s.rank",
+      "rows": [
+        {
+          "model_id": "EW_FLAT_v1",
+          "rank": 17,
+          "nse_symbol": "GLENMARK",
+          "final": 1.8627318674216515
+        },
+        {
+          "model_id": "EW_FLAT_v1",
+          "rank": 27,
+          "nse_symbol": "AUROPHARMA",
+          "final": 1.6249807216131982
+        },
+        {
+          "model_id": "EW_FLAT_v1",
+          "rank": 38,
+          "nse_symbol": "FEDERALBNK",
+          "final": 1.417797137996267
+        },
+        {
+          "model_id": "EW_FLAT_v1",
+          "rank": 85,
+          "nse_symbol": "CHAMBLFERT",
+          "final": 0.9420757749957759
+        },
+        {
+          "model_id": "EW_FLAT_v1",
+          "rank": 186,
+          "nse_symbol": "CESC",
+          "final": 0.29930691046566715
+        },
+        {
+          "model_id": "EW_FLAT_v1",
+          "rank": 310,
+          "nse_symbol": "COROMANDEL",
+          "final": -0.3441024628830156
+        },
+        {
+          "model_id": "EW_FLAT_v1",
+          "rank": 362,
+          "nse_symbol": "TORNTPHARM",
+          "final": -0.6420613752765011
+        },
+        {
+          "model_id": "EW_HIER_v1",
+          "rank": 17,
+          "nse_symbol": "GLENMARK",
+          "final": 1.8627318674216515
+        },
+        {
+          "model_id": "EW_HIER_v1",
+          "rank": 32,
+          "nse_symbol": "CHAMBLFERT",
+          "final": 1.5744449652170427
+        },
+        {
+          "model_id": "EW_HIER_v1",
+          "rank": 36,
+          "nse_symbol": "AUROPHARMA",
+          "final": 1.4544076028560406
+        },
+        {
+          "model_id": "EW_HIER_v1",
+          "rank": 91,
+          "nse_symbol": "FEDERALBNK",
+          "final": 0.9056914887210554
+        },
+        {
+          "model_id": "EW_HIER_v1",
+          "rank": 129,
+          "nse_symbol": "CESC",
+          "final": 0.62890421763219
+        },
+        {
+          "model_id": "EW_HIER_v1",
+          "rank": 234,
+          "nse_symbol": "COROMANDEL",
+          "final": 0.04822307355592223
+        },
+        {
+          "model_id": "EW_HIER_v1",
+          "rank": 251,
+          "nse_symbol": "TORNTPHARM",
+          "final": -0.026113678815527813
+        },
+        {
+          "model_id": "IC_SHRUNK_v1",
+          "rank": 17,
+          "nse_symbol": "GLENMARK",
+          "final": 1.8627318674216515
+        },
+        {
+          "model_id": "IC_SHRUNK_v1",
+          "rank": 32,
+          "nse_symbol": "CHAMBLFERT",
+          "final": 1.5744449652170427
+        },
+        {
+          "model_id": "IC_SHRUNK_v1",
+          "rank": 36,
+          "nse_symbol": "AUROPHARMA",
+          "final": 1.4544076028560406
+        },
+        {
+          "model_id": "IC_SHRUNK_v1",
+          "rank": 91,
+          "nse_symbol": "FEDERALBNK",
+          "final": 0.9056914887210554
+        },
+        {
+          "model_id": "IC_SHRUNK_v1",
+          "rank": 129,
+          "nse_symbol": "CESC",
+          "final": 0.62890421763219
+        },
+        {
+          "model_id": "IC_SHRUNK_v1",
+          "rank": 234,
+          "nse_symbol": "COROMANDEL",
+          "final": 0.04822307355592223
+        },
+        {
+          "model_id": "IC_SHRUNK_v1",
+          "rank": 251,
+          "nse_symbol": "TORNTPHARM",
+          "final": -0.026113678815527813
+        },
+        {
+          "model_id": "MOM_ONLY_v1",
+          "rank": 12,
+          "nse_symbol": "FEDERALBNK",
+          "final": 1.959963984540054
+        },
+        {
+          "model_id": "MOM_ONLY_v1",
+          "rank": 89,
+          "nse_symbol": "AUROPHARMA",
+          "final": 0.9265832403817663
+        },
+        {
+          "model_id": "MOM_ONLY_v1",
+          "rank": 180,
+          "nse_symbol": "TORNTPHARM",
+          "final": 0.3462799047266183
+        },
+        {
+          "model_id": "MOM_ONLY_v1",
+          "rank": 211,
+          "nse_symbol": "GLENMARK",
+          "final": 0.18385034396447414
+        },
+        {
+          "model_id": "MOM_ONLY_v1",
+          "rank": 374,
+          "nse_symbol": "COROMANDEL",
+          "final": -0.6749458660211489
+        },
+        {
+          "model_id": "MOM_ONLY_v1",
+          "rank": 408,
+          "nse_symbol": "CHAMBLFERT",
+          "final": -0.9425318908208433
+        },
+        {
+          "model_id": "MOM_ONLY_v1",
+          "rank": 420,
+          "nse_symbol": "CESC",
+          "final": -1.049131397963971
+        }
+      ]
+    },
+    "unexported_ledger_tail": {
+      "sql": "select seq,run_id,table_name,operation,recorded_at from ledger_events where seq>147914 order by seq",
+      "rows": [
+        {
+          "seq": 147915,
+          "run_id": 12,
+          "table_name": "runs",
+          "operation": "insert",
+          "recorded_at": "2026-10-17T18:26:50.357352Z"
+        },
+        {
+          "seq": 147916,
+          "run_id": 12,
+          "table_name": "data_quality_events",
+          "operation": "insert",
+          "recorded_at": "2026-10-17T18:26:50.357717Z"
+        },
+        {
+          "seq": 147917,
+          "run_id": 12,
+          "table_name": "runs",
+          "operation": "update",
+          "recorded_at": "2026-10-17T18:26:50.358596Z"
+        }
+      ]
+    }
+  },
+  "source_hashes": {
+    "quant.db": "16ff4adf556ee50e5d84457e1ffdc1721f6f6104a15a4a753a9015179897add9",
+    "quant_engine.db": "03fe228b8fc90c63e8deddd33d1f9308693972af931aec7000c6870a34cb48a8",
+    "data/prices_daily.sqlite": "b71a75e1ced148c4a844f250baaa2cd5398e2981242e93d5e7ae530675371162",
+    "quant/ui_export.py": "4c91a59f0ea30dccfd27f1f112a4f76011e3c8a47f8df81e7f685a36d770186d"
+  },
+  "price_archive_metadata": [
+    {
+      "capture_id": "cap_prices_3cfc595b5984bfd7",
+      "fetched_at": "2026-10-17T18:19:38.773804Z",
+      "start": "2025-08-30",
+      "end": "2026-10-01",
+      "sha256": "3cfc595b5984bfd7ebea1aa77d95da238ee797bcce296f36da12f998946e6a0c",
+      "source": "yfinance",
+      "decompressed_archive_sha256": "3cfc595b5984bfd7ebea1aa77d95da238ee797bcce296f36da12f998946e6a0c"
+    },
+    {
+      "capture_id": "cap_prices_d28fad503e3ddb58",
+      "fetched_at": "2026-09-11T10:06:18.315318Z",
+      "start": "2015-01-01",
+      "end": "2026-09-12",
+      "sha256": "d28fad503e3ddb58fe4166756f7c7d92660cb02d07f8cc84ad9303e6f9dee6f4",
+      "source": "yfinance"
+    }
+  ],
+  "price_manifest": {
+    "vintage_at": "2026-09-30T18:29:59.999999Z",
+    "sha256": "3cd725d0150bc0710c8eed852f077f756126b45e0cb4d2b3fd1226265bb97c8c",
+    "row_count": 1148710
+  },
+  "built_in_pit_checks": [
+    {
+      "id": "verify:pit:live:2026-09-30:published_after_cutoff",
+      "status": "PASS",
+      "observed": "2026-10-17T18:26:37.448458Z",
+      "expected": ">= 2026-09-30T18:29:59.999999Z",
+      "reason": "published_at >= knowledge_cutoff",
+      "blocking": true
+    },
+    {
+      "id": "verify:pit:live:2026-09-30:factor_input_cutoff",
+      "status": "PASS",
+      "observed": "matched",
+      "expected": "every factor_values.input_refs_json.cutoff == '2026-09-30T18:29:59.999999Z'",
+      "reason": "All factor_values input_refs match the cohort cutoff",
+      "blocking": true
+    },
+    {
+      "id": "verify:pit:live:2026-09-30:fundamentals_no_backdated_fetch",
+      "status": "PASS",
+      "observed": 0,
+      "expected": 0,
+      "reason": "No fundamentals fact is claimed pre-cutoff-available with no fetch at or before cutoff",
+      "blocking": true
+    },
+    {
+      "id": "verify:pit:live:2026-09-30:holdings_no_future_only_evidence",
+      "status": "PASS",
+      "observed": 0,
+      "expected": 0,
+      "reason": "Every cohort member with holdings evidence has a row captured at or before cutoff",
+      "blocking": true
+    },
+    {
+      "id": "verify:pit:live:2026-09-30:security_attributes_no_future_only_evidence",
+      "status": "PASS",
+      "observed": 0,
+      "expected": 0,
+      "reason": "Every cohort member with security_attributes evidence has a row captured at or before cutoff",
+      "blocking": true
+    },
+    {
+      "id": "verify:pit:live:2026-09-30:labels_endpoint_before_computed",
+      "status": "PASS",
+      "observed": 0,
+      "expected": 0,
+      "reason": "All labels' end_date <= computed_at",
+      "blocking": true
+    }
+  ],
+  "archived_report_checks": [
+    {
+      "id": "verify:report:59d002d1490856d24abc935d02525119ae1cd1d1868d3ab4f8b6246f135f1c47:report_id_matches_evidence",
+      "status": "PASS",
+      "observed": {
+        "filename": "59d002d1490856d24abc935d02525119ae1cd1d1868d3ab4f8b6246f135f1c47",
+        "manifest_report_id": "59d002d1490856d24abc935d02525119ae1cd1d1868d3ab4f8b6246f135f1c47",
+        "recomputed": "59d002d1490856d24abc935d02525119ae1cd1d1868d3ab4f8b6246f135f1c47"
+      },
+      "expected": "filename == manifest.report_id == sha256(canonical manifest body)",
+      "reason": "report_id reproduces exactly from the pinned manifest body",
+      "blocking": true
+    },
+    {
+      "id": "verify:report:59d002d1490856d24abc935d02525119ae1cd1d1868d3ab4f8b6246f135f1c47:evaluation_status_vocabulary",
+      "status": "PASS",
+      "observed": "valid",
+      "expected": "status in ('ok', 'insufficient', 'constant'); finite band when status == 'ok'",
+      "reason": "All pinned evaluations use the real status vocabulary with bands where required",
+      "blocking": true
+    },
+    {
+      "id": "verify:report:59d002d1490856d24abc935d02525119ae1cd1d1868d3ab4f8b6246f135f1c47:renderer_reproduces",
+      "status": "PASS",
+      "observed": "matches",
+      "expected": "renderer output byte-identical to archived markdown",
+      "reason": "Renderer reproduces the archived report byte-for-byte",
+      "blocking": true
+    },
+    {
+      "id": "verify:report:7c1dd51af449adc4477e8ec816c50cfae9cbfd18d61be58cb9f0dcc6a5319de7:report_id_matches_evidence",
+      "status": "PASS",
+      "observed": {
+        "filename": "7c1dd51af449adc4477e8ec816c50cfae9cbfd18d61be58cb9f0dcc6a5319de7",
+        "manifest_report_id": "7c1dd51af449adc4477e8ec816c50cfae9cbfd18d61be58cb9f0dcc6a5319de7",
+        "recomputed": "7c1dd51af449adc4477e8ec816c50cfae9cbfd18d61be58cb9f0dcc6a5319de7"
+      },
+      "expected": "filename == manifest.report_id == sha256(canonical manifest body)",
+      "reason": "report_id reproduces exactly from the pinned manifest body",
+      "blocking": true
+    },
+    {
+      "id": "verify:report:7c1dd51af449adc4477e8ec816c50cfae9cbfd18d61be58cb9f0dcc6a5319de7:evaluation_status_vocabulary",
+      "status": "PASS",
+      "observed": "valid",
+      "expected": "status in ('ok', 'insufficient', 'constant'); finite band when status == 'ok'",
+      "reason": "All pinned evaluations use the real status vocabulary with bands where required",
+      "blocking": true
+    },
+    {
+      "id": "verify:report:7c1dd51af449adc4477e8ec816c50cfae9cbfd18d61be58cb9f0dcc6a5319de7:renderer_reproduces",
+      "status": "PASS",
+      "observed": "matches",
+      "expected": "renderer output byte-identical to archived markdown",
+      "reason": "Renderer reproduces the archived report byte-for-byte",
+      "blocking": true
+    }
+  ],
+  "recomputed_model_correlations": [
+    {
+      "date": "2026-06-12",
+      "horizon_m": 1,
+      "model": "LEGACY_V18",
+      "n": 498,
+      "endpoint": "2026-07-31",
+      "sector_relative_log_ic": -0.0687462369463282,
+      "nominal_p": 0.12549951658976813,
+      "raw_return_ic": -0.09443584138224538,
+      "raw_nominal_p": 0.035131748237671616,
+      "calendar_days": 49
+    },
+    {
+      "date": "2026-06-12",
+      "horizon_m": 1,
+      "model": "LEGACY_V18_BASE",
+      "n": 498,
+      "endpoint": "2026-07-31",
+      "sector_relative_log_ic": -0.02224133634085293,
+      "nominal_p": 0.6204944322995171,
+      "raw_return_ic": 0.04034436655191924,
+      "raw_nominal_p": 0.3689591409284259,
+      "calendar_days": 49
+    },
+    {
+      "date": "2026-07-10",
+      "horizon_m": 1,
+      "model": "LEGACY_V18",
+      "n": 498,
+      "endpoint": "2026-08-31",
+      "sector_relative_log_ic": 0.09727803441598452,
+      "nominal_p": 0.02996572932698114,
+      "raw_return_ic": 0.1332714597532653,
+      "raw_nominal_p": 0.0028833885661864412,
+      "calendar_days": 52
+    },
+    {
+      "date": "2026-07-10",
+      "horizon_m": 1,
+      "model": "LEGACY_V18_BASE",
+      "n": 498,
+      "endpoint": "2026-08-31",
+      "sector_relative_log_ic": 0.02910087296187763,
+      "nominal_p": 0.5170380783516849,
+      "raw_return_ic": 0.07445894953962184,
+      "raw_nominal_p": 0.09696505527335374,
+      "calendar_days": 52
+    },
+    {
+      "date": "2026-08-14",
+      "horizon_m": 1,
+      "model": "LEGACY_V18",
+      "n": 497,
+      "endpoint": "2026-09-30",
+      "sector_relative_log_ic": 0.07095570041858704,
+      "nominal_p": 0.11413907607372573,
+      "raw_return_ic": 0.055093034095805994,
+      "raw_nominal_p": 0.22017796014924648,
+      "calendar_days": 47
+    },
+    {
+      "date": "2026-08-14",
+      "horizon_m": 1,
+      "model": "LEGACY_V18_BASE",
+      "n": 497,
+      "endpoint": "2026-09-30",
+      "sector_relative_log_ic": 0.01618803225476057,
+      "nominal_p": 0.7188451008479019,
+      "raw_return_ic": 0.012938491689063471,
+      "raw_nominal_p": 0.7735534521408745,
+      "calendar_days": 47
+    },
+    {
+      "date": "2026-06-12",
+      "horizon_m": 3,
+      "model": "LEGACY_V18",
+      "n": 496,
+      "endpoint": "2026-09-30",
+      "sector_relative_log_ic": 0.08241368727759198,
+      "nominal_p": 0.0666644266516166,
+      "raw_return_ic": 0.09176828058950298,
+      "raw_nominal_p": 0.041059124903849026,
+      "calendar_days": 110
+    },
+    {
+      "date": "2026-06-12",
+      "horizon_m": 3,
+      "model": "LEGACY_V18_BASE",
+      "n": 496,
+      "endpoint": "2026-09-30",
+      "sector_relative_log_ic": 0.029647161967884385,
+      "nominal_p": 0.5100546926491852,
+      "raw_return_ic": 0.07619943940074769,
+      "raw_nominal_p": 0.09003261879092604,
+      "calendar_days": 110
+    }
+  ],
+  "complete_top50": [
+    {
+      "cohort": "2026-06-12",
+      "n": 49,
+      "excluded": 1,
+      "mean_arithmetic_return": 0.06143129653750944,
+      "median_arithmetic_return": 0.060825966181092816,
+      "loss_count": 19,
+      "beat_sector_median": 29,
+      "scored_universe_n": 498,
+      "scored_universe_mean": 0.046349097427722925,
+      "worst3": [
+        {
+          "security_id": 173,
+          "final": 79.9,
+          "rank": 13,
+          "r_arith": -0.12528076789327258,
+          "l_rel": -0.12179464601333552,
+          "end_date": "2026-07-31",
+          "ticker": "GVT&D"
+        },
+        {
+          "security_id": 329,
+          "final": 76.4,
+          "rank": 21,
+          "r_arith": -0.0985165485885624,
+          "l_rel": -0.04987839261723039,
+          "end_date": "2026-07-31",
+          "ticker": "NBCC"
+        },
+        {
+          "security_id": 60,
+          "final": 87.2,
+          "rank": 1,
+          "r_arith": -0.09535375913716382,
+          "l_rel": -0.13431739644149104,
+          "end_date": "2026-07-31",
+          "ticker": "BSE"
+        }
+      ]
+    },
+    {
+      "cohort": "2026-07-10",
+      "n": 50,
+      "excluded": 0,
+      "mean_arithmetic_return": 0.03598484324224345,
+      "median_arithmetic_return": 0.029476433989908846,
+      "loss_count": 19,
+      "beat_sector_median": 30,
+      "scored_universe_n": 498,
+      "scored_universe_mean": 0.008977704747265223,
+      "worst3": [
+        {
+          "security_id": 110,
+          "final": 75.2,
+          "rank": 36,
+          "r_arith": -0.21776874049588213,
+          "l_rel": -0.20061665541205742,
+          "end_date": "2026-08-31",
+          "ticker": "CEMPRO"
+        },
+        {
+          "security_id": 418,
+          "final": 76.4,
+          "rank": 32,
+          "r_arith": -0.16899359237902645,
+          "l_rel": -0.13272802495848673,
+          "end_date": "2026-08-31",
+          "ticker": "SOBHA"
+        },
+        {
+          "security_id": 202,
+          "final": 74.9,
+          "rank": 39,
+          "r_arith": -0.14055398568553767,
+          "l_rel": -0.13967147215131093,
+          "end_date": "2026-08-31",
+          "ticker": "HDFCBANK"
+        }
+      ]
+    },
+    {
+      "cohort": "2026-08-14",
+      "n": 50,
+      "excluded": 0,
+      "mean_arithmetic_return": -0.06106618748834538,
+      "median_arithmetic_return": -0.06261622176583409,
+      "loss_count": 40,
+      "beat_sector_median": 26,
+      "scored_universe_n": 497,
+      "scored_universe_mean": -0.05093000193787193,
+      "worst3": [
+        {
+          "security_id": 59,
+          "final": 85.3,
+          "rank": 15,
+          "r_arith": -0.21350029307138774,
+          "l_rel": -0.19971824589205095,
+          "end_date": "2026-09-30",
+          "ticker": "BLS"
+        },
+        {
+          "security_id": 421,
+          "final": 92.6,
+          "rank": 1,
+          "r_arith": -0.2075789971262535,
+          "l_rel": -0.09419762821500835,
+          "end_date": "2026-09-30",
+          "ticker": "SONATSOFTW"
+        },
+        {
+          "security_id": 369,
+          "final": 82.0,
+          "rank": 26,
+          "r_arith": -0.20503401081174188,
+          "l_rel": -0.20628008012982355,
+          "end_date": "2026-09-30",
+          "ticker": "PFIZER"
+        }
+      ]
+    }
+  ],
+  "recomputation_sql": "SELECT s.security_id,s.final,s.rank,l.r_arith,l.l_rel,l.end_date,(SELECT nse_symbol FROM symbol_history h WHERE h.security_id=s.security_id ORDER BY valid_from DESC LIMIT 1) ticker\nFROM scores s JOIN labels l ON s.cohort_id=l.cohort_id AND s.security_id=l.security_id\nWHERE s.cohort_id=? AND s.model_id=? AND l.horizon_m=? AND l.status='ok'\nAND l.revision=(SELECT MAX(l2.revision) FROM labels l2 WHERE l2.cohort_id=l.cohort_id AND l2.security_id=l.security_id AND l2.horizon_m=l.horizon_m)",
+  "factor_hac_descriptive": [
+    {
+      "factor": "legacy_smart_money@0",
+      "rows": [
+        {
+          "as_of": "2026-06-12",
+          "value": 0.06110844925326922,
+          "n": 498
+        },
+        {
+          "as_of": "2026-07-10",
+          "value": 0.04840247364862647,
+          "n": 498
+        },
+        {
+          "as_of": "2026-08-14",
+          "value": 0.05240304122428822,
+          "n": 497
+        }
+      ],
+      "lag": 0,
+      "hac": {
+        "mean": 0.05397132137539464,
+        "se": 0.003062500103971334,
+        "t": 17.623288014066247,
+        "ci_lo": 0.0489335087043618,
+        "ci_hi": 0.059009134046427485,
+        "n": 3,
+        "n_eff": 3.0,
+        "status": "ok"
+      }
+    },
+    {
+      "factor": "legacy_growth@0",
+      "rows": [
+        {
+          "as_of": "2026-06-12",
+          "value": 0.021264971775953243,
+          "n": 498
+        },
+        {
+          "as_of": "2026-07-10",
+          "value": -0.010832425615970922,
+          "n": 498
+        },
+        {
+          "as_of": "2026-08-14",
+          "value": 0.0292865636285888,
+          "n": 497
+        }
+      ],
+      "lag": 0,
+      "hac": {
+        "mean": 0.01323970326285704,
+        "se": 0.01000763070563596,
+        "t": 1.322960813831878,
+        "ci_lo": -0.0032228492479141127,
+        "ci_hi": 0.029702255773628193,
+        "n": 3,
+        "n_eff": 3.0,
+        "status": "ok"
+      }
+    },
+    {
+      "factor": "legacy_trap@0",
+      "rows": [
+        {
+          "as_of": "2026-06-12",
+          "value": -0.014926048135270684,
+          "n": 498
+        },
+        {
+          "as_of": "2026-07-10",
+          "value": 0.036191549105865986,
+          "n": 498
+        },
+        {
+          "as_of": "2026-08-14",
+          "value": 0.03548725809331606,
+          "n": 497
+        }
+      ],
+      "lag": 0,
+      "hac": {
+        "mean": 0.018917586354637122,
+        "se": 0.013817603129281202,
+        "t": 1.3690931905945705,
+        "ci_lo": -0.0038123707930304562,
+        "ci_hi": 0.0416475435023047,
+        "n": 3,
+        "n_eff": 3.0,
+        "status": "ok"
+      }
+    },
+    {
+      "factor": "legacy_valuation@0",
+      "rows": [
+        {
+          "as_of": "2026-06-12",
+          "value": -0.08272735802125548,
+          "n": 498
+        },
+        {
+          "as_of": "2026-07-10",
+          "value": -0.031112131856713247,
+          "n": 498
+        },
+        {
+          "as_of": "2026-08-14",
+          "value": -0.014290403324235921,
+          "n": 497
+        }
+      ],
+      "lag": 0,
+      "hac": {
+        "mean": -0.04270996440073488,
+        "se": 0.016811282467040813,
+        "t": -2.5405536124010446,
+        "ci_lo": -0.07036452405901701,
+        "ci_hi": -0.015055404742452743,
+        "n": 3,
+        "n_eff": 3.0,
+        "status": "ok"
+      }
+    }
+  ],
+  "automated_checks": {
+    "check_script": {
+      "command": "./scripts/check.sh",
+      "interpreter": "venv/bin/python",
+      "exit_code": 1,
+      "spec_pass": 10,
+      "pytest_pass": 663,
+      "pytest_fail": 1,
+      "log": "/private/tmp/quant-report-redteam-20261019/check-default.log"
+    },
+    "engineering_signoff": {
+      "generated_at": "2026-10-19T08:55:34.469738Z",
+      "phase_requested": "engineering",
+      "as_of": null,
+      "interpreter": "/Users/saurabhnigam/Desktop/Projects/multi-bagger-stocks-ml-train-loop/venv/bin/python",
+      "rows": [
+        {
+          "id": "S01",
+          "phase": "engineering",
+          "status": "PASS",
+          "command": "/Users/saurabhnigam/Desktop/Projects/multi-bagger-stocks-ml-train-loop/venv/bin/python docs/spec/check_spec.py",
+          "exit_code": 0,
+          "elapsed_s": 0.0,
+          "observed": "Spec fingerprint: 5de559e8ee8175d870694bdfd8165c8ae1b81b9dc6b60deec2202ce751a4d9a6",
+          "reason": "spec checks pass; canonical copies unchanged",
+          "artifact_refs": []
+        },
+        {
+          "id": "S02",
+          "phase": "engineering",
+          "status": "FAIL",
+          "command": "/Users/saurabhnigam/Desktop/Projects/multi-bagger-stocks-ml-train-loop/venv/bin/python -m pytest -q",
+          "exit_code": 1,
+          "elapsed_s": 125.0,
+          "observed": "1 failed, 663 passed in 123.81s (0:02:03)",
+          "reason": "all default tests pass; measured runtime; legacy modules included",
+          "artifact_refs": []
+        },
+        {
+          "id": "S03",
+          "phase": "engineering",
+          "status": "PASS",
+          "command": "/Users/saurabhnigam/Desktop/Projects/multi-bagger-stocks-ml-train-loop/venv/bin/python -m pytest test_quant_math.py test_optimizer.py -q",
+          "exit_code": 0,
+          "elapsed_s": 1.0,
+          "observed": "58 passed in 1.15s",
+          "reason": "unchanged legacy suite passes",
+          "artifact_refs": []
+        },
+        {
+          "id": "S04",
+          "phase": "engineering",
+          "status": "PASS",
+          "command": "isolated db init + PRAGMA foreign_key_check + immutability trigger count",
+          "exit_code": 0,
+          "elapsed_s": 2.0,
+          "observed": "tables=45 immutable_triggers=48 journal_triggers=132 fk_violations=0",
+          "reason": "exact canonical tables/constraints, no magic count",
+          "artifact_refs": []
+        },
+        {
+          "id": "S05",
+          "phase": "engineering",
+          "status": "PASS",
+          "command": "isolated db export -> db rebuild -> db verify, seeded via RunContext",
+          "exit_code": 0,
+          "elapsed_s": 4.0,
+          "observed": "export_exit=0 rebuild_exit=0 verify_exit=0 rebuilt_db_exists=True",
+          "reason": "table hashes/control-state journal match",
+          "artifact_refs": []
+        },
+        {
+          "id": "S06",
+          "phase": "engineering",
+          "status": "PASS",
+          "command": "/Users/saurabhnigam/Desktop/Projects/multi-bagger-stocks-ml-train-loop/venv/bin/python -m pytest tests/integration/test_ws11_01.py -q",
+          "exit_code": 0,
+          "elapsed_s": 10.0,
+          "observed": "6 passed in 9.49s",
+          "reason": "synthetic complete/retry/concurrent/crash run; P1-P12 and relevant T1-T10 pass",
+          "artifact_refs": []
+        },
+        {
+          "id": "S07",
+          "phase": "engineering",
+          "status": "PASS",
+          "command": "/Users/saurabhnigam/Desktop/Projects/multi-bagger-stocks-ml-train-loop/venv/bin/python -m pytest tests/unit/test_ws09_*.py -q",
+          "exit_code": 0,
+          "elapsed_s": 12.0,
+          "observed": "22 passed in 11.20s",
+          "reason": "identity, tiers, prospective versions and expiry behavior pass",
+          "artifact_refs": []
+        },
+        {
+          "id": "S08",
+          "phase": "engineering",
+          "status": "PASS",
+          "command": "/Users/saurabhnigam/Desktop/Projects/multi-bagger-stocks-ml-train-loop/venv/bin/python -m pytest tests/integration/test_ws11_02.py -q",
+          "exit_code": 0,
+          "elapsed_s": 2.0,
+          "observed": "6 passed in 1.50s",
+          "reason": "8 tabs, empty/blocked states, no errors/network dependencies",
+          "artifact_refs": []
+        }
+      ],
+      "summary": {
+        "total": 8,
+        "pass": 7,
+        "fail": 1,
+        "deferred": 0,
+        "observation": 0,
+        "exit_code": 1
+      }
+    },
+    "failure_explanation": "DNS resolution fails before patched socket.connect, causing expected exception regex to mismatch. Environment-sensitive guard assertion; no observed outbound success or V2 regression.",
+    "invalid_initial_attempt": "QUANT_* path overrides conflicted with canonical path assertions; excluded as valid product-check evidence."
+  },
+  "source_hashes_after_checks": {
+    "quant.db": "16ff4adf556ee50e5d84457e1ffdc1721f6f6104a15a4a753a9015179897add9",
+    "quant_engine.db": "03fe228b8fc90c63e8deddd33d1f9308693972af931aec7000c6870a34cb48a8",
+    "data/prices_daily.sqlite": "b71a75e1ced148c4a844f250baaa2cd5398e2981242e93d5e7ae530675371162",
+    "quant/ui_export.py": "4c91a59f0ea30dccfd27f1f112a4f76011e3c8a47f8df81e7f685a36d770186d"
+  },
+  "source_hashes_unchanged": true,
+  "real_ledger_verification": {
+    "log": "/private/tmp/quant-report-redteam-20261019/real-ledger-verify.log",
+    "pass": 42,
+    "fail": 3,
+    "total": 45,
+    "differences": {
+      "data_quality_events": {
+        "rebuilt": 12,
+        "current": 13
+      },
+      "ledger_events": {
+        "rebuilt": 147914,
+        "current": 147917
+      },
+      "runs": {
+        "rebuilt": 11,
+        "current": 12
+      }
+    },
+    "interpretation": "Three events are in the database journal but absent from the exported ledger; this is an export/recovery gap, not evidence those writes bypassed automatic journaling. The direct library-call process exited zero because CheckReport failures must be inspected explicitly."
+  }
+}

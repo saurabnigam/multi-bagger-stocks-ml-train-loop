@@ -1,0 +1,37 @@
+{
+ "_about": "SYNTHETIC fixture for the POLICYBZR worked example (design section 6). The price store has no bars for 2026-09-24, so the closes come from the operator brief, the regulator document text is invented for the test, and the peer count is an assumption. Not a point-in-time record and never used to claim live accuracy.",
+ "synthetic": true,
+ "case_id": "POLICYBZR_2026-09-24",
+ "isin": "INE417T01026",
+ "symbol": "POLICYBZR",
+ "ex_date": "2026-09-24",
+ "as_of": "2026-09-24",
+ "close_prev": 1886.3,
+ "close_ex": 1210.0,
+ "features": {
+  "series": "EQ",
+  "placeholder": false,
+  "vendor_split_rows": [],
+  "market_median_move_pct": -0.4,
+  "sector_peer_median_move_pct": -4.5,
+  "n_peers": 5,
+  "n_peers_moved": 3
+ },
+ "regulator_envelope": {
+  "provenance": "human_attach",
+  "title": "Consultation paper on recalibrating the economics of insurance distribution",
+  "headline": null,
+  "url": null,
+  "published_at": "2026-09-23",
+  "published_at_basis": "human_declared",
+  "published_at_precision": "date",
+  "source_class": "regulator",
+  "relevance": "sector",
+  "relevance_basis": "attacher declared: sector-wide distribution rules",
+  "excerpt": "SYNTHETIC EXCERPT. The authority invites comments on distribution commission limits for insurers and intermediaries.",
+  "typed_fields": {},
+  "body_sha256": null,
+  "entity_match": null,
+  "source_status": "ok"
+ }
+}

@@ -1,0 +1,222 @@
+{
+  "close_inr": {
+    "field": "close_inr",
+    "unit": "inr",
+    "min_value": 0.5,
+    "max_value": 1000000.0,
+    "max_null_rate": 0.0,
+    "source": "yf.download",
+    "notes": "raw unadjusted close",
+    "contract_version": 1
+  },
+  "volume_shares": {
+    "field": "volume_shares",
+    "unit": "shares",
+    "min_value": 0.0,
+    "max_value": 10000000000.0,
+    "max_null_rate": 0.0,
+    "source": "yf.download",
+    "notes": "trading volume",
+    "contract_version": 1
+  },
+  "dividend_inr": {
+    "field": "dividend_inr",
+    "unit": "inr",
+    "min_value": 0.0,
+    "max_value": 50000.0,
+    "max_null_rate": 1.0,
+    "source": "yf.download",
+    "notes": "cash dividend",
+    "contract_version": 1
+  },
+  "market_cap_inr": {
+    "field": "market_cap_inr",
+    "unit": "inr",
+    "min_value": 1000000000.0,
+    "max_value": 100000000000000.0,
+    "max_null_rate": 0.02,
+    "source": "yf.info",
+    "notes": "floor = Rs 100 crore",
+    "contract_version": 1
+  },
+  "shares_outstanding": {
+    "field": "shares_outstanding",
+    "unit": "shares",
+    "min_value": 1000000.0,
+    "max_value": 100000000000.0,
+    "max_null_rate": 0.05,
+    "source": "yf.info",
+    "notes": "shares count",
+    "contract_version": 1
+  },
+  "dividend_rate_inr": {
+    "field": "dividend_rate_inr",
+    "unit": "inr",
+    "min_value": 0.0,
+    "max_value": 50000.0,
+    "max_null_rate": 0.40,
+    "source": "yf.info",
+    "notes": "preferred over dividendYield",
+    "contract_version": 1
+  },
+  "dividend_yield_frac": {
+    "field": "dividend_yield_frac",
+    "unit": "frac",
+    "min_value": 0.0,
+    "max_value": 0.25,
+    "max_null_rate": 0.40,
+    "source": "derived",
+    "notes": "dividend_rate / close; unit bound yield <= 0.25",
+    "contract_version": 1
+  },
+  "debt_to_equity_x": {
+    "field": "debt_to_equity_x",
+    "unit": "x",
+    "min_value": 0.0,
+    "max_value": 50.0,
+    "max_null_rate": 0.15,
+    "source": "derived",
+    "notes": "total_debt / total_equity; unit bound <= 50",
+    "contract_version": 1
+  },
+  "pe_ratio": {
+    "field": "pe_ratio",
+    "unit": "x",
+    "min_value": -1000.0,
+    "max_value": 1000.0,
+    "max_null_rate": 0.20,
+    "source": "derived",
+    "notes": "P/E ratio; abs(PE) < 1000",
+    "contract_version": 1
+  },
+  "inst_held_frac": {
+    "field": "inst_held_frac",
+    "unit": "frac",
+    "min_value": 0.0,
+    "max_value": 1.0,
+    "max_null_rate": 0.10,
+    "source": "yf.major_holders",
+    "notes": "institutional ownership [0,1]",
+    "contract_version": 1
+  },
+  "insider_held_frac": {
+    "field": "insider_held_frac",
+    "unit": "frac",
+    "min_value": 0.0,
+    "max_value": 1.0,
+    "max_null_rate": 0.10,
+    "source": "yf.major_holders",
+    "notes": "promoter ownership [0,1]",
+    "contract_version": 1
+  },
+  "roe_frac": {
+    "field": "roe_frac",
+    "unit": "frac",
+    "min_value": -2.0,
+    "max_value": 2.0,
+    "max_null_rate": 0.30,
+    "source": "derived",
+    "notes": "ROE net_income / equity",
+    "contract_version": 1
+  },
+  "roce_frac": {
+    "field": "roce_frac",
+    "unit": "frac",
+    "min_value": -2.0,
+    "max_value": 3.0,
+    "max_null_rate": 0.20,
+    "source": "derived",
+    "notes": "ROCE EBIT / (assets - current_liab)",
+    "contract_version": 1
+  },
+  "revenue_inr": {
+    "field": "revenue_inr",
+    "unit": "inr",
+    "min_value": 0.0,
+    "max_value": 100000000000000.0,
+    "max_null_rate": 0.05,
+    "source": "yf.financials",
+    "notes": "revenue",
+    "contract_version": 1
+  },
+  "net_income_inr": {
+    "field": "net_income_inr",
+    "unit": "inr",
+    "min_value": -10000000000000.0,
+    "max_value": 10000000000000.0,
+    "max_null_rate": 0.05,
+    "source": "yf.financials",
+    "notes": "net income",
+    "contract_version": 1
+  },
+  "ebit_inr": {
+    "field": "ebit_inr",
+    "unit": "inr",
+    "min_value": -10000000000000.0,
+    "max_value": 10000000000000.0,
+    "max_null_rate": 0.10,
+    "source": "yf.financials",
+    "notes": "EBIT",
+    "contract_version": 1
+  },
+  "ocf_inr": {
+    "field": "ocf_inr",
+    "unit": "inr",
+    "min_value": -10000000000000.0,
+    "max_value": 10000000000000.0,
+    "max_null_rate": 0.10,
+    "source": "yf.cashflow",
+    "notes": "operating cash flow",
+    "contract_version": 1
+  },
+  "capex_inr": {
+    "field": "capex_inr",
+    "unit": "inr",
+    "min_value": -10000000000000.0,
+    "max_value": 10000000000000.0,
+    "max_null_rate": 0.15,
+    "source": "yf.cashflow",
+    "notes": "capital expenditures",
+    "contract_version": 1
+  },
+  "total_assets_inr": {
+    "field": "total_assets_inr",
+    "unit": "inr",
+    "min_value": 100000000.0,
+    "max_value": 1000000000000000.0,
+    "max_null_rate": 0.05,
+    "source": "yf.balance_sheet",
+    "notes": "total assets > 0",
+    "contract_version": 1
+  },
+  "current_liab_inr": {
+    "field": "current_liab_inr",
+    "unit": "inr",
+    "min_value": 0.0,
+    "max_value": 1000000000000000.0,
+    "max_null_rate": 0.15,
+    "source": "yf.balance_sheet",
+    "notes": "current liabilities",
+    "contract_version": 1
+  },
+  "total_debt_inr": {
+    "field": "total_debt_inr",
+    "unit": "inr",
+    "min_value": 0.0,
+    "max_value": 1000000000000000.0,
+    "max_null_rate": 0.15,
+    "source": "yf.balance_sheet",
+    "notes": "total debt",
+    "contract_version": 1
+  },
+  "total_equity_inr": {
+    "field": "total_equity_inr",
+    "unit": "inr",
+    "min_value": -10000000000000.0,
+    "max_value": 1000000000000000.0,
+    "max_null_rate": 0.05,
+    "source": "yf.balance_sheet",
+    "notes": "total equity",
+    "contract_version": 1
+  }
+}
