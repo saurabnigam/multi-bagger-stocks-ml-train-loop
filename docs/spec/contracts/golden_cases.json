@@ -1,0 +1,364 @@
+{
+  "spec_revision": 2,
+  "purpose": "Fixed synthetic specification examples; no market performance claims.",
+  "cases": {
+    "weight_fit": {
+      "families": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f"
+      ],
+      "mean_ic": [
+        0.06,
+        0.02,
+        0.03,
+        -0.01,
+        0,
+        0.04
+      ],
+      "n_months": 12,
+      "horizon_m": 3,
+      "k_shrink": 24,
+      "expected_alpha": 0.14285714285714285,
+      "expected_units": [
+        2000,
+        1619,
+        1714,
+        1429,
+        1429,
+        1809
+      ]
+    },
+    "equal_weights": {
+      "families": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f"
+      ],
+      "expected_units": [
+        1667,
+        1667,
+        1667,
+        1667,
+        1666,
+        1666
+      ]
+    },
+    "negative_direction": {
+      "raw": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "labels": [
+        5,
+        4,
+        3,
+        2,
+        1
+      ],
+      "direction": -1,
+      "expected_oriented_ic": 1.0
+    },
+    "rank_ties": {
+      "raw": [
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "groups": [
+        "A",
+        "A",
+        "A",
+        "A",
+        "A"
+      ],
+      "direction": 1,
+      "expected_z": [
+        -0.30697973373608006,
+        -0.30697973373608006,
+        -0.30697973373608006,
+        -0.30697973373608006,
+        1.2279189349443203
+      ],
+      "expected_mean": 0.0,
+      "unit_variance_required": false
+    },
+    "constant_rank": {
+      "raw": [
+        7,
+        7,
+        7,
+        7,
+        7
+      ],
+      "expected_z": [
+        null,
+        null,
+        null,
+        null,
+        null
+      ],
+      "flag": "constant_group"
+    },
+    "annual_quarterly": {
+      "period_end": "2026-03-31",
+      "fetched_at": "2026-08-01T12:00:00.000000Z",
+      "field": "Net Income",
+      "values": {
+        "A": 100,
+        "Q": 25
+      },
+      "expected_rows": 2
+    },
+    "pit_cutoff": {
+      "as_of": "2026-09-30",
+      "cutoff": "2026-09-30T18:29:59.999999Z",
+      "prior_fetch": "2026-09-29T12:00:00.000000Z",
+      "later_fetch": "2026-10-01T00:00:00.000000Z",
+      "prior_value": 100,
+      "later_value": 150,
+      "expected_value_at_cutoff": 100
+    },
+    "split": {
+      "close_raw": [
+        600,
+        100
+      ],
+      "dividend_raw": [
+        0,
+        0
+      ],
+      "split_ratio": [
+        1,
+        6
+      ],
+      "expected_tri": [
+        100,
+        100
+      ]
+    },
+    "dividend": {
+      "close_raw": [
+        100,
+        90
+      ],
+      "dividend_raw": [
+        0,
+        10
+      ],
+      "split_ratio": [
+        1,
+        1
+      ],
+      "expected_tri": [
+        100,
+        100
+      ]
+    },
+    "split_dividend": {
+      "close_raw": [
+        600,
+        95
+      ],
+      "dividend_raw": [
+        0,
+        5
+      ],
+      "split_ratio": [
+        1,
+        6
+      ],
+      "expected_tri": [
+        100,
+        100
+      ]
+    },
+    "source_basis": {
+      "delivered_close": [
+        100,
+        100
+      ],
+      "delivered_volume": [
+        60,
+        60
+      ],
+      "splits": [
+        1,
+        6
+      ],
+      "volume_basis": "split_adjusted",
+      "expected_close_raw": [
+        600,
+        100
+      ],
+      "expected_volume_raw": [
+        10,
+        60
+      ]
+    },
+    "cost": {
+      "weight_delta": 0.1,
+      "bucket": "B",
+      "one_way_bps": 37,
+      "expected_cost_fraction": 0.00037,
+      "expected_stress_cost_fraction": 0.000555
+    },
+    "execution": {
+      "generated_at": "2026-09-07T09:00:00.000000Z",
+      "sessions": [
+        {
+          "date": "2026-09-07",
+          "close_at": "2026-09-07T10:00:00.000000Z"
+        },
+        {
+          "date": "2026-09-08",
+          "close_at": "2026-09-08T10:00:00.000000Z"
+        }
+      ],
+      "expected_earliest_exec_at": "2026-09-08T10:00:00.000000Z"
+    },
+    "holdings": {
+      "captures": [
+        "2026-06-01T10:00:00.000000Z",
+        "2026-07-01T10:00:00.000000Z",
+        "2026-08-01T10:00:00.000000Z",
+        "2026-09-01T10:00:00.000000Z"
+      ],
+      "values": [
+        0.1,
+        0.2,
+        0.3,
+        0.4
+      ],
+      "cutoff": "2026-09-30T18:29:59.999999Z",
+      "lag_runs": 3,
+      "expected_change": 0.3,
+      "three_captures_result": null
+    },
+    "hac": {
+      "values": [
+        0.1,
+        -0.1,
+        0.2,
+        0
+      ],
+      "lag": 1,
+      "expected_mean": 0.05,
+      "expected_gamma0": 0.0125,
+      "expected_gamma1": -0.009375,
+      "expected_se": 0.02795084971874737,
+      "expected_t": 1.788854381999832
+    },
+    "hac_insufficient": {
+      "values": [
+        0.1,
+        0.2,
+        0.3
+      ],
+      "lag": 2,
+      "expected_n": 3,
+      "expected_n_eff": 1,
+      "expected_status": "insufficient",
+      "expected_se": null
+    },
+    "cohort_maturity": {
+      "first_live_month_index": 1,
+      "horizon_m": 36,
+      "expected_first_label_month_index": 37
+    },
+    "evaluation_revisions": {
+      "identical_attempts": 2,
+      "expected_rows_after_identical": 1,
+      "changed_evidence_revision": 2,
+      "expected_rows_after_revision": 2,
+      "old_row_unchanged": true
+    },
+    "governance": {
+      "actor_kind": "llm",
+      "by": "llm:gemini-flash",
+      "tier2_expected_exit": 3,
+      "tier1_initial_status": "provisional",
+      "ratification_days": 60,
+      "human_prefix_expected_exit": 3
+    },
+    "planted_rank": {
+      "scores": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "labels": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        10,
+        9
+      ],
+      "expected_spearman": 0.9878787878787879
+    },
+    "revision_tracks": {
+      "tracks": [
+        "live",
+        "backfill"
+      ],
+      "same_as_of": "2026-09-30",
+      "expected_distinct_cohorts": 2,
+      "expected_distinct_labels": 2
+    },
+    "calendar_lags": {
+      "quarter_end": "2026-06-30",
+      "estimated_45th_day": "2026-08-14",
+      "weekday_next_session": "2026-08-17",
+      "annual_end": "2026-03-31",
+      "estimated_60th_day": "2026-05-30",
+      "weekday_next_annual_session": "2026-06-01"
+    },
+    "promotion_budget": {
+      "alpha": 0.05,
+      "max_looks": 3,
+      "t_floor": 2.0,
+      "trials": [
+        1,
+        10
+      ],
+      "expected_thresholds": [
+        2.128045234184984,
+        2.935199468866699
+      ],
+      "factor_looks": [
+        12,
+        24,
+        36
+      ],
+      "model_looks": [
+        24,
+        36,
+        48
+      ],
+      "revised_evidence_creates_new_look": false
+    }
+  }
+}

@@ -1,0 +1,21 @@
+Ladder run on 2026-11-11 (sandbox = copy of the real state; as_of 2026-11-11; closes captured 20:33 IST, true clock)
+
+rung  what was simulated                                   outcome
+0     nothing; REAL database, as_of 2026-10-30             BLOCKED  G3 (no 30 Oct close observed before the cutoff), G4
+1     nothing; tonight's on-time closes                    BLOCKED  G9 (4042 of 12024 values differ on replay of live:2026-09-30), G10 (T3_REPLAY)
+2     September cohort skipped at G4 and G9 only           BLOCKED  G10 (T3_REPLAY replays the same cohort)
+3     September cohort skipped at G4, G9 and G10           PUBLISHED live:2026-11-11; G3 99.20%; G8 0 factors excluded; 484 ranked
+
+Yahoo close coverage observed (members with a close / members, time of observation IST):
+bar 30 Sep  @ 1 Oct 07:44   351/526  67%
+bar 26 Oct  @ 27 Oct 14:47  499/501  99.6%
+bar  4 Nov  @ 5 Nov 00:45     0/528   0%
+bar  4 Nov  @ 5 Nov 11:50   335/501  67%
+bar 11 Nov  @ 11 Nov 20:33  497/501  99.2%   (MRF 127125.00 and RELIANCE 1335.40 equal NSE's official file of the same evening)
+
+Coverage of the two long-window price factors tonight: 480/501 = 95.8%; the 95% rule needs 476; margin 4 names.
+(3 Nov sandbox: 473/501 = 94.4%, both factors dropped.)
+
+Real state: 28 current index members had no fundamentals rows (26 fetchable); cause: the monthly runner's capture
+selects securities tracked at the target as_of (30 Oct), which predates the 4 Nov universe capture.
+September journal: 67,673,359 bytes raw; 2,495,447 bytes gzip (27x).

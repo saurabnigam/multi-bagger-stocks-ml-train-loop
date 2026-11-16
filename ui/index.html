@@ -3,46 +3,265 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multibagger Screener v2</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
-    <!-- Chart.js for rendering cash flow charts -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Antigravity Quant Engine V2</title>
+    <link rel="stylesheet" href="style.css?v=20260911_3">
+    <script src="vendor/chart.umd.js"></script>
 </head>
 <body>
-    <div class="app-container">
-        
-        <!-- Sidebar: Master View -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <h2>Antigravity Quant</h2>
-                <p>V16 Self-Learning Engine</p>
-                <div id="ai-weights-container" style="font-size: 11px; margin-top: 8px; color: #666; background: #f0f0f5; padding: 6px; border-radius: 4px; border: 1px solid #d1d1d6;">
-                    <!-- Weights injected by JS -->
-                </div>
-                <div class="sidebar-tabs" style="display: flex; margin-top: 12px; gap: 8px;">
-                    <button id="tab-accepted" class="tab-btn active" style="flex: 1; padding: 6px; font-weight: 600; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer;">Accepted</button>
-                    <button id="tab-rejected" class="tab-btn" style="flex: 1; padding: 6px; font-weight: 600; background: #e5e5ea; color: #333; border: none; border-radius: 4px; cursor: pointer;">Rejected</button>
-                    <button id="tab-turnaround" class="tab-btn" style="flex: 1; padding: 6px; font-size: 11px; font-weight: 600; background: #ff9500; color: white; border: none; border-radius: 4px; cursor: pointer;">Turnaround</button>
-                </div>
-            </div>
-            <ul id="stock-list" class="stock-list">
-                <!-- Dynamically populated via JS -->
-            </ul>
-        </aside>
-
-        <!-- Main Content: Detail View -->
-        <main class="main-content">
-            <div id="detail-view" class="detail-view empty-state">
-                <div class="empty-icon">📈</div>
-                <h3>Select a stock to view detailed analysis</h3>
-                <p>All quantitative metrics and red-team audits are loaded.</p>
-            </div>
-        </main>
-
+    <div class="header-bar">
+        <div class="brand">
+            <h1>Antigravity Quant Engine</h1>
+            <span class="version-tag">V2 Institutional</span>
+        </div>
+        <div class="status-summary" id="system-status-summary" data-supported-states="empty,blocked,live,legacy">
+            <span class="status-badge badge-live" id="sys-track-badge">LIVE</span>
+            <span class="status-badge badge-late" id="sys-late-badge" hidden>SCORED LATE</span>
+            <span class="meta-item">As-Of: <b id="sys-as-of">--</b></span>
+            <span class="meta-item">Cutoff: <span id="sys-cutoff">--</span></span>
+            <span class="meta-item">Generated: <span id="sys-generated">--</span></span>
+        </div>
     </div>
 
-    <script src="data.js"></script>
-    <script src="app.js"></script>
+    <!-- Navigation: 8 Core Tabs -->
+    <nav class="main-nav">
+        <button id="tab-ranking" class="nav-tab active" data-tab="ranking">Ranking</button>
+        <button id="tab-learning" class="nav-tab" data-tab="learning">Learning</button>
+        <button id="tab-scoreboard" class="nav-tab" data-tab="scoreboard">Scoreboard</button>
+        <button id="tab-factors" class="nav-tab" data-tab="factors">Factors</button>
+        <button id="tab-sectors" class="nav-tab" data-tab="sectors">Sectors</button>
+        <button id="tab-data" class="nav-tab" data-tab="data">Data</button>
+        <button id="tab-knowledge" class="nav-tab" data-tab="knowledge">Knowledge</button>
+        <button id="tab-legacy" class="nav-tab" data-tab="legacy">Legacy</button>
+    </nav>
+
+    <!-- Tab Contents -->
+    <div class="tab-body-container">
+        <!-- Tab 1: Ranking -->
+        <section id="content-ranking" class="tab-pane active">
+            <div class="ranking-layout">
+                <aside class="sidebar">
+                    <div class="sidebar-header">
+                        <div class="sidebar-tabs">
+                            <button id="subtab-accepted" class="subtab-btn active">Accepted</button>
+                            <button id="subtab-rejected" class="subtab-btn">Rejected</button>
+                            <button id="subtab-turnaround" class="subtab-btn">Turnaround</button>
+                        </div>
+                    </div>
+                    <div id="ai-weights-container" class="ai-weights-card">
+                        <!-- Injected by JS -->
+                    </div>
+                    <ul id="stock-list" class="stock-list">
+                        <!-- Populated by JS -->
+                    </ul>
+                </aside>
+                <main class="main-content">
+                    <div id="detail-view" class="detail-view empty-state">
+                        <div class="empty-icon">📈</div>
+                        <h3>Select a stock to view detailed analysis</h3>
+                        <p>All quantitative factors, weights, and decision traces are available.</p>
+                    </div>
+                </main>
+            </div>
+        </section>
+
+        <!-- Tab 2: Learning -->
+        <section id="content-learning" class="tab-pane">
+            <div class="pane-header">
+                <h2>Multi-Period Out-of-Sample Learning Curves</h2>
+                <p>Oriented Rank IC, walk-forward test of learning rule, and empirical confidence intervals.</p>
+            </div>
+            <div class="pane-content">
+                <div id="learning-kpis" class="kpi-grid"></div>
+                <div class="card chart-card">
+                    <div class="table-header-bar">
+                        <h3>Multi-Period Oriented Rank IC Trajectory</h3>
+                        <span class="section-desc">Realized Rank IC across 1M, 3M, 6M, and 12M horizons with 90% confidence bands</span>
+                    </div>
+                    <div class="chart-container" style="height: 240px; position: relative;">
+                        <canvas id="learning-chart"></canvas>
+                    </div>
+                </div>
+                <div class="card table-card">
+                    <div class="table-header-bar">
+                        <h3>Evaluations & Out-of-Sample Performance</h3>
+                        <div class="table-filter-group">
+                            <button class="filter-btn active" id="filter-eval-all">All</button>
+                            <button class="filter-btn" id="filter-eval-model">Models</button>
+                            <button class="filter-btn" id="filter-eval-factor">Factors</button>
+                        </div>
+                    </div>
+                    <div id="evaluations-table-container">
+                        <!-- Table injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 3: Scoreboard -->
+        <section id="content-scoreboard" class="tab-pane">
+            <div class="pane-header">
+                <h2>Paper Portfolios, Execution & Scoreboard</h2>
+                <p>Simulated portfolios, pending execution orders, benchmark comparisons, and net selection spread.</p>
+            </div>
+            <div class="pane-content">
+                <div id="scoreboard-kpis" class="kpi-grid"></div>
+                <div class="card chart-card">
+                    <div class="table-header-bar">
+                        <h3>Top-Quintile Paper Portfolio vs Nifty 500 Equal-Weight Benchmark</h3>
+                        <span class="section-desc">Cumulative indexed return (Base 100.0) with transaction friction</span>
+                    </div>
+                    <div class="chart-container" style="height: 240px; position: relative;">
+                        <canvas id="scoreboard-chart"></canvas>
+                    </div>
+                </div>
+                <div class="card table-card">
+                    <h3>Active Paper Portfolios</h3>
+                    <div id="portfolios-container">
+                        <!-- Portfolios injected by JS -->
+                    </div>
+                </div>
+                <div class="card table-card">
+                    <h3>Pending Orders (Next Session Execution Queue)</h3>
+                    <div id="pending-orders-container">
+                        <!-- Table injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 4: Factors -->
+        <section id="content-factors" class="tab-pane">
+            <div class="pane-header">
+                <h2>Factor Registry & Operational Diagnostics</h2>
+                <p>Pre-registered factor definitions, formulas, coverage contracts, and active model weights.</p>
+            </div>
+            <div class="pane-content">
+                <div id="factors-kpis" class="kpi-grid"></div>
+                <div class="card">
+                    <h3>Champion Model Family Weight Allocations</h3>
+                    <p class="section-desc">Integer basis-point weights summing to strictly 10,000 units (100.0%) across active families.</p>
+                    <div id="family-weights-container" class="weights-progress-grid">
+                        <!-- Progress bars injected by JS -->
+                    </div>
+                </div>
+                <div class="card table-card">
+                    <div class="table-header-bar">
+                        <h3>Factor Registry</h3>
+                        <input type="text" id="factor-search-input" class="search-input" placeholder="Search factor ID or name...">
+                    </div>
+                    <div id="factors-container">
+                        <!-- Factors injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 5: Sectors -->
+        <section id="content-sectors" class="tab-pane">
+            <div class="pane-header">
+                <h2>Sector Group Taxonomy & Neutralisation</h2>
+                <p>Industry mapping, macro sectors, and minimum group constraints for centered rank calculations.</p>
+            </div>
+            <div class="pane-content">
+                <div id="sectors-kpis" class="kpi-grid"></div>
+                <div class="card chart-card">
+                    <div class="table-header-bar">
+                        <h3>Sector Constituent Distribution & Average Score</h3>
+                        <span class="section-desc">Centered peer ranking across 17 sectors</span>
+                    </div>
+                    <div class="chart-container" style="height: 240px; position: relative;">
+                        <canvas id="sectors-chart"></canvas>
+                    </div>
+                </div>
+                <div class="card table-card">
+                    <h3>Sector Breakdown & Top Performers</h3>
+                    <div id="sectors-container">
+                        <!-- Sectors injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 6: Data -->
+        <section id="content-data" class="tab-pane">
+            <div class="pane-header">
+                <h2>Data Ingestion, Point-In-Time Captures & Quality Gates</h2>
+                <p>Strict observation cutoffs, capture manifests, pre-compute G1-G7 and post-compute G8-G10 gate audits.</p>
+            </div>
+            <div class="pane-content">
+                <div id="data-kpis" class="kpi-grid"></div>
+                <div class="card">
+                    <h3>Evidence-Driven Quality Gates (G1 - G10)</h3>
+                    <p class="section-desc">Derivation from empirical capture manifests and cross-sectional matrices.</p>
+                    <div id="gates-grid-container" class="gates-grid">
+                        <!-- Gates injected by JS -->
+                    </div>
+                </div>
+                <div class="card table-card">
+                    <h3>Point-in-Time Ingestion Captures & Replay Hashes</h3>
+                    <div id="data-provenance-container">
+                        <!-- Provenance injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 7: Knowledge -->
+        <section id="content-knowledge" class="tab-pane">
+            <div class="pane-header">
+                <h2>Knowledge Base, Governance & Decisions</h2>
+                <p>Architecture Decision Records (ADRs), proposals, review budget, and human co-sign ratifications.</p>
+            </div>
+            <div class="pane-content">
+                <div id="kb-kpis" class="kpi-grid"></div>
+                <div class="card">
+                    <h3>Architecture Decision Records (ADRs)</h3>
+                    <p class="section-desc">Ratified governance decisions, invariants, and structural commitments.</p>
+                    <div id="decisions-container" class="adr-list">
+                        <!-- Decisions injected by JS -->
+                    </div>
+                </div>
+                <div class="card table-card">
+                    <h3>Hypotheses Ledger & Research Register</h3>
+                    <div id="hypotheses-container">
+                        <!-- Hypotheses injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 8: Legacy -->
+        <section id="content-legacy" class="tab-pane">
+            <div class="pane-header">
+                <h2>Historical 2026 Legacy Snapshots & Red-Team Audit</h2>
+                <p>Read-only migration of V18 active weights, attribution reconciliation, and flagged defects.</p>
+            </div>
+            <div class="pane-content">
+                <div id="legacy-kpis" class="kpi-grid"></div>
+                <div class="card table-card">
+                    <h3>Historical 2026 Legacy Snapshots</h3>
+                    <p class="section-desc">Preserved in quant_engine.db (SHA256 03fe228b...) and migrated read-only into V2.</p>
+                    <div id="legacy-container">
+                        <!-- Legacy details injected by JS -->
+                    </div>
+                </div>
+                <div class="card table-card">
+                    <h3>Red-Team Defect Log & Attribution Reconciliation</h3>
+                    <p class="section-desc">Reconciliation with red-team findings within 0.0005 tolerance.</p>
+                    <div id="defects-container">
+                        <!-- Defects injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Offline local scripts -->
+    <script src="data.js?v=20260911_3"></script>
+    <script src="data_learning.js?v=20260911_3"></script>
+    <script src="data_scoreboard.js?v=20260911_3"></script>
+    <script src="data_factors.js?v=20260911_3"></script>
+    <script src="data_kb.js?v=20260911_3"></script>
+    <script src="app.js?v=20260911_3"></script>
 </body>
 </html>

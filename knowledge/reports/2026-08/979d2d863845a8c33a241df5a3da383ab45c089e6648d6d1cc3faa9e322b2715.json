@@ -1,0 +1,39 @@
+{
+  "as_of": "2026-08-31",
+  "cohort": {},
+  "control_summaries": {
+    "decisions": [
+      {
+        "adr_path": "/Users/saurabhnigam/Desktop/Projects/mb-review-fixes/knowledge/decisions/ADR-D-0000-migration.md",
+        "applied_on": "2026-09-10T08:27:20.886042Z",
+        "approver_kind": "system",
+        "context": "Migration of historical 2026 legacy snapshots and model active weights into V2 schema with defect tracking.",
+        "decided_by": "system:migration",
+        "decided_on": "2026-09-03",
+        "decision_id": "D-0000-migration",
+        "effective_from": "2026-06-14",
+        "git_sha": "git_sha",
+        "kind": "data_fix",
+        "proposal_id": null,
+        "ratified_by": null,
+        "ratified_on": null,
+        "status": "applied",
+        "subject_id": "legacy_migration",
+        "tier": 0,
+        "title": "Legacy database migration and defect logging"
+      }
+    ],
+    "orders": [],
+    "proposals": []
+  },
+  "gates": [],
+  "known_at": "2026-09-03",
+  "label_revision_keys": [],
+  "portfolio_return_keys": [],
+  "renderer_sha256": "88f5e97975ba50e8e09bbd9870837f9833f9504b0dd65bb13f8cc3fdecf16be1",
+  "report_id": "979d2d863845a8c33a241df5a3da383ab45c089e6648d6d1cc3faa9e322b2715",
+  "run": {},
+  "selected_curve_keys": [],
+  "selected_evaluation_keys": [],
+  "track": "live"
+}

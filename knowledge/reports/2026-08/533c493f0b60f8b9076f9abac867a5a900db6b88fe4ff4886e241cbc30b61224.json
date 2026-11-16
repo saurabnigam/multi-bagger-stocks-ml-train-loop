@@ -1,0 +1,58 @@
+{
+  "as_of": "2026-08-31",
+  "cohort": {},
+  "control_summaries": {
+    "decisions": [
+      {
+        "adr_path": "/Users/saurabhnigam/Desktop/Projects/multi-bagger-stocks-ml-train-loop/knowledge/decisions/ADR-D-0000-migration.md",
+        "applied_on": "2026-09-11T10:12:43.050903Z",
+        "approver_kind": "system",
+        "context": "Migration of historical 2026 legacy snapshots and model active weights into V2 schema with defect tracking.",
+        "decided_by": "system:migration",
+        "decided_on": "2026-09-03",
+        "decision_id": "D-0000-migration",
+        "effective_from": "2026-06-14",
+        "git_sha": "git_sha",
+        "kind": "data_fix",
+        "proposal_id": null,
+        "ratified_by": null,
+        "ratified_on": null,
+        "status": "applied",
+        "subject_id": "legacy_migration",
+        "tier": 0,
+        "title": "Legacy database migration and defect logging"
+      },
+      {
+        "adr_path": "knowledge/decisions/ADR-0001-bootstrap.md",
+        "applied_on": null,
+        "approver_kind": "system",
+        "context": "Initial system bootstrap referencing spec hash",
+        "decided_by": "system",
+        "decided_on": "2026-09-11T10:12:59.635816Z",
+        "decision_id": "DEC_BOOTSTRAP",
+        "effective_from": null,
+        "git_sha": "2efa9fc5c3c8a41f21c9e17bbf78ef0483ad5c3e",
+        "kind": "system_bootstrap",
+        "proposal_id": null,
+        "ratified_by": null,
+        "ratified_on": null,
+        "status": "applied",
+        "subject_id": "launch_set",
+        "tier": 0,
+        "title": "System bootstrap launch set"
+      }
+    ],
+    "orders": [],
+    "proposals": []
+  },
+  "gates": [],
+  "known_at": "2026-09-11T10:12:59.635816Z",
+  "label_revision_keys": [],
+  "portfolio_return_keys": [],
+  "renderer_sha256": "ebb6fbfb0c75df16a402fa96301b3e8c1e52a0f0654733c8a7c2f614e0d714d0",
+  "report_id": "533c493f0b60f8b9076f9abac867a5a900db6b88fe4ff4886e241cbc30b61224",
+  "run": {},
+  "selected_curve_keys": [],
+  "selected_evaluation_keys": [],
+  "track": "live"
+}

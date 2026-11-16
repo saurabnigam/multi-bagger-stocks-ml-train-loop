@@ -1,0 +1,1059 @@
+{
+ "ADANIENT_2015-06-03": {
+  "label_class": "demerger",
+  "label_status": "labeled",
+  "label_factor": 1.4939,
+  "label_factor_source": "computed: real ex-day return vs exchange-adjusted base = 0.915 (BSE close 109.75, -8.50% vs adjusted prev close, PTI/BS 2015-06-03) divided by the store's vendor-adjusted gross factor 0.6125",
+  "label_source_url": "https://www.business-standard.com/article/pti-stories/adani-enterprises-shares-fall-on-demerger-115060300960_1.html",
+  "label_extra_urls": [
+   "https://www.business-standard.com/article/markets/why-the-80-per-cent-drop-in-adani-enterprises-is-justified-115060300653_1.html",
+   "https://www.business-standard.com/article/markets/adani-enterprises-hit-new-high-on-fixing-record-date-for-spin-off-115052600135_1.html"
+  ],
+  "label_publication_date": "2015-06-03",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 1.6326
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Three-way demerger (ports -> APSEZ 14,123 per 10,000; power -> Adani Power 18,596 per 10,000; transmission -> Adani Transmission 1 per 10,000), record date 2015-06-04, ex 2015-06-03. The real price fell 82.8% vs the old close but only 8.5% vs the exchange-adjusted base. The store's Yahoo series was already partly adjusted (real BSE close 109.75 vs store 59.80), so the engine sees a residual 0.6125 and the right correction on this series is ~1.49, not 1/gross (1.63). Class: high confidence. Factor: low confidence (derived, one secondary report).",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "ABFRL_2025-05-22": {
+  "label_class": "demerger",
+  "label_status": "labeled",
+  "label_factor": 2.7444,
+  "label_factor_source": "exchange_special_pre_open_price: NSE bhavcopy of 22-May-2025 (PREV_CLOSE 268.95, OPEN 98.00, HIGH 98.00); the open is the price discovered in the special pre-open session, so factor = prev_close / SPOS price = 268.95 / 98.00 = 2.7444; cross-check (secondary): 98 + ABLBL discovered price 171 = 269 vs 268.95",
+  "label_source_url": "https://www.businesstoday.in/markets/stocks/story/abfrl-demerger-stock-turns-ex-date-for-aditya-birla-fashion-biz-key-details-477291-2025-05-22",
+  "label_extra_urls": [
+   "https://www.livemint.com/market/stock-market-news/abfrl-demerger-why-is-aditya-birla-fashion-share-price-crashing-66-as-spin-off-kicks-in-11747890414565.html",
+   "https://www.indiainfoline.com/news/business/aditya-birla-lifestyle-brands-lists-on-nse-at-167-post-demerger-from-abfrl"
+  ],
+  "label_publication_date": "2025-05-22",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 2.9933,
+   "market_implied_vs_exchange_pct": 9.07
+  },
+  "label_evidence_type": "exchange_bhavcopy_read",
+  "label_is_post_hoc": true,
+  "notes": "Madura Fashion & Lifestyle demerged into Aditya Birla Lifestyle Brands (ABLBL), 1:1, record/ex-date 22 May 2025; new F&O contracts and trading from 10am. The special pre-open price is 98.00: verified on 2026-10-01 against the NSE bhavcopy of 22-May-2025, which shows PREV_CLOSE 268.95, OPEN 98.00 and HIGH 98.00, and the open is the price discovered in the special session. The NSE circular for ABFRL was not opened, and the BusinessToday article cited above (secondary) reports a different figure. Market-implied 1/gross (2.9933) is +9.1% above the exchange-derived 2.7444, inside the declared 12% band. ABLBL listed 2025-06-23 at 167; ABLBL (security_id 24) is in the price store.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  },
+  "label_revision": {
+   "rev": 2,
+   "change": "special pre-open price corrected from the figure reported in news to the NSE bhavcopy open; label_factor and the market-implied gap recomputed"
+  }
+ },
+ "ABREL_2019-10-11": {
+  "label_class": "demerger",
+  "label_status": "labeled",
+  "label_factor": 2.2905,
+  "label_factor_source": "computed_from_prices: prev_close/(prev_close - 0.125 * UltraTech cum-date close 3976.30); swap 1 UTCL per 8 Century",
+  "label_source_url": "https://www.business-standard.com/article/news-cm/century-textiles-corrects-ahead-of-ex-date-for-de-merger-119101000427_1.html",
+  "label_extra_urls": [
+   "https://www.worldcement.com/special-reports/01102019/update-on-scheme-of-demerger-ultratech-cement-ltd-and-century-textiles-industries-ltd/"
+  ],
+  "label_publication_date": "2019-10-10",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 2.2399,
+   "using_utcl_ex_date_close_4077.2": 2.368
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Century Textiles (now Aditya Birla Real Estate) cement business demerged into UltraTech, 1 UTCL per 8 Century shares, scheme effective 2019-10-01, ex-date Friday 2019-10-11. No exchange special session price to read, so the factor is computed from UltraTech's price: the two candidate UTCL prices (cum-date, ex-date) give 2.29 and 2.37; market-implied 2.24 is 2-5% lower. Exchange circular not opened.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "CGCL_2024-01-01": {
+  "label_class": "vendor_error_other",
+  "label_status": "labeled",
+  "label_factor": 3.9729,
+  "label_factor_source": "computed_from_prices (1/gross); the real event is a later split, so the right action is to repair the vendor adjustment, not to add a corporate action on this date",
+  "label_source_url": "https://www.business-standard.com/markets/capital-market-news/capri-global-capital-fixes-record-date-for-stock-split-124020601519_1.html",
+  "label_extra_urls": [],
+  "label_publication_date": "2024-02-06",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 3.9729,
+   "real_event_date_and_type": "2024-03-05 (1:2 sub-division plus 1:1 bonus, record date 5 Mar 2024)"
+  },
+  "label_evidence_type": "price_data_plus_secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "No corporate action on 2024-01-01. The real event is 2024-03-05 (1:2 sub-division plus 1:1 bonus, record date 5 Mar 2024) (Business Standard). Yahoo's adjusted close steps on 2024-01-01 (bars before it are not adjusted for the later split, bars after are), and the store's raw reconstruction (yahoo_close x later split factor) carries the step into close_raw. Only 3 of 445 securities show this at 2024-01-01. Verified from the store (close_raw/yahoo_close history) and live Yahoo split dates. Publication date approximate (record-date news).",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {
+    "2024-03-05": 2.0
+   },
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "CDSL_2017-07-03": {
+  "label_class": "vendor_error_other",
+  "label_status": "labeled",
+  "label_factor": 1.9969,
+  "label_factor_source": "computed_from_prices (1/gross); the true ratio is 2.0 (the 2024 1:1 bonus applied twice to the first bar)",
+  "label_source_url": "https://www.forbesindia.com/article/special/cdsl-ipo-lists-at-rs-250-per-share;-68-premium-to-issue-price/47415/1",
+  "label_extra_urls": [
+   "https://www.business-standard.com/article/markets/cdsl-extends-rally-stock-zooms-131-against-ipo-price-117070700461_1.html"
+  ],
+  "label_publication_date": "2017-06-30",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 1.9969
+  },
+  "label_evidence_type": "price_data_plus_secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "CDSL listed 2017-06-30 (open Rs 250, last trade 261.60). The store's first bar is 523.50, exactly 2x the listing close: Yahoo left that one bar unadjusted for the 2024 bonus (live Yahoo split 2.0 on 2024-08-23) while later bars are adjusted, and the store multiplied both by 2. True 2017-07-03 move is about +0.2%. Inference from price levels, not from an exchange document.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "CHOLAFIN_2020-03-23": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.business-standard.com/amp/article/news-cm/mahindra-mahindra-financial-services-ltd-leads-losers-in-a-group-120032300727_1.html",
+  "label_extra_urls": [
+   "https://www.businesstoday.in/markets/stocks/story/sbe-nse-sensex-worst-day-in-history-crashes-252759-2020-03-23"
+  ],
+  "label_publication_date": "2020-03-23",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 1.4204
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Sensex -13.2% (worst day ever, lockdown); BSE A-group losers: M&M Fin -28.7%, Cholamandalam -27.9%, Max Financial -27.6%. Market-wide crash, so the market median (-11 to -13%) is the right comparator, not the sector-peer figure.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {
+    "2019-06-14": 5.0
+   },
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "GPIL_2024-01-01": {
+  "label_class": "vendor_error_other",
+  "label_status": "labeled",
+  "label_factor": 4.8788,
+  "label_factor_source": "computed_from_prices (1/gross); the real event is a later split, so the right action is to repair the vendor adjustment, not to add a corporate action on this date",
+  "label_source_url": "https://www.goodreturns.in/personal-finance/investment/1-5-stock-split-for-the-first-time-4th-october-fixed-as-record-date-bullish-bearish-target-price-1378229.html",
+  "label_extra_urls": [],
+  "label_publication_date": "2024-09-01",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 4.8788,
+   "real_event_date_and_type": "2024-10-04 (1:5 sub-division, record date 4 Oct 2024)"
+  },
+  "label_evidence_type": "price_data_plus_secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "No corporate action on 2024-01-01. The real event is 2024-10-04 (1:5 sub-division, record date 4 Oct 2024) (Goodreturns). Yahoo's adjusted close steps on 2024-01-01 (bars before it are not adjusted for the later split, bars after are), and the store's raw reconstruction (yahoo_close x later split factor) carries the step into close_raw. Only 3 of 445 securities show this at 2024-01-01. Verified from the store (close_raw/yahoo_close history) and live Yahoo split dates. Publication date approximate (record-date news).",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {
+    "2024-10-04": 5.0
+   },
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "HEG_2026-09-07": {
+  "label_class": "pending_listing",
+  "label_status": "labeled",
+  "label_factor": null,
+  "label_factor_source": null,
+  "label_source_url": "https://nsearchives.nseindia.com/corporate/HEG_25082026170347_HEG_Final_Press_Realease_Intimation.pdf",
+  "label_extra_urls": [
+   "https://www.business-standard.com/markets/capital-market-news/heg-demerger-becomes-effective-from-07-sep-2026-126082501237_1.html"
+  ],
+  "label_publication_date": "2026-08-25",
+  "label_confidence": "high",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 2.6754
+  },
+  "label_evidence_type": "primary_document_read",
+  "label_is_post_hoc": true,
+  "notes": "Primary: HEG Reg-30 filing 2026-08-25 (PDF read): composite scheme effective 1 Sep 2026, record date 7 Sep 2026, 1:1 entitlement in HEG Graphite Ltd (resulting company); Bhilwara Energy amalgamated into HEG. The store shows the DUMMYHEG placeholder (DUM545A01024). Correct action: wait until the resulting company lists and a price is discovered; do not derive a factor from the ex-day close. Volume 3.3x, peers flat. The BE-series detail was not verified from a document.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": true,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "INDIAMART_2019-10-27": {
+  "label_class": "vendor_error_other",
+  "label_status": "labeled",
+  "label_factor": 0.49,
+  "label_factor_source": "computed_from_prices (1/gross); preferred fix is to drop the muhurat bar, the two legs multiply to ~1",
+  "label_source_url": "https://www.steelcitynettrade.com/Circulars/Muhurat%20Trading%20session%20on%20account%20of%20Diwali%202019_1.pdf",
+  "label_extra_urls": [
+   "https://www.business-standard.com/amp/article/news-ani/muhurat-trading-held-at-bse-119102700439_1.html"
+  ],
+  "label_publication_date": "2019-10-27",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 0.49
+  },
+  "label_evidence_type": "price_data_plus_secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Sunday 2019-10-27 was the Diwali muhurat session (exchange circular at the URL). Yahoo's bar is exactly 2x the prior level on 6,052 shares (0.12x median volume) and the next session returns to the old level: a one-bar vendor glitch. Only INDIAMART shows it; 375 securities have bars that day.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "INDIAMART_2019-10-29": {
+  "label_class": "vendor_error_other",
+  "label_status": "labeled",
+  "label_factor": 2.0227,
+  "label_factor_source": "computed_from_prices (1/gross); preferred fix is to drop the muhurat bar, the two legs multiply to ~1",
+  "label_source_url": "https://www.steelcitynettrade.com/Circulars/Muhurat%20Trading%20session%20on%20account%20of%20Diwali%202019_1.pdf",
+  "label_extra_urls": [
+   "https://www.business-standard.com/amp/article/news-ani/muhurat-trading-held-at-bse-119102700439_1.html"
+  ],
+  "label_publication_date": "2019-10-27",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 2.0227
+  },
+  "label_evidence_type": "price_data_plus_secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Reversal leg of the 2019-10-27 glitch; the two suspects cancel. The engine would need both resolved; the clean fix is dropping the bad bar.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "INDIAMART_2020-11-14": {
+  "label_class": "vendor_error_other",
+  "label_status": "labeled",
+  "label_factor": 0.5015,
+  "label_factor_source": "computed_from_prices (1/gross); preferred fix is to drop the muhurat bar, the two legs multiply to ~1",
+  "label_source_url": null,
+  "label_extra_urls": [],
+  "label_publication_date": null,
+  "label_confidence": "low",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 0.5015
+  },
+  "label_evidence_type": "price_data_plus_secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Saturday 2020-11-14 (Diwali muhurat by the calendar; no source for that session found in this run). Same pattern: exactly 2x the prior close on 2,628 shares (0.07x median volume), back to the old level next session.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "INDIAMART_2020-11-17": {
+  "label_class": "vendor_error_other",
+  "label_status": "labeled",
+  "label_factor": 2.0495,
+  "label_factor_source": "computed_from_prices (1/gross); preferred fix is to drop the muhurat bar, the two legs multiply to ~1",
+  "label_source_url": null,
+  "label_extra_urls": [],
+  "label_publication_date": null,
+  "label_confidence": "low",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 2.0495
+  },
+  "label_evidence_type": "price_data_plus_secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Reversal leg of the 2020-11-14 glitch.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "IEX_2025-07-24": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.cercind.gov.in/2025/orders/8-SM-2025.pdf",
+  "label_extra_urls": [
+   "https://www.businesstoday.in/amp/markets/stocks/story/indian-energy-exchange-iex-shares-crash-26-to-hit-revised-lower-circuit-heres-what-analysts-say-486069-2025-07-24"
+  ],
+  "label_publication_date": "2025-07-23",
+  "label_confidence": "high",
+  "label_factor_alternatives": {},
+  "label_evidence_type": "primary_document_url_not_opened",
+  "label_is_post_hoc": true,
+  "notes": "CERC suo-motu order 8/SM/2025 dated 2025-07-23 initiated phased market coupling (DAM by Jan 2026). IEX closed -29.5% at 132.45 (BusinessToday); store 132.32. Volume 22x median. The CERC PDF URL came from a search result and its content was known only from summaries; the file was not opened.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "INDUSINDBK_2020-03-26": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.business-standard.com/amp/article/markets/indusind-bank-bandhan-bank-among-top-gainers-shares-surge-40-120032700073_1.html",
+  "label_extra_urls": [
+   "https://www.business-standard.com/amp/article/news-cm/indusind-bank-snaps-8-day-losing-streak-120032600446_1.html"
+  ],
+  "label_publication_date": "2020-03-27",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 0.6912
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "+45% (sharpest one-day gain ever) after a 62% fall in 8 sessions; attributed to short covering at the March derivatives expiry.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "J&KBANK_2017-02-27": {
+  "label_class": "vendor_error_other",
+  "label_status": "labeled",
+  "label_factor": null,
+  "label_factor_source": null,
+  "label_source_url": null,
+  "label_extra_urls": [],
+  "label_publication_date": null,
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 2.1624
+  },
+  "label_evidence_type": "price_data_only",
+  "label_is_post_hoc": true,
+  "notes": "Store-internal evidence only: 530 consecutive zero-volume bars at an identical close of 157.965 from 2015-01-01 to 2017-02-23, then the first traded bar (73.05). This is a stale back-fill before the vendor's history starts, not a corporate action. Nothing external to cite, hence no URL.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "JSL_2015-11-19": {
+  "label_class": "demerger",
+  "label_status": "labeled",
+  "label_factor": null,
+  "label_factor_source": null,
+  "label_source_url": "https://www.jindalstainless.com/wp-content/uploads/2021/10/JSHL-Annual-Report-2016.pdf",
+  "label_extra_urls": [
+   "https://www.business-standard.com/article/companies/jindal-stainless-to-demerge-business-into-three-verticals-via-slump-sale-route-114122900985_1.html"
+  ],
+  "label_publication_date": "2016-06-01",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 2.5556
+  },
+  "label_evidence_type": "primary_document_url_not_opened",
+  "label_is_post_hoc": true,
+  "notes": "Composite scheme: Ferro Alloys and Mining divisions of Jindal Stainless Ltd demerged into Jindal Stainless (Hisar), 1:1 (JSHL shares allotted 2015-11-25), record date 2015-11-21 per the JSHL annual report (I saw this in a search summary of the PDF, did not open it; publication date approximate). The store's ex-date (11-19) was not checked against an exchange notice. Volume 0.1x median (thin). No factor: no exchange price found for the resulting shares.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "M&MFIN_2020-03-23": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.business-standard.com/amp/article/news-cm/mahindra-mahindra-financial-services-ltd-leads-losers-in-a-group-120032300727_1.html",
+  "label_extra_urls": [
+   "https://www.businesstoday.in/markets/stocks/story/sbe-nse-sensex-worst-day-in-history-crashes-252759-2020-03-23"
+  ],
+  "label_publication_date": "2020-03-23",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 1.4014
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Sensex -13.2% (worst day ever, lockdown); BSE A-group losers: M&M Fin -28.7%, Cholamandalam -27.9%, Max Financial -27.6%. Market-wide crash, so the market median (-11 to -13%) is the right comparator, not the sector-peer figure.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "MFSL_2020-03-23": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.business-standard.com/amp/article/news-cm/mahindra-mahindra-financial-services-ltd-leads-losers-in-a-group-120032300727_1.html",
+  "label_extra_urls": [
+   "https://www.businesstoday.in/markets/stocks/story/sbe-nse-sensex-worst-day-in-history-crashes-252759-2020-03-23"
+  ],
+  "label_publication_date": "2020-03-23",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 1.4131
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Sensex -13.2% (worst day ever, lockdown); BSE A-group losers: M&M Fin -28.7%, Cholamandalam -27.9%, Max Financial -27.6%. Market-wide crash, so the market median (-11 to -13%) is the right comparator, not the sector-peer figure.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "MOTILALOFS_2024-01-01": {
+  "label_class": "vendor_error_other",
+  "label_status": "labeled",
+  "label_factor": 3.9391,
+  "label_factor_source": "computed_from_prices (1/gross); the real event is a later split, so the right action is to repair the vendor adjustment, not to add a corporate action on this date",
+  "label_source_url": "https://www.equitybulls.com/category.php?id=346893",
+  "label_extra_urls": [],
+  "label_publication_date": "2024-05-01",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 3.9391,
+   "real_event_date_and_type": "2024-06-10 (3:1 bonus, record date 10 Jun 2024; Yahoo lists it as a 4.0 split)"
+  },
+  "label_evidence_type": "price_data_plus_secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "No corporate action on 2024-01-01. The real event is 2024-06-10 (3:1 bonus, record date 10 Jun 2024; Yahoo lists it as a 4.0 split) (Equitybulls). Yahoo's adjusted close steps on 2024-01-01 (bars before it are not adjusted for the later split, bars after are), and the store's raw reconstruction (yahoo_close x later split factor) carries the step into close_raw. Only 3 of 445 securities show this at 2024-01-01. Verified from the store (close_raw/yahoo_close history) and live Yahoo split dates. Publication date approximate (record-date news).",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {
+    "2024-06-10": 4.0
+   },
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "PATANJALI_2020-01-27": {
+  "label_class": "scheme",
+  "label_status": "labeled",
+  "label_factor": null,
+  "label_factor_source": null,
+  "label_source_url": "https://www.businesstoday.in/markets/company-stock/story/patanjali-subsidiary-ruchi-soya-share-gained-8819-2020-here-why-262324-2020-06-26",
+  "label_extra_urls": [
+   "https://theprint.in/economy/why-ramdevs-ruchi-soya-shares-jumped-to-rs-1535-from-rs-17-in-5-months-are-now-tanking/455368/"
+  ],
+  "label_publication_date": "2020-06-26",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 19.706,
+   "yahoo_live_consolidation": {
+    "2019-11-14": 0.01
+   }
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Ruchi Soya (now Patanjali Foods) re-listed on 2020-01-27 at Rs 17 after the insolvency resolution: 99% capital reduction (100 old shares -> 1). The store holds 51 zero-volume flat bars at 335.0 from 2019-11-14 (Yahoo dates a 1:100 consolidation there), then the Rs 17 relisting bar. No value-transfer factor: pre and post prices are not on the same equity. Right action: treat history before the relisting as discontinuous. Why the stale price reads 335 (Yahoo adjustment) is inferred.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {
+    "2019-11-14": 0.01
+   },
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "PNB_2017-10-25": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.business-standard.com/article/economy-policy/govt-clears-rs-2-11-lakh-crore-bank-recapitalisation-plan-117102500067_1.html",
+  "label_extra_urls": [
+   "https://www.pib.gov.in/newsite/PrintRelease.aspx?relid=186424&reg=48&lang=2",
+   "https://www.business-standard.com/amp/article/markets/nifty-psu-bank-index-zooms-21-on-government-rs-2-11-lakh-crore-recap-plan-117102500145_1.html"
+  ],
+  "label_publication_date": "2017-10-25",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 0.684
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Government announced a Rs 2.11 lakh crore PSU bank recapitalisation on 2017-10-24 after hours; Nifty PSU Bank +21% intraday on 25 Oct. Store close 202.05 (+46%); BS reports an intraday high near 187 (+36%), so the store close and that press figure disagree; the move is real (volume 32x). PIB Dec-2018 release (read) confirms the Oct-2017 announcement.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "RPOWER_2019-02-04": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.business-standard.com/amp/article/news-cm/reliance-power-ltd-leads-losers-in-a-group-119020500700_1.html",
+  "label_extra_urls": [],
+  "label_publication_date": "2019-02-05",
+  "label_confidence": "low",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 1.5349
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Group-wide selloff from sales of pledged shares (Edelweiss, L&T Finance named). The 2019-02-04 leg (-34.8%, volume 13x) is only described indirectly: the BS items are dated 2019-02-05. Promoter asked SEBI to probe on 2019-02-06.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "RPOWER_2019-02-05": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.business-standard.com/amp/article/news-cm/reliance-power-ltd-leads-losers-in-a-group-119020500700_1.html",
+  "label_extra_urls": [
+   "https://www.business-standard.com/article/news-cm/volumes-soar-at-reliance-power-ltd-counter-119020500654_1.html"
+  ],
+  "label_publication_date": "2019-02-05",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 1.4333
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Reliance Power -29.82% to Rs 12 on BSE (store 12.00), biggest loser in BSE A group, volume 32x median.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "SAMMAANCAP_2019-09-30": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.business-standard.com/amp/article/markets/indiabulls-housing-finance-tanks-34-on-uncertainties-over-lvb-merger-119093001113_1.html",
+  "label_extra_urls": [],
+  "label_publication_date": "2019-09-30",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 1.5244
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Indiabulls Housing Finance (now Sammaan Capital) -34% after RBI put Lakshmi Vilas Bank (merger partner) under PCA and the Delhi HC agreed to hear a PIL on fund diversion; store -34.4%.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "SAMMAANCAP_2020-03-19": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (cause unverified)",
+  "label_source_url": null,
+  "label_extra_urls": [
+   "https://www.business-standard.com/amp/article/news-cm/indiabulls-housing-gains-after-sameer-gehlaut-hikes-stake-120040100563_1.html"
+  ],
+  "label_publication_date": null,
+  "label_confidence": "low",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 1.5092
+  },
+  "label_evidence_type": "price_data_only",
+  "label_is_post_hoc": true,
+  "notes": "COVID crash week. A later report puts the 52-week low at Rs 81.25 on 2020-03-20, in line with the store (80.9), so the price level is real. No stock-specific cause found for 2020-03-19 and no corporate action is known. Low confidence: genuine by elimination.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "TMPV_2025-10-14": {
+  "label_class": "demerger",
+  "label_status": "labeled",
+  "label_factor": 1.6519,
+  "label_factor_source": "exchange_special_pre_open_price: NSE SPOS price 400.00 (BSE 399) vs prev close 660.75; factor=prev_close/SPOS_price",
+  "label_source_url": "https://nsearchives.nseindia.com/content/circulars/FAOP70789.pdf",
+  "label_extra_urls": [
+   "https://nsearchives.nseindia.com/content/circulars/FAOP70615.pdf",
+   "https://www.tradingview.com/news/moneycontrol:ec513e1bd094b:0-tata-motors-shares-adjust-to-demerger-of-cv-biz-why-you-should-ignore-the-40-plunge/"
+  ],
+  "label_publication_date": "2025-10-13",
+  "label_confidence": "high",
+  "label_factor_alternatives": {
+   "hand_approved_market_implied": 1.6708,
+   "cost_of_acquisition_split": 1.4524,
+   "market_implied_1_over_gross": 1.6709,
+   "hand_approved_vs_exchange_pct": 1.15
+  },
+  "label_evidence_type": "primary_document_read",
+  "label_is_post_hoc": true,
+  "notes": "Primary: NSE F&O circulars (read) confirm Scheme of Arrangement (Demerger), ex/effective date 14-Oct-2025, price discovered in a special pre-open call auction (SPOS). The SPOS price (Rs 400) comes from a Moneycontrol article of the day, not an exchange document I could open. 1:1 entitlement in TMLCV (listed 2025-11-12 at ~335). Hand-approved 1.6708 is 1.1% above the exchange-derived value: passes a 2% target.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": true,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "TRENT_2026-01-01": {
+  "label_class": "vendor_error_other",
+  "label_status": "labeled",
+  "label_factor": 1.5,
+  "label_factor_source": "company bonus ratio 1:2 (1.5 shares after per 1 before); consistent with store: Yahoo-adjusted volumes in thirds",
+  "label_source_url": "https://www.angelone.in/news/stocks/trent-share-price-in-focus-revises-record-date-for-1-2-bonus-shares-issuance-from-may-29-to-june-4-2026",
+  "label_extra_urls": [
+   "https://www.goodreturns.in/news/1-2-bonus-issue-alert-trent-first-ever-bonus-share-this-week-who-will-receive-record-date-4june-2026-1512523.html"
+  ],
+  "label_publication_date": "2026-05-28",
+  "label_confidence": "high",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 1.4936
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Bonus 1:2 announced 2026-04-22; record date revised from 29 May to 4 June 2026. The store shows the price step on 2026-01-01, five months before the record date, with fractional (thirds) volumes: the vendor applied the bonus adjustment to history from Jan 1. Live Yahoo now lists the 1.5 split on 2026-06-04. No real event on 2026-01-01. Hand-triaged manual_adj 1.5. The company filing was not opened (news summaries only); publication date approximate.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {
+    "2026-06-04": 1.5
+   },
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": true,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "VEDL_2026-04-30": {
+  "label_class": "demerger",
+  "label_status": "labeled",
+  "label_factor": 2.6722,
+  "label_factor_source": "exchange_special_pre_open_price: SPOS ex-demerger price Rs 289.50 vs NSE prev close 773.60; factor=prev_close/SPOS_price",
+  "label_source_url": "https://nsearchives.nseindia.com/content/circulars/FAOP73857.pdf",
+  "label_extra_urls": [
+   "https://nsearchives.nseindia.com/content/circulars/FAOP73962.pdf",
+   "https://www.business-standard.com/markets/capital-market-news/vedanta-corrects-after-ex-demerger-price-adjustment-126043000558_1.html"
+  ],
+  "label_publication_date": "2026-04-22",
+  "label_confidence": "high",
+  "label_factor_alternatives": {
+   "hand_approved_market_implied": 2.849,
+   "cost_of_acquisition_split": 1.9106,
+   "cost_of_acquisition_retained_pct": 52.34,
+   "market_implied_1_over_gross": 2.8488,
+   "hand_approved_vs_exchange_pct": 6.62
+  },
+  "label_evidence_type": "primary_document_read",
+  "label_is_post_hoc": true,
+  "notes": "Primary: NSE circulars 49/2026 (2026-04-22) and 54/2026 (2026-04-29), both read, confirm demerger, ex-date 30-Apr-2026, SPOS. Record date 1 May (holiday). SPOS price 289.50 is from Business Standard 2026-04-30 (read; secondary). VEDL then fell another 6.2% on the ex-day (close 271.55), and the hand-approved market-implied factor absorbs that move: it is 6.6% above the exchange-derived value and FAILS a 2% tolerance. Four resulting companies (1:1 each) listed 2026-06-15. Cost-of-acquisition retained share 52.34% (secondary).",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": true,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "IDEA_2020-03-18": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.business-standard.com/amp/article/pti-stories/telecom-shares-crack-vodafone-idea-plunges-35-pc-120031801019_1.html",
+  "label_extra_urls": [],
+  "label_publication_date": "2020-03-18",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 1.5397
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Supreme Court pulled up the Centre and telcos over self-assessment of AGR dues; Vodafone Idea -34.85% to Rs 3.16 on BSE (store 3.15).",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "YESBANK_2018-09-21": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.business-standard.com/amp/article/markets/yes-bank-tumbles-over-20-on-rbi-s-denial-to-rana-kapoor-s-tenure-extension-118092100131_1.html",
+  "label_extra_urls": [
+   "https://www.businesstoday.in/markets/company-stock/story/yes-bank-stock-fell-in-early-trade-ceo-rana-kapoor-rbi-approval-110292-2018-09-21"
+  ],
+  "label_publication_date": "2018-09-21",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 1.4093
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "RBI cut Rana Kapoor's tenure to 31 Jan 2019; stock fell ~30% (intraday -34%). Volume 11x.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {
+    "2017-09-21": 5.0
+   },
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "YESBANK_2019-04-30": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.business-standard.com/amp/article/pti-stories/yes-bank-shares-sink-30-m-cap-drops-by-rs-16-048-56-cr-on-q4-loss-119043000727_1.html",
+  "label_extra_urls": [],
+  "label_publication_date": "2019-04-30",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 1.4119
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "First quarterly loss (Rs 1,506.64 cr), gross NPA 3.22%; closed -29.2% at Rs 168 on BSE (store 168.00).",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "YESBANK_2020-03-06": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.business-standard.com/amp/article/news-cm/yes-bank-tanks-after-rbi-caps-withdrawals-supersedes-board-120030600263_1.html",
+  "label_extra_urls": [
+   "https://taxguru.in/rbi/yes-bank-moratorium-depositor-withdrawal-capped-rs-50k.html"
+  ],
+  "label_publication_date": "2020-03-06",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 2.2786
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "RBI moratorium and board supersession announced 2020-03-05 6pm (Section 45 BR Act), Rs 50,000 withdrawal cap. An intraday report says -25% early; the store close 16.15 is -56%, not checked against the exchange close.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "YESBANK_2020-03-16": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.business-standard.com/article/pti-stories/yes-bank-shares-bounce-back-sharply-zoom-over-45-pc-120031600974_1.html",
+  "label_extra_urls": [],
+  "label_publication_date": "2020-03-16",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 0.6887
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Reconstruction scheme (SBI up to 49%) drafted 2020-03-06, notified 2020-03-13; +45.21% to 37.10 on BSE (store 37.10).",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "YESBANK_2020-03-17": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.business-standard.com/amp/article/news-cm/yes-bank-ltd-soars-59-97-up-for-third-straight-session-120031700603_1.html",
+  "label_extra_urls": [
+   "https://www.business-standard.com/amp/article/pti-stories/yes-bank-continues-to-rally-for-3rd-day-shares-jump-nearly-35-pc-120031700312_1.html"
+  ],
+  "label_publication_date": "2020-03-17",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 0.6326
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Third straight up day after the reconstruction scheme and a Moody's action; BS note says +59.97%, store +58.1%.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "ZEEL_2024-01-23": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return",
+  "label_source_url": "https://www.theweek.in/news/biz-tech/2024/01/22/sony-wants-a-dollar90-million-termination-fee-from-zee-entertainment.html",
+  "label_extra_urls": [
+   "https://en.wikipedia.org/wiki/Sony_India"
+  ],
+  "label_publication_date": "2024-01-22",
+  "label_confidence": "medium",
+  "label_factor_alternatives": {},
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "Sony (Culver Max) terminated the $10bn merger with ZEEL by notice on 2024-01-22 (after the 21 Jan end date). Stock fell 33.6% on 2024-01-23 (volume 12x). Exchange filing not opened; news reports only.",
+  "origin_note": "engine_detect (quant.data.actions.detect, FrozenClock 2026-09-11T18:00Z, since=2015-01-01)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": "2026-10-01 (post-cutoff; labelling aid only, never a triage input)",
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": false,
+   "evidence_observed_at": "2026-09-11T10:06:18.315318Z",
+   "engine_kind": "suspected"
+  }
+ },
+ "POLICYBZR_2026-09-24": {
+  "label_class": "genuine_event",
+  "label_status": "labeled",
+  "label_factor": 1.0,
+  "label_factor_source": "n/a: real return (no value transfer)",
+  "label_source_url": "https://www.medianama.com/2026/09/223-irdai-consultation-paper-insurance-distribution-reforms/",
+  "label_extra_urls": [
+   "https://www.marketcalls.in/investment/irdai-distribution-reform-insurance-stocks-crash-pb-fintech.html",
+   "https://www.careratings.com/uploads/newsfiles/1790329473_Insurance_Distribution_Reset_-_IRDAI_Caps_Distributor_Pay-outs.pdf"
+  ],
+  "label_publication_date": "2026-09-24",
+  "label_confidence": "high",
+  "label_factor_alternatives": {
+   "market_implied_1_over_gross": 1.5589
+  },
+  "label_evidence_type": "secondary_news",
+  "label_is_post_hoc": true,
+  "notes": "IRDAI consultation paper 'Recalibrating Economics of Insurance Distribution' published 2026-09-23 (comments to 2026-10-25): commission caps (e.g. 15% first-year / 5% renewal on individual health). Closes 1,886.30 -> 1,210.00 are as supplied; one news report gives a close of Rs 1,207.20 (-36%). Peers as supplied: Turtlemint -20%, HDFC Life -7%. IRDAI's own PDF was not retrieved. Synthetic: 2026-09-24 bars are not in the store (last bar 2026-09-11, close 1,797.30). A price-only rule would call this a corporate action.",
+  "origin_note": "synthetic_known_case (prices after 2026-09-11 are not in the store; closes supplied by the operator)",
+  "labelling_aids": {
+   "yahoo_live_fetched_at": null,
+   "yahoo_live_split_events_pm5d": {},
+   "yahoo_live_split_events_pm400d": {},
+   "yahoo_split_event_in_store_pm60d": [],
+   "yahoo_dividend_event_in_store_pm5d": [],
+   "in_trailing_13m": true,
+   "evidence_observed_at": null,
+   "engine_kind": "suspected (would be flagged: gross factor outside [0.714,1.4])"
+  }
+ }
+}
